@@ -1,10 +1,32 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { Provider } from "react-redux";
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import App from "./App";
+import { store } from "./store/store";
+import Dashboard from "./components/features/Dashboard/Dashboard";
+import BudgetGrid from "./components/features/BudgetGrid/BudgetGrid";
+import TemplateManager from "./components/features/Templates/TemplateManager";
+import SecuritySettings from "./components/features/Settings/SecuritySettings";
 import "./index.css";
+
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <App />,
+    children: [
+      { index: true, element: <Dashboard /> },
+      { path: "budget", element: <BudgetGrid /> },
+      { path: "templates", element: <TemplateManager /> },
+      { path: "settings", element: <SecuritySettings /> },
+    ],
+  },
+]);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <Provider store={store}>
+      <RouterProvider router={router} />
+    </Provider>
   </React.StrictMode>,
 );
