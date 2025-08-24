@@ -1,62 +1,219 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "../../../store/types";
-import { addBudget, setBudgets } from "../../../store/slices/budgetSlice";
-import { createMonthlyBudget, listMonthlyBudgets } from "../../../services/budgetService";
-import { AgGridReact } from "ag-grid-react";
-import type { ColDef } from "ag-grid-community";
-import "ag-grid-community/styles/ag-grid.css";
-import "ag-grid-community/styles/ag-theme-quartz.css";
+import { setBudgets } from "../../../store/slices/budgetSlice";
+import { createMonthlyBudget, listMonthlyBudgetsSorted, initDatabase, deleteMonthlyBudget, SortCriteria } from "../../../services/budgetService";
+import { MonthlyBudget } from "../../../store/slices/budgetSlice";
+import BudgetList from "./BudgetList";
+import BudgetDetail from "./BudgetDetail";
+import CreateBudgetForm from "./CreateBudgetForm";
+import BackButton from "../../common/BackButton";
+
+type ViewMode = 'list' | 'detail' | 'create';
 
 function BudgetGrid() {
   const dispatch = useAppDispatch();
+  const location = useLocation();
   const budgets = useAppSelector((s) => (s as any).budget.budgets);
-  const [incomeInput, setIncomeInput] = useState(0);
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [selectedBudget, setSelectedBudget] = useState<MonthlyBudget | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentSort, setCurrentSort] = useState<SortCriteria | null>(null); // null = default budget_date sort
+
+  // Check if we should open the create form or show a specific budget based on navigation state
+  useEffect(() => {
+    const state = location.state as { openCreateForm?: boolean; selectedBudgetId?: number; fromPage?: string } | null;
+    if (state?.openCreateForm) {
+      setViewMode('create');
+      // Preserve fromPage but clear openCreateForm to prevent reopening on refresh
+      window.history.replaceState({ fromPage: state.fromPage }, document.title);
+    } else if (state?.selectedBudgetId && budgets.length > 0) {
+      const budget = budgets.find((b: MonthlyBudget) => b.budgetId === state.selectedBudgetId);
+      if (budget) {
+        setSelectedBudget(budget);
+        setViewMode('detail');
+        // Preserve fromPage but clear selectedBudgetId to prevent reopening on refresh
+        window.history.replaceState({ fromPage: state.fromPage }, document.title);
+      }
+    }
+  }, [location.state, budgets]);
 
   useEffect(() => {
     async function load() {
-      const list = await listMonthlyBudgets();
-      dispatch(setBudgets(list));
+      try {
+        setIsLoading(true);
+        setError(null);
+        console.log("Starting budget loading process...");
+        await initDatabase();
+        console.log("Database initialized successfully");
+        
+        // Use default budget_date sorting when currentSort is null
+        const sortToUse = currentSort || { criteria: 'budget_date', ascending: false };
+        console.log("Loading budgets with sort:", sortToUse);
+        const list = await listMonthlyBudgetsSorted(sortToUse);
+        console.log("Loaded budgets:", list);
+        dispatch(setBudgets(list));
+      } catch (err) {
+        console.error("Error loading budgets:", err);
+        setError(`Failed to load budgets: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setIsLoading(false);
+      }
     }
     load();
-  }, [dispatch]);
+  }, [dispatch, currentSort]);
 
-  const cols = useMemo<ColDef[]>(
-    () => [
-      { headerName: "Month", field: "month", width: 100 },
-      { headerName: "Year", field: "year", width: 100 },
-      { headerName: "Total Income", field: "totalIncome", width: 140 },
-    ],
-    [],
-  );
+  const handleBudgetClick = (budget: MonthlyBudget) => {
+    setSelectedBudget(budget);
+    setViewMode('detail');
+  };
 
-  async function onCreateBudget() {
-    const now = new Date();
-    const id = await createMonthlyBudget(now.getMonth() + 1, now.getFullYear(), incomeInput);
-    dispatch(addBudget({ budgetId: id, month: now.getMonth() + 1, year: now.getFullYear(), totalIncome: incomeInput }));
+  const handleCreateBudget = async (month: number, year: number, income: number, name?: string) => {
+    console.log("handleCreateBudget called with:", { month, year, income, name });
+    console.log("Current budgets:", budgets);
+    
+    try {
+      setError(null);
+      
+      // Check if a budget for this month/year already exists
+      const existingBudget = budgets.find((b: MonthlyBudget) => {
+        console.log(`Comparing budget ${b.month}/${b.year} with ${month}/${year}`);
+        return b.month === month && b.year === year;
+      });
+      
+      if (existingBudget) {
+        const monthName = new Date(year, month - 1).toLocaleDateString('en-US', { month: 'long' });
+        const errorMsg = `A budget for ${monthName} ${year} already exists. Please choose a different month/year or edit the existing budget.`;
+        console.log("Duplicate budget detected:", errorMsg);
+        setError(errorMsg);
+        return;
+      }
+      
+      console.log("No duplicate found, proceeding with creation...");
+      console.log("Creating budget with:", { 
+        month, 
+        year, 
+        income,
+        name 
+      });
+      
+      const id = await createMonthlyBudget(month, year, income, name);
+      console.log("Budget created with ID:", id);
+      
+      // Reload budgets to get the new one with all fields
+      const sortToUse = currentSort || { criteria: 'budget_date', ascending: false };
+      const list = await listMonthlyBudgetsSorted(sortToUse);
+      dispatch(setBudgets(list));
+      
+      // Find the new budget and select it
+      const newBudget = list.find(b => b.budgetId === id);
+      if (newBudget) {
+        setSelectedBudget(newBudget);
+        setViewMode('detail');
+      }
+    } catch (err) {
+      console.error("Error creating budget:", err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to create budget";
+      setError(errorMessage);
+      // Don't throw here - just set the error
+    }
+  };
+
+  const handleSortChange = async (sort: SortCriteria | null) => {
+    try {
+      setCurrentSort(sort);
+      setIsLoading(true);
+      // Use default budget_date sorting when sort is null
+      const sortToUse = sort || { criteria: 'budget_date', ascending: false };
+      const list = await listMonthlyBudgetsSorted(sortToUse);
+      dispatch(setBudgets(list));
+    } catch (err) {
+      console.error("Error sorting budgets:", err);
+      setError("Failed to sort budgets");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleBackToList = () => {
+    setViewMode('list');
+    setSelectedBudget(null);
+    setError(null);
+  };
+
+  const handleShowCreateForm = () => {
+    setViewMode('create');
+    setError(null);
+  };
+
+  const handleDeleteBudget = async (budgetId: number) => {
+    console.log("handleDeleteBudget called with ID:", budgetId);
+    
+    try {
+      setError(null);
+      console.log("Deleting budget with ID:", budgetId);
+      
+      await deleteMonthlyBudget(budgetId);
+      console.log("Budget deleted successfully");
+      
+      // If we deleted the currently selected budget, go back to list
+      if (selectedBudget && selectedBudget.budgetId === budgetId) {
+        setSelectedBudget(null);
+        setViewMode('list');
+      }
+      
+      // Reload budgets to update the list
+      const sortToUse = currentSort || { criteria: 'budget_date', ascending: false };
+      const list = await listMonthlyBudgetsSorted(sortToUse);
+      dispatch(setBudgets(list));
+    } catch (err) {
+      console.error("Error deleting budget:", err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to delete budget";
+      setError(errorMessage);
+    }
+  };
+
+  if (viewMode === 'detail' && selectedBudget) {
+    return (
+      <div>
+        <BackButton />
+        <BudgetDetail 
+          budget={selectedBudget} 
+          onBack={handleBackToList} 
+          onDelete={handleDeleteBudget}
+        />
+      </div>
+    );
+  }
+
+  if (viewMode === 'create') {
+    return (
+      <div>
+        <BackButton />
+        <CreateBudgetForm
+          onSubmit={handleCreateBudget}
+          onCancel={handleBackToList}
+          isLoading={isLoading}
+          error={error}
+        />
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-3xl font-bold">Monthly Budgets</h2>
-      <div className="bg-white rounded-lg shadow-financial border border-slate-200 p-4 space-y-4">
-        <div className="flex gap-2 items-center">
-          <input
-            type="number"
-            className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 w-48"
-            placeholder="Total income"
-            value={incomeInput}
-            onChange={(e) => setIncomeInput(Number(e.target.value))}
-          />
-          <button className="bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 shadow-sm active:scale-95" onClick={onCreateBudget}>
-            Create Current Month Budget
-          </button>
-        </div>
-        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-financial">
-          <div className="ag-theme-quartz">
-            <AgGridReact rowData={budgets} columnDefs={cols} domLayout="autoHeight" rowClass="odd:bg-white even:bg-slate-50" />
-          </div>
-        </div>
-      </div>
+    <div>
+      <BackButton />
+      <BudgetList
+        budgets={budgets}
+        onBudgetClick={handleBudgetClick}
+        onCreateBudget={handleShowCreateForm}
+        onDeleteBudget={handleDeleteBudget}
+        onSortChange={handleSortChange}
+        currentSort={currentSort}
+        isLoading={isLoading}
+        error={error}
+      />
     </div>
   );
 }

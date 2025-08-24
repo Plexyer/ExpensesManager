@@ -5,6 +5,9 @@ export interface MonthlyBudget {
   month: number;
   year: number;
   totalIncome: number;
+  createdAt: string;
+  finishedAt?: string;
+  name?: string;
 }
 
 interface BudgetState {

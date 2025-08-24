@@ -68,6 +68,9 @@ pub fn run_migrations(state: &DbState) -> Result<(), DbError> {
             year INTEGER NOT NULL,
             total_income REAL NOT NULL,
             template_used INTEGER,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            finished_at TEXT,
+            name TEXT,
             UNIQUE(month, year)
         );
 
@@ -99,7 +102,49 @@ pub fn run_migrations(state: &DbState) -> Result<(), DbError> {
         "#,
     )
     .map_err(|e| DbError::Sql(e.to_string()))?;
+
+    // Add columns to existing MonthlyBudgets table if they don't exist
+    // Check if columns exist before adding them
+    let mut check_columns = conn.prepare("PRAGMA table_info(MonthlyBudgets)").map_err(|e| DbError::Sql(e.to_string()))?;
+    let column_rows = check_columns.query_map([], |row| {
+        Ok(row.get::<_, String>(1)?) // column name is in index 1
+    }).map_err(|e| DbError::Sql(e.to_string()))?;
+    
+    let mut existing_columns: Vec<String> = Vec::new();
+    for row in column_rows {
+        existing_columns.push(row.map_err(|e| DbError::Sql(e.to_string()))?);
+    }
+    
+    if !existing_columns.contains(&"created_at".to_string()) {
+        // Add column without default first
+        conn.execute("ALTER TABLE MonthlyBudgets ADD COLUMN created_at TEXT", [])
+            .map_err(|e| DbError::Sql(format!("Failed to add created_at column: {}", e)))?;
+        
+        // Update existing rows to have a created_at value
+        conn.execute("UPDATE MonthlyBudgets SET created_at = datetime('now') WHERE created_at IS NULL", [])
+            .map_err(|e| DbError::Sql(format!("Failed to update created_at values: {}", e)))?;
+        
+        println!("Added created_at column to MonthlyBudgets");
+    }
+    
+    if !existing_columns.contains(&"finished_at".to_string()) {
+        conn.execute("ALTER TABLE MonthlyBudgets ADD COLUMN finished_at TEXT", [])
+            .map_err(|e| DbError::Sql(format!("Failed to add finished_at column: {}", e)))?;
+        println!("Added finished_at column to MonthlyBudgets");
+    }
+    
+    if !existing_columns.contains(&"name".to_string()) {
+        conn.execute("ALTER TABLE MonthlyBudgets ADD COLUMN name TEXT", [])
+            .map_err(|e| DbError::Sql(format!("Failed to add name column: {}", e)))?;
+        println!("Added name column to MonthlyBudgets");
+    }
+
+    // Ensure all existing budgets have proper created_at timestamps
+    conn.execute("UPDATE MonthlyBudgets SET created_at = datetime('now') WHERE created_at IS NULL", [])
+        .map_err(|e| DbError::Sql(format!("Failed to update null created_at values: {}", e)))?;
+        
+    println!("Ensured all budgets have proper created_at timestamps");
+
     Ok(())
 }
-
 
