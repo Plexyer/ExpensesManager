@@ -139,6 +139,17 @@ pub fn run_migrations(state: &DbState) -> Result<(), DbError> {
         println!("Added name column to MonthlyBudgets");
     }
 
+    if !existing_columns.contains(&"last_edited".to_string()) {
+        conn.execute("ALTER TABLE MonthlyBudgets ADD COLUMN last_edited TEXT", [])
+            .map_err(|e| DbError::Sql(format!("Failed to add last_edited column: {}", e)))?;
+        
+        // Update existing rows to have a last_edited value equal to created_at
+        conn.execute("UPDATE MonthlyBudgets SET last_edited = COALESCE(created_at, datetime('now')) WHERE last_edited IS NULL", [])
+            .map_err(|e| DbError::Sql(format!("Failed to update last_edited values: {}", e)))?;
+        
+        println!("Added last_edited column to MonthlyBudgets");
+    }
+
     // Ensure all existing budgets have proper created_at timestamps
     conn.execute("UPDATE MonthlyBudgets SET created_at = datetime('now') WHERE created_at IS NULL", [])
         .map_err(|e| DbError::Sql(format!("Failed to update null created_at values: {}", e)))?;

@@ -8,6 +8,7 @@ export interface MonthlyBudget {
   createdAt: string;
   finishedAt?: string;
   name?: string;
+  lastEdited: string;
 }
 
 interface BudgetState {

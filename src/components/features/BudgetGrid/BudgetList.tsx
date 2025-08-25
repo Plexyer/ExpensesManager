@@ -38,6 +38,7 @@ function BudgetList({ budgets, onBudgetClick, onCreateBudget, onDeleteBudget, on
     { value: 'budget_date', label: 'Budget Date' },
     { value: 'created_date', label: 'Created Date' },
     { value: 'finished_date', label: 'Finished Date' },
+    { value: 'last_edited', label: 'Last Edited' },
     { value: 'name', label: 'Alphabetically' },
     { value: 'income', label: 'Income Amount' }
   ] as const;
@@ -47,7 +48,10 @@ function BudgetList({ budgets, onBudgetClick, onCreateBudget, onDeleteBudget, on
       // Toggle direction if same criteria
       onSortChange({ criteria, ascending: !currentSort.ascending });
     } else {
-      // New criteria, default to descending for dates and income, ascending for name
+      // New criteria, set defaults:
+      // - name: ascending (A to Z)
+      // - budget_date: descending (newest dates first: 2025 before 2010)
+      // - other dates and income: descending (most recent/highest first)
       const ascending = criteria === 'name';
       onSortChange({ criteria, ascending });
     }

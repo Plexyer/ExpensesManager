@@ -37,6 +37,7 @@ export async function listMonthlyBudgets(): Promise<MonthlyBudget[]> {
     created_at: string;
     finished_at?: string;
     name?: string;
+    last_edited: string;
   }>>("list_monthly_budgets");
   return rows.map((r) => ({
     budgetId: r.budget_id,
@@ -46,11 +47,12 @@ export async function listMonthlyBudgets(): Promise<MonthlyBudget[]> {
     createdAt: r.created_at,
     finishedAt: r.finished_at,
     name: r.name,
+    lastEdited: r.last_edited,
   }));
 }
 
 export interface SortCriteria {
-  criteria: 'income' | 'created_date' | 'finished_date' | 'budget_date' | 'name';
+  criteria: 'income' | 'created_date' | 'finished_date' | 'budget_date' | 'name' | 'last_edited';
   ascending: boolean;
 }
 
@@ -63,6 +65,7 @@ export async function listMonthlyBudgetsSorted(sort: SortCriteria): Promise<Mont
     created_at: string;
     finished_at?: string;
     name?: string;
+    last_edited: string;
   }>>("list_monthly_budgets_sorted", { args: sort });
   return rows.map((r) => ({
     budgetId: r.budget_id,
@@ -72,6 +75,7 @@ export async function listMonthlyBudgetsSorted(sort: SortCriteria): Promise<Mont
     createdAt: r.created_at,
     finishedAt: r.finished_at,
     name: r.name,
+    lastEdited: r.last_edited,
   }));
 }
 

@@ -16,8 +16,8 @@ function Dashboard() {
     async function load() {
       try {
         await initDatabase();
-        // Load budgets sorted by budget date descending (most recent first)
-        const budgetList = await listMonthlyBudgetsSorted({ criteria: 'budget_date', ascending: false });
+        // Load budgets sorted by last edited date descending (most recently edited first)
+        const budgetList = await listMonthlyBudgetsSorted({ criteria: 'last_edited', ascending: false });
         dispatch(setBudgets(budgetList));
       } catch (error) {
         console.error("Error loading dashboard data:", error);

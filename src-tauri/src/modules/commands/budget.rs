@@ -21,6 +21,7 @@ pub struct BudgetSummary {
     pub created_at: String,
     pub finished_at: Option<String>,
     pub name: Option<String>,
+    pub last_edited: String,
 }
 
 #[tauri::command]
@@ -66,7 +67,7 @@ fn seed_initial_examples(db: &DbState) -> Result<(), String> {
         
         for (month, year, income, name) in example_budgets.iter() {
             conn.execute(
-                "INSERT INTO MonthlyBudgets (month, year, total_income, template_used, name, created_at) VALUES (?1, ?2, ?3, NULL, ?4, datetime('now'))",
+                "INSERT INTO MonthlyBudgets (month, year, total_income, template_used, name, created_at, last_edited) VALUES (?1, ?2, ?3, NULL, ?4, datetime('now'), datetime('now'))",
                 rusqlite::params![month, year, income, name],
             ).map_err(|e| {
                 format!("Error inserting example budget {}/{}: {}", month, year, e)
@@ -106,7 +107,7 @@ pub fn create_monthly_budget(args: CreateBudgetArgs, db: State<DbState>) -> Resu
              args.month, args.year, args.total_income, args.name);
     
     tx.execute(
-        "INSERT INTO MonthlyBudgets (month, year, total_income, template_used, name, created_at) VALUES (?1, ?2, ?3, NULL, ?4, datetime('now'))",
+        "INSERT INTO MonthlyBudgets (month, year, total_income, template_used, name, created_at, last_edited) VALUES (?1, ?2, ?3, NULL, ?4, datetime('now'), datetime('now'))",
         rusqlite::params![args.month, args.year, args.total_income, args.name],
     ).map_err(|e| {
         let error_msg = if e.to_string().contains("UNIQUE constraint failed") {
@@ -135,7 +136,7 @@ pub fn create_monthly_budget(args: CreateBudgetArgs, db: State<DbState>) -> Resu
 pub fn list_monthly_budgets(db: State<DbState>) -> Result<Vec<BudgetSummary>, String> {
     let conn = db.get_conn().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare("SELECT budget_id, month, year, total_income, created_at, finished_at, name FROM MonthlyBudgets ORDER BY created_at DESC")
+        .prepare("SELECT budget_id, month, year, total_income, created_at, finished_at, name, last_edited FROM MonthlyBudgets ORDER BY last_edited DESC")
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |row| {
@@ -147,6 +148,7 @@ pub fn list_monthly_budgets(db: State<DbState>) -> Result<Vec<BudgetSummary>, St
                 created_at: row.get(4)?,
                 finished_at: row.get(5)?,
                 name: row.get(6)?,
+                last_edited: row.get(7)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -168,28 +170,103 @@ pub struct SortBudgetsArgs {
 pub fn list_monthly_budgets_sorted(args: SortBudgetsArgs, db: State<DbState>) -> Result<Vec<BudgetSummary>, String> {
     let conn = db.get_conn().map_err(|e| e.to_string())?;
     
-    let order_clause = match args.criteria.as_str() {
-        "income" => "total_income",
-        "created_date" => "created_at", 
-        "finished_date" => "finished_at",
-        "budget_date" => "year, month",
-        "name" => "name COLLATE NOCASE",
-        _ => "created_at", // default
+    let (order_clause, direction, null_handling) = match args.criteria.as_str() {
+        "income" => ("total_income", if args.ascending { "ASC" } else { "DESC" }, ""),
+        "created_date" => ("created_at", if args.ascending { "ASC" } else { "DESC" }, ""),
+        "finished_date" => ("finished_at", if args.ascending { "ASC" } else { "DESC" }, if args.ascending { "NULLS FIRST" } else { "NULLS LAST" }),
+        "budget_date" => {
+            // For budget dates, we need to sort by the budget period (month/year the budget is FOR)
+            // Descending: November 2025, October 2025, ..., January 2025, December 2024, ..., January 2024
+            // Ascending: January 2024, February 2024, ..., December 2024, January 2025, ..., November 2025
+            if args.ascending {
+                ("year, month", "ASC", "")
+            } else {
+                ("year DESC, month", "DESC", "")
+            }
+        },
+        "name" => {
+            // For alphabetical sorting, we need to use the display name (custom name or fallback to "Month Year")
+            // This will be handled with a CASE expression in SQL
+            ("CASE WHEN name IS NULL OR name = '' THEN \
+                (CASE month \
+                    WHEN 1 THEN 'January ' \
+                    WHEN 2 THEN 'February ' \
+                    WHEN 3 THEN 'March ' \
+                    WHEN 4 THEN 'April ' \
+                    WHEN 5 THEN 'May ' \
+                    WHEN 6 THEN 'June ' \
+                    WHEN 7 THEN 'July ' \
+                    WHEN 8 THEN 'August ' \
+                    WHEN 9 THEN 'September ' \
+                    WHEN 10 THEN 'October ' \
+                    WHEN 11 THEN 'November ' \
+                    WHEN 12 THEN 'December ' \
+                END) || year \
+                ELSE name END COLLATE NOCASE", 
+                if args.ascending { "ASC" } else { "DESC" }, 
+                "")
+        },
+        "last_edited" => ("last_edited", if args.ascending { "ASC" } else { "DESC" }, ""),
+        _ => ("last_edited", "DESC", ""), // default to last_edited DESC
     };
     
-    let direction = if args.ascending { "ASC" } else { "DESC" };
-    let null_handling = if args.criteria == "finished_date" {
-        if args.ascending { "NULLS FIRST" } else { "NULLS LAST" }
-    } else if args.criteria == "name" {
-        if args.ascending { "NULLS LAST" } else { "NULLS FIRST" }
-    } else {
-        ""
+    let query = match (args.criteria.as_str(), args.ascending) {
+        ("budget_date", true) => {
+            // Budget date ascending: January 2024, February 2024, ..., October 2025, November 2025
+            "SELECT budget_id, month, year, total_income, created_at, finished_at, name, last_edited FROM MonthlyBudgets ORDER BY year ASC, month ASC".to_string()
+        },
+        ("budget_date", false) => {
+            // Budget date descending: November 2025, October 2025, ..., February 2024, January 2024
+            "SELECT budget_id, month, year, total_income, created_at, finished_at, name, last_edited FROM MonthlyBudgets ORDER BY year DESC, month DESC".to_string()
+        },
+        ("name", true) => {
+            // Alphabetical ascending: "aaaaaaa" first, then "August 2025", etc.
+            "SELECT budget_id, month, year, total_income, created_at, finished_at, name, last_edited FROM MonthlyBudgets ORDER BY \
+                CASE WHEN name IS NULL OR name = '' THEN \
+                    (CASE month \
+                        WHEN 1 THEN 'January ' \
+                        WHEN 2 THEN 'February ' \
+                        WHEN 3 THEN 'March ' \
+                        WHEN 4 THEN 'April ' \
+                        WHEN 5 THEN 'May ' \
+                        WHEN 6 THEN 'June ' \
+                        WHEN 7 THEN 'July ' \
+                        WHEN 8 THEN 'August ' \
+                        WHEN 9 THEN 'September ' \
+                        WHEN 10 THEN 'October ' \
+                        WHEN 11 THEN 'November ' \
+                        WHEN 12 THEN 'December ' \
+                    END) || year \
+                    ELSE name END COLLATE NOCASE ASC".to_string()
+        },
+        ("name", false) => {
+            // Alphabetical descending: "September 2025" first, then "August 2025", then "aaaaaaa" (z to a)
+            "SELECT budget_id, month, year, total_income, created_at, finished_at, name, last_edited FROM MonthlyBudgets ORDER BY \
+                CASE WHEN name IS NULL OR name = '' THEN \
+                    (CASE month \
+                        WHEN 1 THEN 'January ' \
+                        WHEN 2 THEN 'February ' \
+                        WHEN 3 THEN 'March ' \
+                        WHEN 4 THEN 'April ' \
+                        WHEN 5 THEN 'May ' \
+                        WHEN 6 THEN 'June ' \
+                        WHEN 7 THEN 'July ' \
+                        WHEN 8 THEN 'August ' \
+                        WHEN 9 THEN 'September ' \
+                        WHEN 10 THEN 'October ' \
+                        WHEN 11 THEN 'November ' \
+                        WHEN 12 THEN 'December ' \
+                    END) || year \
+                    ELSE name END COLLATE NOCASE DESC".to_string()
+        },
+        _ => {
+            // All other sorting criteria
+            format!(
+                "SELECT budget_id, month, year, total_income, created_at, finished_at, name, last_edited FROM MonthlyBudgets ORDER BY {} {} {}",
+                order_clause, direction, null_handling
+            )
+        }
     };
-    
-    let query = format!(
-        "SELECT budget_id, month, year, total_income, created_at, finished_at, name FROM MonthlyBudgets ORDER BY {} {} {}",
-        order_clause, direction, null_handling
-    );
     
     println!("Executing sort query: {}", query);
     
@@ -204,6 +281,7 @@ pub fn list_monthly_budgets_sorted(args: SortBudgetsArgs, db: State<DbState>) ->
                 created_at: row.get(4)?,
                 finished_at: row.get(5)?,
                 name: row.get(6)?,
+                last_edited: row.get(7)?,
             })
         })
         .map_err(|e| e.to_string())?;
