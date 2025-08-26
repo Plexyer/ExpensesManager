@@ -7,7 +7,7 @@ import { store } from "./store/store";
 import Dashboard from "./components/features/Dashboard/Dashboard";
 import BudgetGrid from "./components/features/BudgetGrid/BudgetGrid";
 import TemplateManager from "./components/features/Templates/TemplateManager";
-import SecuritySettings from "./components/features/Settings/SecuritySettings";
+import Settings from "./pages/Settings";
 import "./index.css";
 
 const router = createBrowserRouter([
@@ -18,7 +18,7 @@ const router = createBrowserRouter([
       { index: true, element: <Dashboard /> },
       { path: "budget", element: <BudgetGrid /> },
       { path: "templates", element: <TemplateManager /> },
-      { path: "settings", element: <SecuritySettings /> },
+      { path: "settings", element: <Settings /> },
     ],
   },
 ]);

@@ -1,6 +1,8 @@
 import { Calendar, DollarSign, Plus, ArrowUpDown, ArrowUp, ArrowDown, X, Trash2 } from 'lucide-react';
 import { MonthlyBudget } from '../../../store/slices/budgetSlice';
-import { SortCriteria } from '../../../services/budgetService';
+import { SortCriteria, getLastFinishedDate } from '../../../services/budgetService';
+import { useTimezone } from '../../../contexts/TimezoneContext';
+import { useState, useEffect } from 'react';
 
 interface BudgetListProps {
   budgets: MonthlyBudget[];
@@ -14,10 +16,35 @@ interface BudgetListProps {
 }
 
 function BudgetList({ budgets, onBudgetClick, onCreateBudget, onDeleteBudget, onSortChange, currentSort, isLoading, error }: BudgetListProps) {
+  const { formatDateInTimezone } = useTimezone();
+  const [lastFinishedDates, setLastFinishedDates] = useState<Record<number, string | null>>({});
+  
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
+
+  // Fetch last finished dates for all budgets
+  useEffect(() => {
+    const fetchLastFinishedDates = async () => {
+      const datePromises = budgets.map(async (budget) => {
+        const lastFinished = await getLastFinishedDate(budget.budgetId);
+        return { budgetId: budget.budgetId, lastFinished };
+      });
+
+      const results = await Promise.all(datePromises);
+      const dateMap = results.reduce((acc, { budgetId, lastFinished }) => {
+        acc[budgetId] = lastFinished;
+        return acc;
+      }, {} as Record<number, string | null>);
+
+      setLastFinishedDates(dateMap);
+    };
+
+    if (budgets.length > 0) {
+      fetchLastFinishedDates();
+    }
+  }, [budgets]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -27,11 +54,7 @@ function BudgetList({ budgets, onBudgetClick, onCreateBudget, onDeleteBudget, on
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
+    return formatDateInTimezone(dateString).date;
   };
 
   const sortOptions = [
@@ -152,10 +175,19 @@ function BudgetList({ budgets, onBudgetClick, onCreateBudget, onDeleteBudget, on
                   <Calendar className="w-6 h-6 text-blue-600" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900 group-hover:text-blue-700 transition-colors duration-200">
+                  <h3 className="text-lg font-semibold text-slate-900 group-hover:text-blue-700 transition-colors duration-200 mb-1">
                     {budget.name || `${monthNames[budget.month - 1]} ${budget.year}`}
                   </h3>
-                  <p className="text-sm text-slate-600">Budget #{budget.budgetId}</p>
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm text-slate-600">Budget #{budget.budgetId}</p>
+                    <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      budget.finishedAt 
+                        ? 'bg-green-100 text-green-700 border border-green-200' 
+                        : 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                    }`}>
+                      {budget.finishedAt ? '✓ Finished' : '⏳ In Progress'}
+                    </div>
+                  </div>
                 </div>
               </div>
               <button
@@ -193,12 +225,14 @@ function BudgetList({ budgets, onBudgetClick, onCreateBudget, onDeleteBudget, on
                     <span>For:</span>
                     <span>{monthNames[budget.month - 1]} {budget.year}</span>
                   </div>
-                  {budget.finishedAt && (
-                    <div className="flex justify-between text-xs text-slate-500">
-                      <span>Finished:</span>
-                      <span>{formatDate(budget.finishedAt)}</span>
-                    </div>
-                  )}
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>Last Finished:</span>
+                    <span>
+                      {lastFinishedDates[budget.budgetId] 
+                        ? formatDate(lastFinishedDates[budget.budgetId]!) 
+                        : 'Never Finished'}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="pt-3 border-t border-slate-100">

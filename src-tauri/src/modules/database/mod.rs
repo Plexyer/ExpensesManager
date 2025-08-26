@@ -99,6 +99,18 @@ pub fn run_migrations(state: &DbState) -> Result<(), DbError> {
             target_category_id INTEGER NOT NULL,
             merge_date TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS BudgetChangeHistory (
+            change_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            budget_id INTEGER NOT NULL,
+            change_type TEXT NOT NULL, -- 'field_change', 'status_change', 'creation'
+            field_name TEXT, -- 'name', 'total_income', 'finished_at', etc.
+            old_value TEXT,
+            new_value TEXT,
+            change_description TEXT, -- Human readable description
+            changed_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY(budget_id) REFERENCES MonthlyBudgets(budget_id) ON DELETE CASCADE
+        );
         "#,
     )
     .map_err(|e| DbError::Sql(e.to_string()))?;
@@ -148,6 +160,17 @@ pub fn run_migrations(state: &DbState) -> Result<(), DbError> {
             .map_err(|e| DbError::Sql(format!("Failed to update last_edited values: {}", e)))?;
         
         println!("Added last_edited column to MonthlyBudgets");
+    }
+
+    if !existing_columns.contains(&"first_finished_at".to_string()) {
+        conn.execute("ALTER TABLE MonthlyBudgets ADD COLUMN first_finished_at TEXT", [])
+            .map_err(|e| DbError::Sql(format!("Failed to add first_finished_at column: {}", e)))?;
+        
+        // For existing finished budgets, set first_finished_at to finished_at
+        conn.execute("UPDATE MonthlyBudgets SET first_finished_at = finished_at WHERE finished_at IS NOT NULL AND first_finished_at IS NULL", [])
+            .map_err(|e| DbError::Sql(format!("Failed to update first_finished_at values: {}", e)))?;
+        
+        println!("Added first_finished_at column to MonthlyBudgets");
     }
 
     // Ensure all existing budgets have proper created_at timestamps

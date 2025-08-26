@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "../../../store/types";
-import { setBudgets } from "../../../store/slices/budgetSlice";
-import { createMonthlyBudget, listMonthlyBudgetsSorted, initDatabase, deleteMonthlyBudget, SortCriteria } from "../../../services/budgetService";
+import { setBudgets, finishBudget, unfinishBudget } from "../../../store/slices/budgetSlice";
+import { createMonthlyBudget, listMonthlyBudgetsSorted, initDatabase, deleteMonthlyBudget, finishMonthlyBudget, unfinishMonthlyBudget, updateBudgetTitle, SortCriteria } from "../../../services/budgetService";
 import { MonthlyBudget } from "../../../store/slices/budgetSlice";
 import BudgetList from "./BudgetList";
 import BudgetDetail from "./BudgetDetail";
@@ -174,6 +174,114 @@ function BudgetGrid() {
     }
   };
 
+  const handleFinishBudget = async (budgetId: number) => {
+    console.log("handleFinishBudget called with ID:", budgetId);
+    
+    try {
+      setError(null);
+      console.log("Finishing budget with ID:", budgetId);
+      
+      await finishMonthlyBudget(budgetId);
+      console.log("Budget finished successfully");
+      
+      // Update the Redux state with proper logic for firstFinishedAt
+      const now = new Date().toISOString();
+      const isFirstFinish = selectedBudget && !selectedBudget.firstFinishedAt;
+      
+      dispatch(finishBudget({ 
+        budgetId, 
+        finishedAt: now, 
+        firstFinishedAt: isFirstFinish ? now : undefined,
+        lastEdited: now 
+      }));
+      
+      // Update the selected budget if it's the one we just finished
+      if (selectedBudget && selectedBudget.budgetId === budgetId) {
+        setSelectedBudget({
+          ...selectedBudget,
+          finishedAt: now,
+          firstFinishedAt: selectedBudget.firstFinishedAt || now, // Set only if not already set
+          lastEdited: now
+        });
+      }
+      
+      // Reload budgets to update the list with accurate timestamps from database
+      const sortToUse = currentSort || { criteria: 'budget_date', ascending: false };
+      const list = await listMonthlyBudgetsSorted(sortToUse);
+      dispatch(setBudgets(list));
+    } catch (err) {
+      console.error("Error finishing budget:", err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to finish budget";
+      setError(errorMessage);
+    }
+  };
+
+  const handleUnfinishBudget = async (budgetId: number) => {
+    console.log("handleUnfinishBudget called with ID:", budgetId);
+    
+    try {
+      setError(null);
+      console.log("Unfinishing budget with ID:", budgetId);
+      
+      await unfinishMonthlyBudget(budgetId);
+      console.log("Budget unfinished successfully");
+      
+      // Update the Redux state
+      const now = new Date().toISOString();
+      dispatch(unfinishBudget({ budgetId, lastEdited: now }));
+      
+      // Update the selected budget if it's the one we just unfinished
+      if (selectedBudget && selectedBudget.budgetId === budgetId) {
+        setSelectedBudget({
+          ...selectedBudget,
+          finishedAt: undefined,
+          // Keep firstFinishedAt - it should not be cleared when reopening
+          lastEdited: now
+        });
+      }
+      
+      // Reload budgets to update the list with accurate timestamps from database
+      const sortToUse = currentSort || { criteria: 'budget_date', ascending: false };
+      const list = await listMonthlyBudgetsSorted(sortToUse);
+      dispatch(setBudgets(list));
+    } catch (err) {
+      console.error("Error unfinishing budget:", err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to unfinish budget";
+      setError(errorMessage);
+    }
+  };
+
+  const handleUpdateBudgetTitle = async (budgetId: number, newTitle: string) => {
+    console.log("handleUpdateBudgetTitle called with:", { budgetId, newTitle });
+    
+    try {
+      setError(null);
+      console.log("Updating budget title with ID:", budgetId, "to:", newTitle);
+      
+      await updateBudgetTitle(budgetId, newTitle);
+      console.log("Budget title updated successfully");
+      
+      // Update the selected budget if it's the one we just updated
+      if (selectedBudget && selectedBudget.budgetId === budgetId) {
+        setSelectedBudget({
+          ...selectedBudget,
+          name: newTitle,
+          lastEdited: new Date().toISOString()
+        });
+      }
+      
+      // Reload budgets to update the list with accurate data from database
+      const sortToUse = currentSort || { criteria: 'budget_date', ascending: false };
+      const list = await listMonthlyBudgetsSorted(sortToUse);
+      dispatch(setBudgets(list));
+    } catch (err) {
+      console.error("Error updating budget title:", err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to update budget title";
+      setError(errorMessage);
+      throw err; // Re-throw to allow the component to handle it
+    }
+  };
+
   if (viewMode === 'detail' && selectedBudget) {
     return (
       <div>
@@ -182,6 +290,9 @@ function BudgetGrid() {
           budget={selectedBudget} 
           onBack={handleBackToList} 
           onDelete={handleDeleteBudget}
+          onFinish={handleFinishBudget}
+          onUnfinish={handleUnfinishBudget}
+          onUpdateTitle={handleUpdateBudgetTitle}
         />
       </div>
     );

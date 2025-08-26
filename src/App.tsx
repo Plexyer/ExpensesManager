@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { LayoutDashboard, Calculator, FileText, Settings, Menu, X } from 'lucide-react';
 import { useState } from 'react';
+import { TimezoneProvider } from './contexts/TimezoneContext';
 
 function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -13,7 +14,8 @@ function App() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <TimezoneProvider>
+      <div className="min-h-screen bg-slate-50">
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
         <div 
@@ -116,7 +118,8 @@ function App() {
           </div>
         </main>
       </div>
-    </div>
+      </div>
+    </TimezoneProvider>
   );
 }
 
