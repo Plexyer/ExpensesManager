@@ -4,6 +4,7 @@ import { MonthlyBudget } from '../../../store/slices/budgetSlice';
 import { getBudgetChangeHistory, BudgetChangeHistoryEntry } from '../../../services/budgetService';
 import { useTimezone } from '../../../contexts/TimezoneContext';
 import BudgetChangeHistory from './BudgetChangeHistory';
+import CategoryGrid from './CategoryGrid';
 
 interface BudgetDetailProps {
   budget: MonthlyBudget;
@@ -16,7 +17,6 @@ interface BudgetDetailProps {
 
 function BudgetDetail({ budget, onBack, onDelete, onFinish, onUnfinish, onUpdateTitle }: BudgetDetailProps) {
   const [expenses] = useState(0); // TODO: Load actual expenses
-  const [categories] = useState([]); // TODO: Load actual categories
   const [isFinishing, setIsFinishing] = useState(false);
   const [isUnfinishing, setIsUnfinishing] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -291,24 +291,7 @@ function BudgetDetail({ budget, onBack, onDelete, onFinish, onUnfinish, onUpdate
       </div>
 
       {/* Categories Section */}
-      <div className="bg-white rounded-lg shadow-financial border border-slate-200 p-6">
-        <h2 className="text-xl font-semibold text-slate-900 mb-4">Budget Categories</h2>
-        {categories.length > 0 ? (
-          <div className="space-y-4">
-            {/* TODO: Map through categories when available */}
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <DollarSign className="w-8 h-8 text-slate-400" />
-            </div>
-            <p className="text-slate-600 mb-4">No categories set up yet</p>
-            <button className="bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200">
-              Add Categories
-            </button>
-          </div>
-        )}
-      </div>
+      <CategoryGrid budgetId={budget.budgetId} />
 
       {/* Recent Expenses */}
       <div className="bg-white rounded-lg shadow-financial border border-slate-200 p-6">

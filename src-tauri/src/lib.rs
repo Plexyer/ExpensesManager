@@ -23,6 +23,19 @@ pub fn run() {
             update_budget_title,
             list_monthly_budgets,
             list_monthly_budgets_sorted,
+            // Category Grid System
+            get_budget_categories_with_stats,
+            get_category_ledger,
+            add_category_entry,
+            update_category_entry,
+            soft_delete_category_entry,
+            set_category_allocated_amount,
+            add_budget_category,
+            // Template System
+            create_template,
+            list_templates,
+            apply_template_to_budget,
+            // Expenses (existing)
             add_expense,
             list_expenses,
             verify_master_password,

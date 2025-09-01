@@ -174,6 +174,71 @@ pub struct BudgetChangeHistoryEntry {
     pub changed_at: String,
 }
 
+// New types for category grid system
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryRow {
+    pub category_id: i64,
+    pub budget_id: i64,
+    pub category_name: String,
+    pub allocated_amount: f64,
+    pub net_amount: f64,
+    pub remaining_amount: f64,
+    pub last_activity_at: Option<String>,
+    pub entries_count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewEntry {
+    pub category_id: i64,
+    pub entry_type: String, // "expense" | "income" | "adjustment"
+    pub what: String,
+    pub r#where: Option<String>,
+    pub amount: f64,        // positive
+    pub date: String,       // "YYYY-MM-DD"
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateEntry {
+    pub entry_id: i64,
+    pub entry_type: String,
+    pub what: String,
+    pub r#where: Option<String>,
+    pub amount: f64,
+    pub date: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LedgerEntry {
+    pub entry_id: i64,
+    pub category_id: i64,
+    pub entry_type: String,
+    pub what: String,
+    pub r#where: Option<String>,
+    pub amount: f64,
+    pub date: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BudgetTemplate {
+    pub template_id: i64,
+    pub name: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewCategory {
+    pub budget_id: i64,
+    pub category_name: String,
+    pub allocated_amount: f64,
+}
+
 fn log_budget_change(
     conn: &rusqlite::Connection,
     budget_id: i64,
@@ -641,6 +706,454 @@ pub async fn update_budget_title(
     )?;
     
     println!("Successfully updated budget title for ID: {}", budget_id);
+    Ok(())
+}
+
+// Category Grid System Commands
+#[tauri::command]
+pub fn get_budget_categories_with_stats(budget_id: i64, db: State<DbState>) -> Result<Vec<CategoryRow>, String> {
+    println!("=== GET_BUDGET_CATEGORIES_WITH_STATS COMMAND CALLED ===");
+    println!("Fetching categories with stats for budget ID: {}", budget_id);
+    
+    let conn = db.get_conn().map_err(|e| e.to_string())?;
+    
+    let query = r#"
+        SELECT c.category_id,
+               c.budget_id,
+               c.category_name,
+               c.allocated_amount,
+               COALESCE(SUM(CASE e.entry_type
+                   WHEN 'income' THEN e.amount
+                   WHEN 'expense' THEN -e.amount
+                   ELSE 0 END), 0) AS net_amount,
+               (c.allocated_amount + COALESCE(SUM(CASE e.entry_type
+                   WHEN 'income' THEN e.amount
+                   WHEN 'expense' THEN -e.amount
+                   ELSE 0 END), 0)) AS remaining_amount,
+               MAX(e.expense_date) AS last_activity_at,
+               COUNT(CASE WHEN e.deleted_at IS NULL THEN e.expense_id END) AS entries_count
+        FROM budget_categories c
+        LEFT JOIN expenses e
+          ON e.category_id = c.category_id AND e.deleted_at IS NULL
+        WHERE c.budget_id = ?1
+        GROUP BY c.category_id, c.budget_id, c.category_name, c.allocated_amount
+        ORDER BY c.created_at ASC
+    "#;
+    
+    let mut stmt = conn.prepare(query).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([budget_id], |row| {
+            Ok(CategoryRow {
+                category_id: row.get(0)?,
+                budget_id: row.get(1)?,
+                category_name: row.get(2)?,
+                allocated_amount: row.get(3)?,
+                net_amount: row.get(4)?,
+                remaining_amount: row.get(5)?,
+                last_activity_at: row.get(6)?,
+                entries_count: row.get(7)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    
+    let mut results = Vec::new();
+    for r in rows {
+        results.push(r.map_err(|e| e.to_string())?);
+    }
+    
+    println!("Found {} categories with stats", results.len());
+    Ok(results)
+}
+
+#[tauri::command]
+pub fn get_category_ledger(
+    category_id: i64, 
+    limit: u32, 
+    offset: u32, 
+    sort: String, 
+    db: State<DbState>
+) -> Result<Vec<LedgerEntry>, String> {
+    println!("=== GET_CATEGORY_LEDGER COMMAND CALLED ===");
+    println!("Fetching ledger for category ID: {}, limit: {}, offset: {}, sort: {}", 
+             category_id, limit, offset, sort);
+    
+    let conn = db.get_conn().map_err(|e| e.to_string())?;
+    
+    let order_clause = match sort.as_str() {
+        "date_asc" => "ORDER BY e.expense_date ASC, e.created_at ASC",
+        "date_desc" => "ORDER BY e.expense_date DESC, e.created_at DESC",
+        "amount_asc" => "ORDER BY e.amount ASC",
+        "amount_desc" => "ORDER BY e.amount DESC",
+        "created_asc" => "ORDER BY e.created_at ASC",
+        "created_desc" => "ORDER BY e.created_at DESC",
+        _ => "ORDER BY e.expense_date DESC, e.created_at DESC", // default
+    };
+    
+    let query = format!(r#"
+        SELECT e.expense_id,
+               e.category_id,
+               e.entry_type,
+               e.description,
+               e.place,
+               e.amount,
+               e.expense_date,
+               e.created_at
+        FROM expenses e
+        WHERE e.category_id = ?1 AND e.deleted_at IS NULL
+        {}
+        LIMIT ?2 OFFSET ?3
+    "#, order_clause);
+    
+    let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([category_id, limit as i64, offset as i64], |row| {
+            Ok(LedgerEntry {
+                entry_id: row.get(0)?,
+                category_id: row.get(1)?,
+                entry_type: row.get(2)?,
+                what: row.get(3)?,
+                r#where: row.get(4)?,
+                amount: row.get(5)?,
+                date: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    
+    let mut results = Vec::new();
+    for r in rows {
+        results.push(r.map_err(|e| e.to_string())?);
+    }
+    
+    println!("Found {} ledger entries", results.len());
+    Ok(results)
+}
+
+#[tauri::command]
+pub fn add_category_entry(payload: NewEntry, db: State<DbState>) -> Result<LedgerEntry, String> {
+    println!("=== ADD_CATEGORY_ENTRY COMMAND CALLED ===");
+    println!("Adding entry: {:?}", payload);
+    
+    let mut conn = db.get_conn().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    
+    // Get category info for logging
+    let category_info: (String, i64) = tx.query_row(
+        "SELECT category_name, budget_id FROM budget_categories WHERE category_id = ?1",
+        [payload.category_id],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    ).map_err(|e| format!("Category not found: {}", e))?;
+    
+    // Insert the entry
+    tx.execute(
+        "INSERT INTO expenses (category_id, entry_type, description, place, amount, expense_date, created_at) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'))",
+        rusqlite::params![
+            payload.category_id,
+            payload.entry_type,
+            payload.what,
+            payload.r#where,
+            payload.amount,
+            payload.date
+        ],
+    ).map_err(|e| e.to_string())?;
+    
+    let entry_id = tx.last_insert_rowid();
+    
+    // Get the created entry
+    let entry: LedgerEntry = tx.query_row(
+        "SELECT expense_id, category_id, entry_type, description, place, amount, expense_date, created_at 
+         FROM expenses WHERE expense_id = ?1",
+        [entry_id],
+        |row| Ok(LedgerEntry {
+            entry_id: row.get(0)?,
+            category_id: row.get(1)?,
+            entry_type: row.get(2)?,
+            what: row.get(3)?,
+            r#where: row.get(4)?,
+            amount: row.get(5)?,
+            date: row.get(6)?,
+            created_at: row.get(7)?,
+        })
+    ).map_err(|e| e.to_string())?;
+    
+    // Log change history
+    let place_text = payload.r#where.as_deref().unwrap_or("");
+    let place_display = if place_text.is_empty() { "" } else { &format!(" @ {}", place_text) };
+    let description = format!("Added {} ${:.2} to {} ({}{})", 
+                            payload.entry_type, payload.amount, category_info.0, payload.what, place_display);
+    
+    log_budget_change(&*tx, category_info.1, "entry_add", Some("expenses"), 
+                     None, Some(&format!("{:.2}", payload.amount)), &description)?;
+    
+    tx.commit().map_err(|e| e.to_string())?;
+    
+    println!("Successfully added entry with ID: {}", entry_id);
+    Ok(entry)
+}
+
+#[tauri::command]
+pub fn update_category_entry(payload: UpdateEntry, db: State<DbState>) -> Result<(), String> {
+    println!("=== UPDATE_CATEGORY_ENTRY COMMAND CALLED ===");
+    println!("Updating entry: {:?}", payload);
+    
+    let mut conn = db.get_conn().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    
+    // Get category info for logging
+    let category_info: (String, i64) = tx.query_row(
+        "SELECT bc.category_name, bc.budget_id FROM budget_categories bc 
+         JOIN expenses e ON e.category_id = bc.category_id 
+         WHERE e.expense_id = ?1",
+        [payload.entry_id],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    ).map_err(|e| format!("Entry or category not found: {}", e))?;
+    
+    // Update the entry
+    let rows_affected = tx.execute(
+        "UPDATE expenses SET entry_type = ?1, description = ?2, place = ?3, amount = ?4, expense_date = ?5 
+         WHERE expense_id = ?6 AND deleted_at IS NULL",
+        rusqlite::params![
+            payload.entry_type,
+            payload.what,
+            payload.r#where,
+            payload.amount,
+            payload.date,
+            payload.entry_id
+        ],
+    ).map_err(|e| e.to_string())?;
+    
+    if rows_affected == 0 {
+        return Err("Entry not found or already deleted".to_string());
+    }
+    
+    // Log change history
+    let description = format!("Updated entry {} in {}", payload.entry_id, category_info.0);
+    log_budget_change(&*tx, category_info.1, "entry_update", Some("expenses"), 
+                     None, None, &description)?;
+    
+    tx.commit().map_err(|e| e.to_string())?;
+    
+    println!("Successfully updated entry with ID: {}", payload.entry_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn soft_delete_category_entry(entry_id: i64, db: State<DbState>) -> Result<(), String> {
+    println!("=== SOFT_DELETE_CATEGORY_ENTRY COMMAND CALLED ===");
+    println!("Soft deleting entry ID: {}", entry_id);
+    
+    let mut conn = db.get_conn().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    
+    // Get category info for logging
+    let category_info: (String, i64) = tx.query_row(
+        "SELECT bc.category_name, bc.budget_id FROM budget_categories bc 
+         JOIN expenses e ON e.category_id = bc.category_id 
+         WHERE e.expense_id = ?1",
+        [entry_id],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    ).map_err(|e| format!("Entry or category not found: {}", e))?;
+    
+    // Soft delete the entry
+    let rows_affected = tx.execute(
+        "UPDATE expenses SET deleted_at = datetime('now') WHERE expense_id = ?1 AND deleted_at IS NULL",
+        [entry_id],
+    ).map_err(|e| e.to_string())?;
+    
+    if rows_affected == 0 {
+        return Err("Entry not found or already deleted".to_string());
+    }
+    
+    // Log change history
+    let description = format!("Deleted entry {} from {}", entry_id, category_info.0);
+    log_budget_change(&*tx, category_info.1, "entry_delete", Some("expenses"), 
+                     None, None, &description)?;
+    
+    tx.commit().map_err(|e| e.to_string())?;
+    
+    println!("Successfully soft deleted entry with ID: {}", entry_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_category_allocated_amount(category_id: i64, amount: f64, db: State<DbState>) -> Result<(), String> {
+    println!("=== SET_CATEGORY_ALLOCATED_AMOUNT COMMAND CALLED ===");
+    println!("Setting allocated amount for category ID: {}, amount: {}", category_id, amount);
+    
+    let mut conn = db.get_conn().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    
+    // Get current allocated amount and category info for logging
+    let (current_amount, category_name, budget_id): (f64, String, i64) = tx.query_row(
+        "SELECT allocated_amount, category_name, budget_id FROM budget_categories WHERE category_id = ?1",
+        [category_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+    ).map_err(|e| format!("Category not found: {}", e))?;
+    
+    // Update allocated amount
+    let rows_affected = tx.execute(
+        "UPDATE budget_categories SET allocated_amount = ?1 WHERE category_id = ?2",
+        rusqlite::params![amount, category_id],
+    ).map_err(|e| e.to_string())?;
+    
+    if rows_affected == 0 {
+        return Err("Category not found".to_string());
+    }
+    
+    // Log change history
+    let description = format!("Updated allocated for {} ${:.2} → ${:.2}", 
+                            category_name, current_amount, amount);
+    log_budget_change(&*tx, budget_id, "allocation_change", Some("allocated_amount"), 
+                     Some(&format!("{:.2}", current_amount)), Some(&format!("{:.2}", amount)), &description)?;
+    
+    tx.commit().map_err(|e| e.to_string())?;
+    
+    println!("Successfully updated allocated amount for category ID: {}", category_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn add_budget_category(payload: NewCategory, db: State<DbState>) -> Result<i64, String> {
+    println!("=== ADD_BUDGET_CATEGORY COMMAND CALLED ===");
+    println!("Adding category: {:?}", payload);
+    
+    let mut conn = db.get_conn().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    
+    // Insert the category
+    tx.execute(
+        "INSERT INTO budget_categories (budget_id, category_name, allocated_amount, created_at) 
+         VALUES (?1, ?2, ?3, datetime('now'))",
+        rusqlite::params![
+            payload.budget_id,
+            payload.category_name,
+            payload.allocated_amount
+        ],
+    ).map_err(|e| e.to_string())?;
+    
+    let category_id = tx.last_insert_rowid();
+    
+    // Log change history
+    let description = format!("Added category '{}' with allocated ${:.2}", 
+                            payload.category_name, payload.allocated_amount);
+    log_budget_change(&*tx, payload.budget_id, "category_add", Some("budget_categories"), 
+                     None, Some(&payload.category_name), &description)?;
+    
+    tx.commit().map_err(|e| e.to_string())?;
+    
+    println!("Successfully added category with ID: {}", category_id);
+    Ok(category_id)
+}
+
+// Template System Commands
+#[tauri::command]
+pub fn create_template(name: String, db: State<DbState>) -> Result<i64, String> {
+    println!("=== CREATE_TEMPLATE COMMAND CALLED ===");
+    println!("Creating template: {}", name);
+    
+    let conn = db.get_conn().map_err(|e| e.to_string())?;
+    
+    conn.execute(
+        "INSERT INTO budget_templates (name, created_at) VALUES (?1, datetime('now'))",
+        [&name],
+    ).map_err(|e| e.to_string())?;
+    
+    let template_id = conn.last_insert_rowid();
+    
+    println!("Successfully created template with ID: {}", template_id);
+    Ok(template_id)
+}
+
+#[tauri::command]
+pub fn list_templates(db: State<DbState>) -> Result<Vec<BudgetTemplate>, String> {
+    println!("=== LIST_TEMPLATES COMMAND CALLED ===");
+    
+    let conn = db.get_conn().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT template_id, name, created_at FROM budget_templates ORDER BY created_at DESC")
+        .map_err(|e| e.to_string())?;
+    
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(BudgetTemplate {
+                template_id: row.get(0)?,
+                name: row.get(1)?,
+                created_at: row.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    
+    let mut results = Vec::new();
+    for r in rows {
+        results.push(r.map_err(|e| e.to_string())?);
+    }
+    
+    println!("Found {} templates", results.len());
+    Ok(results)
+}
+
+#[tauri::command]
+pub fn apply_template_to_budget(template_id: i64, budget_id: i64, db: State<DbState>) -> Result<(), String> {
+    println!("=== APPLY_TEMPLATE_TO_BUDGET COMMAND CALLED ===");
+    println!("Applying template {} to budget {}", template_id, budget_id);
+    
+    let mut conn = db.get_conn().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    
+    // Get template name for logging
+    let template_name: String = tx.query_row(
+        "SELECT name FROM budget_templates WHERE template_id = ?1",
+        [template_id],
+        |row| row.get(0)
+    ).map_err(|e| format!("Template not found: {}", e))?;
+    
+    // Get template categories
+    let template_categories = {
+        let mut stmt = tx.prepare(
+            "SELECT category_name, allocated_amount, sort_order FROM template_categories 
+             WHERE template_id = ?1 ORDER BY sort_order, template_category_id"
+        ).map_err(|e| e.to_string())?;
+        
+        let rows = stmt
+            .query_map([template_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, f64>(1)?,
+                    row.get::<_, i32>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+            
+        let mut categories = Vec::new();
+        for row in rows {
+            categories.push(row.map_err(|e| e.to_string())?);
+        }
+        categories
+    };
+    
+    let mut created_count = 0;
+    for (category_name, allocated_amount, _sort_order) in template_categories {
+        tx.execute(
+            "INSERT INTO budget_categories (budget_id, category_name, allocated_amount, created_at) 
+             VALUES (?1, ?2, ?3, datetime('now'))",
+            rusqlite::params![budget_id, category_name, allocated_amount],
+        ).map_err(|e| e.to_string())?;
+        
+        created_count += 1;
+    }
+    
+    // Log change history directly in transaction
+    let description = format!("Applied template '{}' to budget ({} categories)", 
+                            template_name, created_count);
+    tx.execute(
+        "INSERT INTO BudgetChangeHistory (budget_id, change_type, field_name, old_value, new_value, change_description) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        rusqlite::params![budget_id, "template_apply", Some("budget_templates"), None as Option<String>, Some(&template_name), &description],
+    ).map_err(|e| e.to_string())?;
+    
+    tx.commit().map_err(|e| e.to_string())?;
+    
+    println!("Successfully applied template '{}' with {} categories", template_name, created_count);
     Ok(())
 }
 
