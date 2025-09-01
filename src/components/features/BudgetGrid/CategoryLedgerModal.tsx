@@ -18,7 +18,7 @@ interface CategoryLedgerModalProps {
   onEntryAdded: () => void;
 }
 
-function CategoryLedgerModal({ categoryId, category, onClose, onEntryAdded }: CategoryLedgerModalProps) {
+const CategoryLedgerModal = ({ categoryId, category, onClose, onEntryAdded }: CategoryLedgerModalProps) => {
   const dispatch = useDispatch();
   const { ledgerByCategoryId } = useSelector((state: RootState) => state.budget);
   const { formatDateInTimezone } = useTimezone();

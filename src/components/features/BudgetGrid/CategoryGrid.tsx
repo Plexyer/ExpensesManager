@@ -257,7 +257,7 @@ function CategoryGrid({ budgetId }: CategoryGridProps) {
                         ) : column.id === 'allocated' ? (
                           <button
                             onClick={() => handleStartEdit(category)}
-                            className="text-left hover:bg-blue-50 px-2 py-1 rounded transition-colors"
+                            className="group text-left hover:bg-blue-50 px-2 py-1 rounded transition-colors"
                             title="Click to edit allocated amount"
                           >
                             {column.render(category)}
