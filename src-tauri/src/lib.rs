@@ -15,6 +15,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             init_database,
+            run_migration,
             create_monthly_budget,
             delete_monthly_budget,
             finish_monthly_budget,
@@ -31,10 +32,21 @@ pub fn run() {
             soft_delete_category_entry,
             set_category_allocated_amount,
             add_budget_category,
-            // Template System
+            // Global Categories
+            get_global_categories,
+            create_global_category,
+            update_global_category,
+            delete_global_category,
+            // Budget Templates
+            get_budget_templates,
+            get_budget_template_with_categories,
+            create_budget_template,
+            update_budget_template,
+            delete_budget_template,
+            apply_template_to_budget,
+            // Template System (legacy - can be removed later)
             create_template,
             list_templates,
-            apply_template_to_budget,
             // Expenses (existing)
             add_expense,
             list_expenses,

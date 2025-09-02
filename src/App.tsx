@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { LayoutDashboard, Calculator, FileText, Settings, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Calculator, FileText, Settings, Menu, X, Tags } from 'lucide-react';
 import { useState } from 'react';
 import { TimezoneProvider } from './contexts/TimezoneContext';
 
@@ -9,6 +9,7 @@ function App() {
   const navItems = [
     { to: "/", icon: LayoutDashboard, label: "Dashboard", end: true },
     { to: "/budget", icon: Calculator, label: "Budgets" },
+    { to: "/categories", icon: Tags, label: "Categories" },
     { to: "/templates", icon: FileText, label: "Templates" },
     { to: "/settings", icon: Settings, label: "Settings" },
   ];
@@ -19,12 +20,12 @@ function App() {
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
         <div 
-          className="fixed inset-0 bg-slate-900/25 z-40 lg:hidden"
+          className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-40 lg:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
-      <header className="bg-white border-b border-slate-200 shadow-sm relative z-50">
+      <header className={`bg-white border-b border-slate-200 shadow-sm relative z-50`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">

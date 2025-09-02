@@ -5,6 +5,9 @@ import { getBudgetChangeHistory, BudgetChangeHistoryEntry } from '../../../servi
 import { useTimezone } from '../../../contexts/TimezoneContext';
 import BudgetChangeHistory from './BudgetChangeHistory';
 import CategoryGrid from './CategoryGrid';
+import TemplateSelector from '../../TemplateSelector';
+import MigrationRunner from '../../MigrationRunner';
+import { invoke } from '@tauri-apps/api/core';
 
 interface BudgetDetailProps {
   budget: MonthlyBudget;
@@ -24,6 +27,9 @@ function BudgetDetail({ budget, onBack, onDelete, onFinish, onUnfinish, onUpdate
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [lastFinishedDate, setLastFinishedDate] = useState<string | null>(null);
+  const [hasTemplate, setHasTemplate] = useState<boolean | null>(null); // null = loading, false = no template, true = has template
+  const [needsMigration, setNeedsMigration] = useState(false);
+  const [categoryGridKey, setCategoryGridKey] = useState(0); // Force CategoryGrid refresh
   const { formatDateInTimezone } = useTimezone();
 
   // Load the last finished date from change history
@@ -54,6 +60,42 @@ function BudgetDetail({ budget, onBack, onDelete, onFinish, onUnfinish, onUpdate
 
     loadLastFinishedDate();
   }, [budget.budgetId, historyRefreshKey]); // Refresh when history changes
+
+  // Check if budget has a template applied
+  useEffect(() => {
+    async function checkTemplate() {
+      try {
+        // Check if budget has categories (indicates template applied)
+        const categories = await invoke<any[]>('get_budget_categories_with_stats', { budgetId: budget.budgetId });
+        setHasTemplate(categories.length > 0);
+        setNeedsMigration(false);
+      } catch (error) {
+        const errorStr = String(error);
+        console.error('Failed to check template:', error);
+        // If error mentions missing tables, we need migration
+        if (errorStr.includes('no such table') || errorStr.includes('budget_templates') || errorStr.includes('global_categories')) {
+          setNeedsMigration(true);
+          setHasTemplate(false);
+        } else {
+          setHasTemplate(false);
+          setNeedsMigration(false);
+        }
+      }
+    }
+
+    checkTemplate();
+  }, [budget.budgetId, categoryGridKey]);
+
+  const handleTemplateApplied = () => {
+    setHasTemplate(true);
+    setCategoryGridKey(prev => prev + 1); // Force CategoryGrid refresh
+    setHistoryRefreshKey(prev => prev + 1); // Refresh change history
+  };
+
+  const handleMigrationComplete = () => {
+    setNeedsMigration(false);
+    setCategoryGridKey(prev => prev + 1); // Force template check
+  };
 
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -290,22 +332,27 @@ function BudgetDetail({ budget, onBack, onDelete, onFinish, onUnfinish, onUpdate
         </div>
       </div>
 
-      {/* Categories Section */}
-      <CategoryGrid budgetId={budget.budgetId} />
-
-      {/* Recent Expenses */}
-      <div className="bg-white rounded-lg shadow-financial border border-slate-200 p-6">
-        <h2 className="text-xl font-semibold text-slate-900 mb-4">Recent Expenses</h2>
-        <div className="text-center py-8">
-          <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <TrendingUp className="w-8 h-8 text-slate-400" />
+      {/* Budget Categories Grid */}
+      {needsMigration ? (
+        // Database migration needed
+        <MigrationRunner onMigrationComplete={handleMigrationComplete} />
+      ) : hasTemplate === null ? (
+        // Loading state
+        <div className="p-6 bg-white rounded-lg border border-gray-200">
+          <div className="flex items-center justify-center py-8">
+            <div className="text-gray-500">Loading...</div>
           </div>
-          <p className="text-slate-600 mb-4">No expenses recorded yet</p>
-          <button className="bg-green-700 hover:bg-green-800 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200">
-            Add Expense
-          </button>
         </div>
-      </div>
+      ) : hasTemplate ? (
+        // Template is applied, show CategoryGrid
+        <CategoryGrid budgetId={budget.budgetId} key={categoryGridKey} />
+      ) : (
+        // No template applied, show template selector
+        <TemplateSelector 
+          budgetId={budget.budgetId} 
+          onTemplateApplied={handleTemplateApplied}
+        />
+      )}
 
       {/* Change History */}
       <BudgetChangeHistory budgetId={budget.budgetId} refreshKey={historyRefreshKey} />

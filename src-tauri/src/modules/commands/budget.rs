@@ -730,7 +730,7 @@ pub fn get_budget_categories_with_stats(budget_id: i64, db: State<DbState>) -> R
                    WHEN 'income' THEN e.amount
                    WHEN 'expense' THEN -e.amount
                    ELSE 0 END), 0)) AS remaining_amount,
-               MAX(e.expense_date) AS last_activity_at,
+               MAX(e.date) AS last_activity_at,
                COUNT(CASE WHEN e.deleted_at IS NULL THEN e.expense_id END) AS entries_count
         FROM budget_categories c
         LEFT JOIN expenses e
@@ -780,13 +780,13 @@ pub fn get_category_ledger(
     let conn = db.get_conn().map_err(|e| e.to_string())?;
     
     let order_clause = match sort.as_str() {
-        "date_asc" => "ORDER BY e.expense_date ASC, e.created_at ASC",
-        "date_desc" => "ORDER BY e.expense_date DESC, e.created_at DESC",
+        "date_asc" => "ORDER BY e.date ASC, e.created_at ASC",
+        "date_desc" => "ORDER BY e.date DESC, e.created_at DESC",
         "amount_asc" => "ORDER BY e.amount ASC",
         "amount_desc" => "ORDER BY e.amount DESC",
         "created_asc" => "ORDER BY e.created_at ASC",
         "created_desc" => "ORDER BY e.created_at DESC",
-        _ => "ORDER BY e.expense_date DESC, e.created_at DESC", // default
+        _ => "ORDER BY e.date DESC, e.created_at DESC", // default
     };
     
     let query = format!(r#"
@@ -796,7 +796,7 @@ pub fn get_category_ledger(
                e.description,
                e.place,
                e.amount,
-               e.expense_date,
+               e.date,
                e.created_at
         FROM expenses e
         WHERE e.category_id = ?1 AND e.deleted_at IS NULL
@@ -846,7 +846,7 @@ pub fn add_category_entry(payload: NewEntry, db: State<DbState>) -> Result<Ledge
     
     // Insert the entry
     tx.execute(
-        "INSERT INTO expenses (category_id, entry_type, description, place, amount, expense_date, created_at) 
+        "INSERT INTO expenses (category_id, entry_type, description, place, amount, date, created_at) 
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'))",
         rusqlite::params![
             payload.category_id,
@@ -862,7 +862,7 @@ pub fn add_category_entry(payload: NewEntry, db: State<DbState>) -> Result<Ledge
     
     // Get the created entry
     let entry: LedgerEntry = tx.query_row(
-        "SELECT expense_id, category_id, entry_type, description, place, amount, expense_date, created_at 
+        "SELECT expense_id, category_id, entry_type, description, place, amount, date, created_at 
          FROM expenses WHERE expense_id = ?1",
         [entry_id],
         |row| Ok(LedgerEntry {
@@ -911,7 +911,7 @@ pub fn update_category_entry(payload: UpdateEntry, db: State<DbState>) -> Result
     
     // Update the entry
     let rows_affected = tx.execute(
-        "UPDATE expenses SET entry_type = ?1, description = ?2, place = ?3, amount = ?4, expense_date = ?5 
+        "UPDATE expenses SET entry_type = ?1, description = ?2, place = ?3, amount = ?4, date = ?5 
          WHERE expense_id = ?6 AND deleted_at IS NULL",
         rusqlite::params![
             payload.entry_type,
@@ -1094,61 +1094,497 @@ pub fn list_templates(db: State<DbState>) -> Result<Vec<BudgetTemplate>, String>
 }
 
 #[tauri::command]
-pub fn apply_template_to_budget(template_id: i64, budget_id: i64, db: State<DbState>) -> Result<(), String> {
-    println!("=== APPLY_TEMPLATE_TO_BUDGET COMMAND CALLED ===");
-    println!("Applying template {} to budget {}", template_id, budget_id);
+pub fn run_migration(db: State<DbState>) -> Result<String, String> {
+    let conn = db.get_conn().map_err(|e| e.to_string())?;
     
+    // Create global categories table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS global_categories (
+            global_category_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    ).map_err(|e| e.to_string())?;
+    
+    // Create budget templates table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS budget_templates (
+            template_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    ).map_err(|e| e.to_string())?;
+    
+    // Create template categories table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS template_categories (
+            template_category_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            template_id INTEGER NOT NULL,
+            global_category_id INTEGER NOT NULL,
+            allocated_amount REAL NOT NULL DEFAULT 0.0,
+            category_type TEXT NOT NULL DEFAULT 'expense',
+            sort_order INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (template_id) REFERENCES budget_templates(template_id) ON DELETE CASCADE,
+            FOREIGN KEY (global_category_id) REFERENCES global_categories(global_category_id) ON DELETE CASCADE
+        )",
+        [],
+    ).map_err(|e| e.to_string())?;
+    
+    // Add columns that might not exist (ignore errors for existing columns)
+    let _ = conn.execute("ALTER TABLE MonthlyBudgets ADD COLUMN template_id INTEGER REFERENCES budget_templates(template_id)", []);
+    let _ = conn.execute("ALTER TABLE budget_categories ADD COLUMN global_category_id INTEGER REFERENCES global_categories(global_category_id)", []);
+    let _ = conn.execute("ALTER TABLE budget_categories ADD COLUMN category_type TEXT DEFAULT 'expense'", []);
+    
+    // Create indexes
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_template_categories_template_id ON template_categories(template_id)", []).map_err(|e| e.to_string())?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_template_categories_global_category_id ON template_categories(global_category_id)", []).map_err(|e| e.to_string())?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_budget_categories_global_category_id ON budget_categories(global_category_id)", []).map_err(|e| e.to_string())?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_monthly_budgets_template_id ON MonthlyBudgets(template_id)", []).map_err(|e| e.to_string())?;
+    
+    // Insert default categories
+    let default_categories = [
+        ("Food & Dining", "Groceries, restaurants, and food expenses"),
+        ("Transportation", "Gas, public transport, car maintenance"),
+        ("Housing", "Rent, mortgage, utilities, home maintenance"),
+        ("Healthcare", "Medical expenses, insurance, medications"),
+        ("Entertainment", "Movies, games, hobbies, subscriptions"),
+        ("Shopping", "Clothing, personal items, general shopping"),
+        ("Education", "Books, courses, training, school supplies"),
+        ("Savings", "Emergency fund, retirement, investments"),
+        ("Insurance", "Life, health, car, home insurance"),
+        ("Debt Payment", "Credit cards, loans, other debt payments"),
+    ];
+    
+    for (name, description) in default_categories.iter() {
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO global_categories (name, description) VALUES (?1, ?2)",
+            rusqlite::params![name, description],
+        );
+    }
+    
+    conn.execute("PRAGMA foreign_keys = ON", []).map_err(|e| e.to_string())?;
+    
+    Ok("Migration completed successfully".to_string())
+}
+
+// ===== GLOBAL CATEGORIES MANAGEMENT =====
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GlobalCategory {
+    pub global_category_id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateGlobalCategoryArgs {
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_global_categories(db: State<DbState>) -> Result<Vec<GlobalCategory>, String> {
+    let conn = db.get_conn().map_err(|e| e.to_string())?;
+    
+    let mut stmt = conn.prepare(
+        "SELECT global_category_id, name, description, created_at 
+         FROM global_categories 
+         ORDER BY name"
+    ).map_err(|e| e.to_string())?;
+    
+    let rows = stmt.query_map([], |row| {
+        Ok(GlobalCategory {
+            global_category_id: row.get(0)?,
+            name: row.get(1)?,
+            description: row.get(2)?,
+            created_at: row.get(3)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    
+    let mut categories = Vec::new();
+    for row in rows {
+        categories.push(row.map_err(|e| e.to_string())?);
+    }
+    
+    Ok(categories)
+}
+
+#[tauri::command]
+pub fn create_global_category(db: State<DbState>, args: CreateGlobalCategoryArgs) -> Result<GlobalCategory, String> {
+    let conn = db.get_conn().map_err(|e| e.to_string())?;
+    
+    conn.execute(
+        "INSERT INTO global_categories (name, description) VALUES (?1, ?2)",
+        rusqlite::params![args.name, args.description],
+    ).map_err(|e| format!("Failed to create category: {}", e))?;
+    
+    let category_id = conn.last_insert_rowid();
+    
+    // Get the created category
+    let category: GlobalCategory = conn.query_row(
+        "SELECT global_category_id, name, description, created_at FROM global_categories WHERE global_category_id = ?1",
+        [category_id],
+        |row| Ok(GlobalCategory {
+            global_category_id: row.get(0)?,
+            name: row.get(1)?,
+            description: row.get(2)?,
+            created_at: row.get(3)?,
+        })
+    ).map_err(|e| format!("Failed to retrieve created category: {}", e))?;
+    
+    Ok(category)
+}
+
+#[tauri::command]
+pub fn update_global_category(db: State<DbState>, category_id: i64, args: CreateGlobalCategoryArgs) -> Result<GlobalCategory, String> {
+    let conn = db.get_conn().map_err(|e| e.to_string())?;
+    
+    let rows_affected = conn.execute(
+        "UPDATE global_categories SET name = ?1, description = ?2, updated_at = CURRENT_TIMESTAMP WHERE global_category_id = ?3",
+        rusqlite::params![args.name, args.description, category_id],
+    ).map_err(|e| format!("Failed to update category: {}", e))?;
+    
+    if rows_affected == 0 {
+        return Err("Category not found".to_string());
+    }
+    
+    // Get the updated category
+    let category: GlobalCategory = conn.query_row(
+        "SELECT global_category_id, name, description, created_at FROM global_categories WHERE global_category_id = ?1",
+        [category_id],
+        |row| Ok(GlobalCategory {
+            global_category_id: row.get(0)?,
+            name: row.get(1)?,
+            description: row.get(2)?,
+            created_at: row.get(3)?,
+        })
+    ).map_err(|e| format!("Failed to retrieve updated category: {}", e))?;
+    
+    Ok(category)
+}
+
+#[tauri::command]
+pub fn delete_global_category(db: State<DbState>, category_id: i64) -> Result<(), String> {
+    let conn = db.get_conn().map_err(|e| e.to_string())?;
+    
+    let rows_affected = conn.execute(
+        "DELETE FROM global_categories WHERE global_category_id = ?1",
+        [category_id],
+    ).map_err(|e| format!("Failed to delete category: {}", e))?;
+    
+    if rows_affected == 0 {
+        return Err("Category not found".to_string());
+    }
+    
+    Ok(())
+}
+
+// ===== BUDGET TEMPLATES MANAGEMENT =====
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BudgetTemplateSimple {
+    pub template_id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: String,
+    pub category_count: i32,
+    pub total_amount: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BudgetTemplateWithCategories {
+    pub template_id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: String,
+    pub categories: Vec<TemplateCategoryItem>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TemplateCategoryItem {
+    pub template_category_id: i64,
+    pub global_category_id: i64,
+    pub category_name: String,
+    pub allocated_amount: f64,
+    pub category_type: String,
+    pub sort_order: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateBudgetTemplateArgs {
+    pub name: String,
+    pub description: Option<String>,
+    pub categories: Vec<CreateTemplateCategoryArgs>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateTemplateCategoryArgs {
+    pub global_category_id: i64,
+    pub allocated_amount: f64,
+    pub category_type: String, // 'expense' or 'savings'
+    pub sort_order: i32,
+}
+
+#[tauri::command]
+pub fn get_budget_templates(db: State<DbState>) -> Result<Vec<BudgetTemplateSimple>, String> {
+    let conn = db.get_conn().map_err(|e| e.to_string())?;
+    
+    let mut stmt = conn.prepare(
+        "SELECT bt.template_id, bt.name, bt.description, bt.created_at,
+                COUNT(tc.template_category_id) as category_count,
+                COALESCE(SUM(tc.allocated_amount), 0) as total_amount
+         FROM budget_templates bt
+         LEFT JOIN template_categories tc ON bt.template_id = tc.template_id
+         GROUP BY bt.template_id, bt.name, bt.description, bt.created_at
+         ORDER BY bt.created_at DESC"
+    ).map_err(|e| e.to_string())?;
+    
+    let rows = stmt.query_map([], |row| {
+        Ok(BudgetTemplateSimple {
+            template_id: row.get(0)?,
+            name: row.get(1)?,
+            description: row.get(2)?,
+            created_at: row.get(3)?,
+            category_count: row.get(4)?,
+            total_amount: row.get(5)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    
+    let mut templates = Vec::new();
+    for row in rows {
+        templates.push(row.map_err(|e| e.to_string())?);
+    }
+    
+    Ok(templates)
+}
+
+#[tauri::command]
+pub fn get_budget_template_with_categories(db: State<DbState>, template_id: i64) -> Result<BudgetTemplateWithCategories, String> {
+    let conn = db.get_conn().map_err(|e| e.to_string())?;
+    
+    // Get template info
+    let template: (String, Option<String>, String) = conn.query_row(
+        "SELECT name, description, created_at FROM budget_templates WHERE template_id = ?1",
+        [template_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+    ).map_err(|e| format!("Template not found: {}", e))?;
+    
+    // Get template categories
+    let mut stmt = conn.prepare(
+        "SELECT tc.template_category_id, tc.global_category_id, gc.name, 
+                tc.allocated_amount, tc.category_type, tc.sort_order
+         FROM template_categories tc
+         JOIN global_categories gc ON tc.global_category_id = gc.global_category_id
+         WHERE tc.template_id = ?1
+         ORDER BY tc.sort_order, tc.template_category_id"
+    ).map_err(|e| e.to_string())?;
+    
+    let rows = stmt.query_map([template_id], |row| {
+        Ok(TemplateCategoryItem {
+            template_category_id: row.get(0)?,
+            global_category_id: row.get(1)?,
+            category_name: row.get(2)?,
+            allocated_amount: row.get(3)?,
+            category_type: row.get(4)?,
+            sort_order: row.get(5)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    
+    let mut categories = Vec::new();
+    for row in rows {
+        categories.push(row.map_err(|e| e.to_string())?);
+    }
+    
+    Ok(BudgetTemplateWithCategories {
+        template_id,
+        name: template.0,
+        description: template.1,
+        created_at: template.2,
+        categories,
+    })
+}
+
+#[tauri::command]
+pub fn create_budget_template(db: State<DbState>, args: CreateBudgetTemplateArgs) -> Result<BudgetTemplateWithCategories, String> {
     let mut conn = db.get_conn().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
+    
+    // Create template
+    tx.execute(
+        "INSERT INTO budget_templates (name, description) VALUES (?1, ?2)",
+        rusqlite::params![args.name, args.description],
+    ).map_err(|e| format!("Failed to create template: {}", e))?;
+    
+    let template_id = tx.last_insert_rowid();
+    
+    // Create template categories
+    for category_args in args.categories {
+        tx.execute(
+            "INSERT INTO template_categories (template_id, global_category_id, allocated_amount, category_type, sort_order)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                template_id,
+                category_args.global_category_id,
+                category_args.allocated_amount,
+                category_args.category_type,
+                category_args.sort_order
+            ],
+        ).map_err(|e| format!("Failed to create template category: {}", e))?;
+    }
+    
+    tx.commit().map_err(|e| e.to_string())?;
+    
+    // Return the created template with categories
+    get_budget_template_with_categories(db, template_id)
+}
+
+#[tauri::command]
+pub fn update_budget_template(db: State<DbState>, template_id: i64, args: CreateBudgetTemplateArgs) -> Result<BudgetTemplateWithCategories, String> {
+    let mut conn = db.get_conn().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    
+    // Update template
+    let rows_affected = tx.execute(
+        "UPDATE budget_templates SET name = ?1, description = ?2, updated_at = CURRENT_TIMESTAMP WHERE template_id = ?3",
+        rusqlite::params![args.name, args.description, template_id],
+    ).map_err(|e| format!("Failed to update template: {}", e))?;
+    
+    if rows_affected == 0 {
+        return Err("Template not found".to_string());
+    }
+    
+    // Delete existing template categories
+    tx.execute(
+        "DELETE FROM template_categories WHERE template_id = ?1",
+        [template_id],
+    ).map_err(|e| format!("Failed to delete existing categories: {}", e))?;
+    
+    // Create new template categories
+    for category_args in args.categories {
+        tx.execute(
+            "INSERT INTO template_categories (template_id, global_category_id, allocated_amount, category_type, sort_order)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                template_id,
+                category_args.global_category_id,
+                category_args.allocated_amount,
+                category_args.category_type,
+                category_args.sort_order
+            ],
+        ).map_err(|e| format!("Failed to create template category: {}", e))?;
+    }
+    
+    tx.commit().map_err(|e| e.to_string())?;
+    
+    // Return the updated template with categories
+    get_budget_template_with_categories(db, template_id)
+}
+
+#[tauri::command]
+pub fn delete_budget_template(db: State<DbState>, template_id: i64) -> Result<(), String> {
+    let conn = db.get_conn().map_err(|e| e.to_string())?;
+    
+    let rows_affected = conn.execute(
+        "DELETE FROM budget_templates WHERE template_id = ?1",
+        [template_id],
+    ).map_err(|e| format!("Failed to delete template: {}", e))?;
+    
+    if rows_affected == 0 {
+        return Err("Template not found".to_string());
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub fn apply_template_to_budget(budget_id: i64, template_id: i64, db: State<DbState>) -> Result<(), String> {
+    let mut conn = db.get_conn().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    
+    // Verify budget exists
+    let _budget_exists: bool = tx.query_row(
+        "SELECT 1 FROM monthly_budgets WHERE budget_id = ?1",
+        [budget_id],
+        |_| Ok(true)
+    ).map_err(|_| "Budget not found".to_string())?;
     
     // Get template name for logging
     let template_name: String = tx.query_row(
         "SELECT name FROM budget_templates WHERE template_id = ?1",
         [template_id],
         |row| row.get(0)
-    ).map_err(|e| format!("Template not found: {}", e))?;
+    ).map_err(|_| "Template not found".to_string())?;
     
-    // Get template categories
-    let template_categories = {
+    // Update budget to use this template
+    tx.execute(
+        "UPDATE monthly_budgets SET template_id = ?1, updated_at = CURRENT_TIMESTAMP WHERE budget_id = ?2",
+        rusqlite::params![template_id, budget_id],
+    ).map_err(|e| e.to_string())?;
+    
+    // Clear existing budget categories
+    tx.execute(
+        "DELETE FROM budget_categories WHERE budget_id = ?1",
+        [budget_id],
+    ).map_err(|e| e.to_string())?;
+    
+    // Get template categories and create budget categories
+    let template_categories: Vec<(i64, String, f64, String)> = {
         let mut stmt = tx.prepare(
-            "SELECT category_name, allocated_amount, sort_order FROM template_categories 
-             WHERE template_id = ?1 ORDER BY sort_order, template_category_id"
+            "SELECT tc.global_category_id, gc.name, tc.allocated_amount, tc.category_type
+             FROM template_categories tc
+             JOIN global_categories gc ON tc.global_category_id = gc.global_category_id
+             WHERE tc.template_id = ?1
+             ORDER BY tc.sort_order, tc.template_category_id"
         ).map_err(|e| e.to_string())?;
         
-        let rows = stmt
-            .query_map([template_id], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, f64>(1)?,
-                    row.get::<_, i32>(2)?,
-                ))
-            })
-            .map_err(|e| e.to_string())?;
-            
+        let rows = stmt.query_map([template_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,     // global_category_id
+                row.get::<_, String>(1)?,  // name
+                row.get::<_, f64>(2)?,     // allocated_amount
+                row.get::<_, String>(3)?,  // category_type
+            ))
+        }).map_err(|e| e.to_string())?;
+        
         let mut categories = Vec::new();
-        for row in rows {
-            categories.push(row.map_err(|e| e.to_string())?);
+        for row_result in rows {
+            categories.push(row_result.map_err(|e| e.to_string())?);
         }
         categories
     };
     
     let mut created_count = 0;
-    for (category_name, allocated_amount, _sort_order) in template_categories {
+    for (global_category_id, category_name, allocated_amount, category_type) in template_categories {
         tx.execute(
-            "INSERT INTO budget_categories (budget_id, category_name, allocated_amount, created_at) 
-             VALUES (?1, ?2, ?3, datetime('now'))",
-            rusqlite::params![budget_id, category_name, allocated_amount],
+            "INSERT INTO budget_categories (budget_id, global_category_id, category_name, allocated_amount, category_type, created_at) 
+             VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))",
+            rusqlite::params![budget_id, global_category_id, category_name, allocated_amount, category_type],
         ).map_err(|e| e.to_string())?;
         
         created_count += 1;
     }
     
-    // Log change history directly in transaction
-    let description = format!("Applied template '{}' to budget ({} categories)", 
-                            template_name, created_count);
+    // Log change history
+    let description = format!("Applied template '{}' to budget ({} categories)", template_name, created_count);
     tx.execute(
-        "INSERT INTO BudgetChangeHistory (budget_id, change_type, field_name, old_value, new_value, change_description) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        rusqlite::params![budget_id, "template_apply", Some("budget_templates"), None as Option<String>, Some(&template_name), &description],
+        "INSERT INTO BudgetChangeHistory (budget_id, change_type, field_name, old_value, new_value, change_description) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        rusqlite::params![
+            budget_id, 
+            "template_apply", 
+            Some("budget_templates"), 
+            None as Option<String>, 
+            Some(&template_name), 
+            &description
+        ],
     ).map_err(|e| e.to_string())?;
     
     tx.commit().map_err(|e| e.to_string())?;
@@ -1156,5 +1592,4 @@ pub fn apply_template_to_budget(template_id: i64, budget_id: i64, db: State<DbSt
     println!("Successfully applied template '{}' with {} categories", template_name, created_count);
     Ok(())
 }
-
 

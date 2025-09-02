@@ -111,6 +111,16 @@ pub fn run_migrations(state: &DbState) -> Result<(), DbError> {
             changed_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY(budget_id) REFERENCES MonthlyBudgets(budget_id) ON DELETE CASCADE
         );
+        
+        -- Create the budget_categories table that CategoryGrid expects
+        CREATE TABLE IF NOT EXISTS budget_categories (
+            category_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            budget_id INTEGER NOT NULL,
+            category_name TEXT NOT NULL,
+            allocated_amount DECIMAL(10,2) DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (budget_id) REFERENCES MonthlyBudgets(budget_id) ON DELETE CASCADE
+        );
         "#,
     )
     .map_err(|e| DbError::Sql(e.to_string()))?;
@@ -178,6 +188,56 @@ pub fn run_migrations(state: &DbState) -> Result<(), DbError> {
         .map_err(|e| DbError::Sql(format!("Failed to update null created_at values: {}", e)))?;
         
     println!("Ensured all budgets have proper created_at timestamps");
+    
+    // Check and add columns to Expenses table for unified entries support
+    let mut check_expenses_columns = conn.prepare("PRAGMA table_info(Expenses)").map_err(|e| DbError::Sql(e.to_string()))?;
+    let expenses_column_rows = check_expenses_columns.query_map([], |row| {
+        Ok(row.get::<_, String>(1)?) // column name is in index 1
+    }).map_err(|e| DbError::Sql(e.to_string()))?;
+    
+    let mut existing_expenses_columns: Vec<String> = Vec::new();
+    for row in expenses_column_rows {
+        existing_expenses_columns.push(row.map_err(|e| DbError::Sql(e.to_string()))?);
+    }
+    
+    if !existing_expenses_columns.contains(&"entry_type".to_string()) {
+        conn.execute("ALTER TABLE Expenses ADD COLUMN entry_type TEXT NOT NULL DEFAULT 'expense'", [])
+            .map_err(|e| DbError::Sql(format!("Failed to add entry_type column: {}", e)))?;
+        println!("Added entry_type column to Expenses");
+    }
+    
+    if !existing_expenses_columns.contains(&"place".to_string()) {
+        conn.execute("ALTER TABLE Expenses ADD COLUMN place TEXT", [])
+            .map_err(|e| DbError::Sql(format!("Failed to add place column: {}", e)))?;
+        println!("Added place column to Expenses");
+    }
+    
+    if !existing_expenses_columns.contains(&"notes".to_string()) {
+        conn.execute("ALTER TABLE Expenses ADD COLUMN notes TEXT", [])
+            .map_err(|e| DbError::Sql(format!("Failed to add notes column: {}", e)))?;
+        println!("Added notes column to Expenses");
+    }
+    
+    if !existing_expenses_columns.contains(&"deleted_at".to_string()) {
+        conn.execute("ALTER TABLE Expenses ADD COLUMN deleted_at TEXT", [])
+            .map_err(|e| DbError::Sql(format!("Failed to add deleted_at column: {}", e)))?;
+        println!("Added deleted_at column to Expenses");
+    }
+    
+    // Create indexes for performance
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_budget_categories_budget_id ON budget_categories(budget_id)", [])
+        .map_err(|e| DbError::Sql(format!("Failed to create budget_categories index: {}", e)))?;
+    
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_expenses_category_date ON Expenses(allocation_id, date)", [])
+        .map_err(|e| DbError::Sql(format!("Failed to create expenses index: {}", e)))?;
+    
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_expenses_not_deleted ON Expenses(expense_id) WHERE deleted_at IS NULL", [])
+        .map_err(|e| DbError::Sql(format!("Failed to create expenses not_deleted index: {}", e)))?;
+    
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_expenses_entry_type ON Expenses(entry_type)", [])
+        .map_err(|e| DbError::Sql(format!("Failed to create expenses entry_type index: {}", e)))?;
+    
+    println!("Created performance indexes");
 
     Ok(())
 }

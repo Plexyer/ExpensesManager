@@ -6,7 +6,8 @@ import App from "./App";
 import { store } from "./store/store";
 import Dashboard from "./components/features/Dashboard/Dashboard";
 import BudgetGrid from "./components/features/BudgetGrid/BudgetGrid";
-import TemplateManager from "./components/features/Templates/TemplateManager";
+import TemplatesPage from "./components/features/Templates/TemplatesPage";
+import CategoriesPage from "./components/CategoriesPage";
 import Settings from "./pages/Settings";
 import "./index.css";
 
@@ -17,7 +18,8 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Dashboard /> },
       { path: "budget", element: <BudgetGrid /> },
-      { path: "templates", element: <TemplateManager /> },
+      { path: "categories", element: <CategoriesPage /> },
+      { path: "templates", element: <TemplatesPage /> },
       { path: "settings", element: <Settings /> },
     ],
   },
