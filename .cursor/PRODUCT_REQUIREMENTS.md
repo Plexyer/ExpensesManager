@@ -1,0 +1,306 @@
+# Product Requirements - MVP
+
+## MVP Scope (CONFIRMED from reset prompt)
+
+### In Scope ✅
+
+1. **Create/Open Encrypted Finance File**
+   - User can create new encrypted finance file
+   - User can open existing encrypted finance file
+   - Master password creation/unlock flow
+   - Portable file (can be moved/copied)
+
+2. **Create Templates (Global Categories + Default Amounts + Cadence)**
+   - User creates templates referencing **global categories** (unique per dataset)
+   - Each template defines the **period length/cadence** (monthly / biweekly / weekly / daily / yearly / custom)
+   - Each category in a template has a **default budgeted amount** for that period
+   - Templates can be saved and reused
+
+3. **Create Period from Template**
+   - User selects template when creating new period
+   - User chooses cadence: monthly / biweekly / weekly / daily / yearly / custom
+   - Period is created with envelopes from template
+   - Planned amounts copied from template
+
+4. **Log Transactions via Double-Click Modal**
+   - Main grid represents **exactly one period budget instance** at a time
+   - Grid rows are **budget categories** within the current period budget instance
+   - Double-click **Received amount** or **Spent amount** opens a small modal/table with dated line items
+   - Each line item has an explicit date (and optionally time) of when money was received/spent
+   - Totals roll up into the corresponding grid cell
+
+5. **Rollups in Main Grid (Spent/Remaining Totals)**
+   - Columns include: **Received date**, **Received amount total**, **Spent amount total** (and later fields; custom user-defined columns remain out of scope)
+   - Rollups update automatically when received/spent line items change
+
+6. **Basic Export (CSV) + Backup Guidance**
+   - CSV export of all data
+   - Backup guidance (how to backup finance file)
+
+---
+
+## Non-Goals (OUT OF SCOPE for MVP) ❌
+
+1. **Custom User-Defined Columns** - Future feature
+2. **Full Reconciliation** (matching bank statements) - Premium future feature
+3. **CSV Import** - "Next" backlog
+4. **PDF Reports** - "Next" backlog
+5. **Advanced Reports** - Future feature
+6. **Sync Engine** - Future feature
+7. **Multi-User/Profile System** - MVP uses portable files instead
+8. **Cloud Sync** - Future feature
+
+---
+
+## User Stories
+
+### US-1: Create Finance File
+**As a** user  
+**I want to** create a new encrypted finance file  
+**So that** I can start managing my budget securely
+
+**Acceptance Criteria**:
+- User clicks "Create New Finance File"
+- File picker opens to choose save location
+- User enters master password (with confirmation)
+- Encrypted SQLite file is created at chosen location
+- File opens automatically after creation
+
+**Edge Cases**:
+- User cancels file picker → no file created
+- Password mismatch → show error, don't create file
+- File already exists at location → prompt to overwrite or choose new location
+
+---
+
+### US-2: Open Finance File
+**As a** user  
+**I want to** open an existing encrypted finance file  
+**So that** I can continue managing my budget
+
+**Acceptance Criteria**:
+- User clicks "Open Finance File"
+- File picker opens to select finance file
+- User enters master password
+- File unlocks and opens
+- Main grid displays (or empty state if no periods)
+
+**Edge Cases**:
+- Wrong password → show error, allow retry
+- File doesn't exist → show error
+- File corrupted → show error with recovery guidance
+
+---
+
+### US-3: Create Template
+**As a** user  
+**I want to** create a template with envelopes and planned amounts  
+**So that** I can reuse it when creating new period budget instances
+
+**Acceptance Criteria**:
+- User navigates to Templates page
+- User clicks "Create Template"
+- User enters template name
+- User selects a period cadence/length for the template
+- User adds categories (global category, default amount)
+- User saves template
+- Template appears in template list
+
+**Edge Cases**:
+- Empty template name → validation error
+- No envelopes added → validation error
+- Duplicate envelope name → allow (or show warning)
+
+---
+
+### US-4: Create Period from Template
+**As a** user  
+**I want to** create a new period from a template  
+**So that** I don't have to recreate envelope distributions
+
+**Acceptance Criteria**:
+- User clicks "Create Period"
+- User selects template from dropdown
+- User chooses cadence (monthly/biweekly/weekly/daily/yearly/custom)
+- User enters period start date (and end date if custom)
+- Period is created with envelopes from template
+- Planned amounts copied from template
+- App opens the **main grid view for that period budget instance**
+
+**Edge Cases**:
+- No templates exist → show message, link to create template
+- Custom cadence → user enters start/end dates
+- Overlapping periods → allow (or show warning)
+
+---
+
+### US-5: Add Transaction via Double-Click
+**As a** user  
+**I want to** add transactions by double-clicking a grid cell  
+**So that** I can quickly log expenses/income
+
+**Acceptance Criteria**:
+- User double-clicks a **Received amount** or **Spent amount** cell in the current period grid
+- Modal opens showing a line-item table for that **category within the current period budget instance**
+- User can add line items (amount, description, explicit date, optional time)
+- Transactions save and modal closes
+- Grid cell updates with new total
+
+**Edge Cases**:
+- Empty cell (no transactions yet) → modal opens with empty table
+- Negative amounts → allow (for refunds/adjustments)
+- Future dates → allow (for planned expenses)
+
+---
+
+### US-6: View Rollups in Grid
+**As a** user  
+**I want to** see rollups (spent/remaining) in the main grid  
+**So that** I can track my budget at a glance
+
+**Acceptance Criteria**:
+- Main grid shows **categories** as rows
+- Columns display at least:
+  - Received date (defaults to the period’s income arrival date)
+  - Received amount total (sum of received line items)
+  - Spent amount total (sum of spent line items)
+- Rollups update automatically when line items change
+
+**Edge Cases**:
+- Negative remaining → show in red (over budget)
+- Zero remaining → show in yellow (at limit)
+- No transactions → show 0 spent, full remaining
+
+---
+
+### US-7: Export to CSV
+**As a** user  
+**I want to** export my data to CSV  
+**So that** I can backup or analyze in Excel
+
+**Acceptance Criteria**:
+- User clicks "Export CSV"
+- File picker opens to choose save location
+- CSV file is created with all data (periods, envelopes, transactions)
+- User can open CSV in Excel/Google Sheets
+
+**Edge Cases**:
+- Empty finance file → export empty CSV (or show message)
+- Large dataset → export may take a moment (show progress)
+
+---
+
+### US-8: Backup Guidance
+**As a** user  
+**I want to** know how to backup my finance file  
+**So that** I don't lose my data
+
+**Acceptance Criteria**:
+- Settings page has "Backup" section
+- Instructions shown: "Copy your finance file to a safe location"
+- File location displayed (clickable to open in file explorer)
+
+---
+
+## Edge Cases & Special Scenarios
+
+### Refunds
+- **Scenario**: User receives refund for expense
+- **Solution**: Add transaction with negative amount (or separate "refund" type)
+- **Display**: Negative amount reduces spent total
+
+### Negative Amounts
+- **Scenario**: User enters negative transaction
+- **Solution**: Allow negative amounts (for refunds, adjustments)
+- **Validation**: Warn if negative amount exceeds spent total
+
+### Mixed Currencies
+- **Scenario**: User has CHF and EUR envelopes
+- **Solution**: MVP supports CHF + EUR (hardcoded)
+- **Display**: Show currency symbol in grid (CHF/EUR)
+- **Future**: Multi-currency conversion (out of scope for MVP)
+
+### Changing Cadence
+- **Scenario**: User wants to change period cadence mid-year
+- **Solution**: Template cadence can be changed; each budget instance is one explicit period, so overlap is not an issue
+- **Display**: User navigates between period budget instances (one grid view at a time)
+
+### Deleting Items
+- **Scenario**: User wants to delete period/envelope/transaction
+- **Solution**: 
+  - Soft delete transactions (mark as deleted, don't show in grid)
+  - Hard delete periods/envelopes (with confirmation)
+- **Validation**: Warn if deleting period with transactions
+
+### Empty States
+- **No finance file**: Show onboarding (create/open file)
+- **No templates**: Show message, link to create template
+- **No periods**: Show empty grid with "Create Period" button
+- **No transactions**: Show 0 in grid cells
+
+---
+
+## Internationalization (i18n)
+
+### Initial Languages (MVP)
+- **English** (EN) - default
+- **German** (DE)
+
+### Initial Currencies (MVP)
+- **CHF** (Swiss Franc)
+- **EUR** (Euro)
+
+### Architecture
+- Use i18n library (e.g., react-i18next) or simple translation map
+- Store user language preference in finance file
+- Currency per envelope (or global setting)
+
+---
+
+## Performance Requirements
+
+### Grid Performance
+- **Target**: Smooth scrolling with large category lists (many rows)
+- **Solution**: Virtual scrolling (AG Grid or custom virtualization) if needed
+- **Lazy loading**: Load transactions on-demand (when cell opened)
+
+### Database Performance
+- **Target**: < 100ms for grid data load
+- **Solution**: Indexes on key columns (period_id, envelope_id, date)
+- **Caching**: Cache grid data in Redux, refresh on changes
+
+---
+
+## Security Requirements
+
+### Encryption
+- **Database**: SQLCipher (preferred) OR app-level encryption
+- **Password**: Master password with Argon2id KDF (recommended)
+- **Storage**: Salt + KDF params stored in file metadata
+
+### Threat Model
+- **Wrong password**: Show error, don't reveal if file exists
+- **Brute force**: Rate limiting on unlock attempts
+- **Memory exposure**: Clear sensitive data from memory when possible
+
+---
+
+## Accessibility Requirements
+
+### Keyboard Navigation
+- **Grid**: Arrow keys to navigate cells
+- **Modal**: Tab to navigate fields, Enter to save, Esc to cancel
+- **Focus**: Visible focus indicators
+
+### Screen Readers
+- **Labels**: All inputs have aria-labels
+- **Roles**: Grid has role="grid", cells have role="gridcell"
+- **Announcements**: Changes announced (e.g., "Transaction added")
+
+---
+
+## References
+
+- See **UI_FLOWS.md** for user journey flows
+- See **UX_INTERACTIONS.md** for interaction patterns
+- See **MVP_PLAN.md** for implementation roadmap

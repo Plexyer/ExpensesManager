@@ -1,0 +1,734 @@
+# Backlog - MVP Tasks
+
+## Task Format
+
+Each task includes:
+- **Goal**: What needs to be accomplished
+- **Scope**: What's included/excluded
+- **Acceptance Criteria**: How to verify completion
+- **Likely Areas/Files**: Where changes will be made
+- **Complexity**: S (Small, 1-2 days), M (Medium, 3-5 days), L (Large, 1+ weeks)
+- **Dependencies**: Other tasks that must complete first
+
+---
+
+## Phase 1: Foundation - File System & Encryption
+
+### TASK-1.1: Integrate Tauri File Dialog API
+**Goal**: Add file picker to create/open finance files  
+**Scope**: 
+- Install/use Tauri file dialog plugin
+- Create "Create File" button/flow
+- Create "Open File" button/flow
+- Store selected file path in app state
+
+**Acceptance Criteria**:
+- ✅ User can click "Create New Finance File" → file picker opens
+- ✅ User can select save location and enter filename
+- ✅ User can click "Open Finance File" → file picker opens
+- ✅ Selected file path stored in Redux state or context
+
+**Likely Areas/Files**:
+- `src/components/Onboarding.tsx` (new component)
+- `src/services/fileService.ts` (new service, wraps Tauri invoke)
+- `src-tauri/src/modules/commands/file.rs` (new command module)
+- `src-tauri/src/lib.rs` (register file commands)
+- `src/store/slices/fileSlice.ts` (new Redux slice for file state)
+
+**Complexity**: S  
+**Dependencies**: None
+
+---
+
+### TASK-1.2: Master Password Creation Modal
+**Goal**: Implement password creation UI  
+**Scope**:
+- Password input field (with show/hide toggle)
+- Password confirmation field
+- Password strength indicator (weak/medium/strong)
+- Password hint field (optional)
+- Validation (match, minimum length)
+
+**Acceptance Criteria**:
+- ✅ User can enter master password
+- ✅ User can confirm password
+- ✅ Mismatch shows error
+- ✅ Password strength displayed
+- ✅ User can enter optional hint
+
+**Likely Areas/Files**:
+- `src/components/PasswordModal.tsx` (new component)
+- `src/utils/passwordStrength.ts` (new utility)
+
+**Complexity**: S  
+**Dependencies**: TASK-1.1
+
+---
+
+### TASK-1.3: Master Password Unlock Modal
+**Goal**: Implement password unlock UI  
+**Scope**:
+- Password input field
+- Show/hide password toggle
+- Password hint display (if available)
+- Error message display (wrong password)
+- Retry functionality
+
+**Acceptance Criteria**:
+- ✅ User can enter password to unlock
+- ✅ Wrong password shows error
+- ✅ Password hint shown (if available)
+- ✅ User can retry after error
+
+**Likely Areas/Files**:
+- `src/components/UnlockModal.tsx` (new component, or reuse PasswordModal)
+- `src/services/securityService.ts` (new service)
+
+**Complexity**: S  
+**Dependencies**: TASK-1.1
+
+---
+
+### TASK-1.4: Research SQLCipher Rust Integration
+**Goal**: Determine how to integrate SQLCipher  
+**Scope**:
+- Research `rusqlite` SQLCipher support
+- Research `sqlcipher` crate (if exists)
+- Research compiling SQLCipher from source
+- Document findings and recommendation
+
+**Acceptance Criteria**:
+- ✅ SQLCipher integration approach documented
+- ✅ Dependencies identified
+- ✅ Implementation plan created
+
+**Likely Areas/Files**:
+- `.cursor/ENCRYPTION_SPEC.md` (update with findings)
+- Research notes
+
+**Complexity**: S (research only)  
+**Dependencies**: None
+
+---
+
+### TASK-1.5: Implement Key Derivation (Argon2id)
+**Goal**: Derive encryption key from master password  
+**Scope**:
+- Add `argon2` crate dependency
+- Implement key derivation function
+- Generate random salt
+- Store salt + KDF params in file header
+
+**Acceptance Criteria**:
+- ✅ Key derivation function implemented
+- ✅ Salt generated securely
+- ✅ KDF params configurable
+
+**Likely Areas/Files**:
+- `src-tauri/Cargo.toml` (add argon2 dependency)
+- `src-tauri/src/modules/security/encryption.rs` (implement KDF)
+
+**Complexity**: M  
+**Dependencies**: TASK-1.4
+
+---
+
+### TASK-1.6: Implement Database Encryption
+**Goal**: Encrypt database file with SQLCipher or app-level encryption  
+**Scope**:
+- Integrate SQLCipher OR implement app-level AES-256-GCM
+- Encrypt database on save
+- Decrypt database on load
+- Handle wrong password errors
+
+**Acceptance Criteria**:
+- ✅ Database file is encrypted
+- ✅ File unlocks with correct password
+- ✅ Wrong password fails gracefully
+- ✅ File is portable (can be moved/copied)
+
+**Likely Areas/Files**:
+- `src-tauri/src/modules/security/encryption.rs` (implement encryption)
+- `src-tauri/src/modules/database/mod.rs` (modify for encryption)
+- `src-tauri/Cargo.toml` (add encryption dependencies)
+
+**Complexity**: L  
+**Dependencies**: TASK-1.5
+
+---
+
+## Phase 2: Data Model - Budget Instances & Categories
+
+### TASK-2.1: Create Periods Table Migration
+**Goal**: Add a **budget instance per period** table to schema (one main grid per budget instance)  
+**Scope**:
+- Create migration file
+- Define budget instance table (cadence, start_date, end_date, template_id)
+- Add indexes
+- Run migration on init
+
+**Acceptance Criteria**:
+- ✅ Budget instance table exists
+- ✅ Migration runs successfully
+- ✅ Indexes created
+
+**Likely Areas/Files**:
+- `src-tauri/migrations/YYYY_MM_create_periods.sql` (new)
+- `src-tauri/src/modules/database/mod.rs` (add migration call)
+
+**Complexity**: S  
+**Dependencies**: None (can do in parallel with Phase 1)
+
+---
+
+### TASK-2.2: Create Envelopes Table Migration
+**Goal**: Add per-budget-instance category rows (references global unique categories)  
+**Scope**:
+- Create migration file
+- Define a table linking budget instance ↔ global_category_id, including received_date defaults and template default amounts
+- Add foreign keys and indexes
+- Run migration
+
+**Acceptance Criteria**:
+- ✅ `envelopes` table exists
+- ✅ Foreign keys correct
+- ✅ Indexes created
+
+**Likely Areas/Files**:
+- `src-tauri/migrations/YYYY_MM_create_envelopes.sql` (new)
+
+**Complexity**: S  
+**Dependencies**: TASK-2.1
+
+---
+
+### TASK-2.3: Add Cadence to Templates
+**Goal**: Store template cadence/period length (corrected design requirement)  
+**Scope**:
+- Create migration file
+- Add `cadence` column to `budget_templates` table
+- Default cadence for existing records (e.g., 'monthly') and allow editing
+- Update template creation/editing code (UI + command)
+
+**Acceptance Criteria**:
+- ✅ `budget_templates` has `cadence` column
+- ✅ Existing records have default cadence
+- ✅ Template creation includes cadence
+
+**Likely Areas/Files**:
+- `src-tauri/migrations/YYYY_MM_add_cadence_to_templates.sql` (new)
+- `src-tauri/src/modules/commands/budget.rs` (modify template commands)
+
+**Complexity**: S  
+**Dependencies**: None
+
+---
+
+### TASK-2.4: Update Transactions Schema
+**Goal**: Store received/spent line items per category within a budget instance  
+**Scope**:
+- Add a line-items table (or extend existing) that links to a budget-instance category row
+- Include explicit date (and optional time) per line item
+- Update foreign keys
+- Migrate existing transactions (if any) into the new model (as spent)
+- Update command APIs accordingly
+
+**Acceptance Criteria**:
+- ✅ Line items link to (budget instance + category row)
+- ✅ Foreign keys correct
+- ✅ Existing data migrated
+
+**Likely Areas/Files**:
+- `src-tauri/migrations/YYYY_MM_update_transactions.sql` (new)
+- `src-tauri/src/modules/commands/expense.rs` (modify)
+
+**Complexity**: M  
+**Dependencies**: TASK-2.2
+
+---
+
+### TASK-2.5: Implement Rollup Queries
+**Goal**: Calculate received/spent totals per category for one budget instance  
+**Scope**:
+- Create SQL query for received total (sum received line items)
+- Create SQL query for spent total (sum spent line items)
+- Create command to get grid data for one budget instance (category rows with rollups)
+- Handle edge cases (no transactions, negative amounts)
+
+**Acceptance Criteria**:
+- ✅ Spent amount calculated correctly
+- ✅ Remaining amount calculated correctly
+- ✅ Query performance acceptable (< 100ms)
+
+**Likely Areas/Files**:
+- `src-tauri/src/modules/commands/budget.rs` (new command: `get_grid_data`)
+
+**Complexity**: M  
+**Dependencies**: TASK-2.4
+
+---
+
+## Phase 3: Templates - Cadence + Defaults
+
+### TASK-3.1: Update Template UI - Cadence
+**Goal**: Add cadence selection to template creation form  
+**Scope**:
+- Add cadence dropdown to template form
+- Save cadence with template
+- Display cadence in template view
+
+**Acceptance Criteria**:
+- ✅ User can set cadence per template
+- ✅ Cadence saved with template
+- ✅ Cadence displayed in template list/view
+
+**Likely Areas/Files**:
+- `src/components/features/Templates/TemplatesPage.tsx` (modify)
+- `src/types/template.types.ts` (add cadence field)
+
+**Complexity**: S  
+**Dependencies**: TASK-2.3
+
+---
+
+### TASK-3.2: Implement Template → Period Application
+**Goal**: Create period with envelopes from template  
+**Scope**:
+- Create `create_period_from_template` command
+- Copy envelopes from template to period
+- Copy planned amounts
+- Set period cadence and dates
+
+**Acceptance Criteria**:
+- ✅ Period created from template
+- ✅ All envelopes copied
+- ✅ Default amounts copied
+
+**Likely Areas/Files**:
+- `src-tauri/src/modules/commands/budget.rs` (new command)
+- `src/services/budgetService.ts` (new function)
+
+**Complexity**: M  
+**Dependencies**: TASK-2.2, TASK-3.1
+
+---
+
+## Phase 4: UI - Excel-Like Grid
+
+### TASK-4.1: Design Grid Component
+**Goal**: Plan grid component architecture  
+**Scope**:
+- Choose grid library (AG Grid or custom)
+- Design component hierarchy
+- Plan cell rendering
+- Document design decisions
+
+**Acceptance Criteria**:
+- ✅ Grid architecture documented
+- ✅ Library chosen
+- ✅ Component structure planned
+
+**Likely Areas/Files**:
+- Design document (markdown)
+
+**Complexity**: S (planning)  
+**Dependencies**: None
+
+---
+
+### TASK-4.2: Implement Grid Data Loading
+**Goal**: Load and display one budget instance category grid data  
+**Scope**:
+- Create `get_grid_data` command (if not done in TASK-2.5)
+- Load category rows for one budget instance
+- Load rollups (received_total/spent_total)
+- Display in grid component
+
+**Acceptance Criteria**:
+- ✅ Grid loads data
+- ✅ Cells show spent/remaining
+- ✅ Grid updates on data change
+
+**Likely Areas/Files**:
+- `src/components/features/BudgetGrid/PeriodGrid.tsx` (new)
+- `src/services/budgetService.ts` (new function)
+
+**Complexity**: L  
+**Dependencies**: TASK-2.5, TASK-4.1
+
+---
+
+### TASK-4.3: Implement Grid Cell Selection
+**Goal**: Excel-like cell selection  
+**Scope**:
+- Click to select cell
+- Arrow keys to navigate
+- Visual selection indicator
+- Selected cell state management
+
+**Acceptance Criteria**:
+- ✅ User can select cells
+- ✅ Arrow keys navigate cells
+- ✅ Selection visually indicated
+
+**Likely Areas/Files**:
+- `src/components/features/BudgetGrid/PeriodGrid.tsx` (modify)
+- `src/components/features/BudgetGrid/GridCell.tsx` (new)
+
+**Complexity**: M  
+**Dependencies**: TASK-4.2
+
+---
+
+### TASK-4.4: Implement Frozen Columns/Rows
+**Goal**: Keep category name and column headers visible while scrolling  
+**Scope**:
+- Keep left-most category name column visible (if horizontally scrollable in future)
+- Keep column headers visible (Category / Received date / Received amount / Spent amount)
+- Scroll content area independently
+- Handle scrolling correctly
+
+**Acceptance Criteria**:
+- ✅ Category names remain visible while scrolling (as applicable)
+- ✅ Column headers stay visible while scrolling
+- ✅ Scrolling works smoothly
+
+**Likely Areas/Files**:
+- `src/components/features/BudgetGrid/PeriodGrid.tsx` (modify)
+
+**Complexity**: M  
+**Dependencies**: TASK-4.2
+
+---
+
+### TASK-4.5: Implement Double-Click to Open Modal
+**Goal**: Open transaction modal on double-click  
+**Scope**:
+- Handle double-click event on cell
+- Extract (budget_instance_id + global_category_id) and which column was clicked (received vs spent)
+- Open transaction modal
+- Pass ids + column context to modal
+
+**Acceptance Criteria**:
+- ✅ Double-click opens modal
+- ✅ Modal receives correct ids + context (received/spent)
+- ✅ Modal loads transactions for that cell
+
+**Likely Areas/Files**:
+- `src/components/features/BudgetGrid/PeriodGrid.tsx` (modify)
+- `src/components/features/BudgetGrid/CategoryLedgerModal.tsx` (modify)
+
+**Complexity**: S  
+**Dependencies**: TASK-4.3, TASK-5.1
+
+---
+
+## Phase 5: Transactions - Double-Click Modal
+
+### TASK-5.1: Update Transaction Modal for Budget Instance Category
+**Goal**: Load line items for a category within one budget instance  
+**Scope**:
+- Modify modal to accept (budget_instance_id + global_category_id) and column context (received vs spent)
+- Load line items for that category in that budget instance
+- Display transactions in table
+- Show total spent
+
+**Acceptance Criteria**:
+- ✅ Modal loads line items for the selected category in the current budget instance
+- ✅ Transactions displayed correctly
+- ✅ Total shown
+
+**Likely Areas/Files**:
+- `src/components/features/BudgetGrid/CategoryLedgerModal.tsx` (modify)
+- `src-tauri/src/modules/commands/expense.rs` (modify `get_category_ledger` or create new)
+
+**Complexity**: M  
+**Dependencies**: TASK-2.4
+
+---
+
+### TASK-5.2: Implement Transaction Entry Form
+**Goal**: Add transaction via modal  
+**Scope**:
+- Transaction form (date, description, amount, type)
+- Validation (required fields, amount > 0)
+- Save transaction command
+- Update grid after save
+
+**Acceptance Criteria**:
+- ✅ User can add transaction
+- ✅ Validation works
+- ✅ Transaction saves
+- ✅ Grid updates
+
+**Likely Areas/Files**:
+- `src/components/features/BudgetGrid/CategoryLedgerModal.tsx` (modify)
+- `src-tauri/src/modules/commands/expense.rs` (modify `add_category_entry`)
+
+**Complexity**: M  
+**Dependencies**: TASK-5.1
+
+---
+
+### TASK-5.3: Implement Transaction Edit/Delete
+**Goal**: Edit and delete transactions  
+**Scope**:
+- Edit button on transaction row
+- Edit form (pre-filled)
+- Update transaction command
+- Delete button with confirmation
+- Soft delete transaction
+
+**Acceptance Criteria**:
+- ✅ User can edit transaction
+- ✅ User can delete transaction (with confirmation)
+- ✅ Changes reflect in grid
+
+**Likely Areas/Files**:
+- `src/components/features/BudgetGrid/CategoryLedgerModal.tsx` (modify)
+- `src-tauri/src/modules/commands/expense.rs` (modify update/delete commands)
+
+**Complexity**: M  
+**Dependencies**: TASK-5.2
+
+---
+
+## Phase 6: Period Creation Flow
+
+### TASK-6.1: Create Period Creation Form
+**Goal**: UI for creating period from template  
+**Scope**:
+- Period creation modal/form
+- Template selection dropdown
+- Cadence selection (monthly/biweekly/weekly/daily/yearly/custom)
+- Date picker (start date, end date if custom)
+- Validation
+
+**Acceptance Criteria**:
+- ✅ User can open period creation form
+- ✅ User can select template
+- ✅ User can select cadence
+- ✅ User can enter dates
+- ✅ Validation works
+
+**Likely Areas/Files**:
+- `src/components/features/BudgetGrid/CreatePeriodForm.tsx` (new)
+- `src/components/features/BudgetGrid/PeriodGrid.tsx` (add button)
+
+**Complexity**: M  
+**Dependencies**: TASK-3.2
+
+---
+
+### TASK-6.2: Implement Period Creation Backend
+**Goal**: Create a period budget instance from a template (one grid view per instance)  
+**Scope**:
+- `create_period` command
+- Copy referenced global categories from template into the budget instance
+- Set default amounts
+- Set cadence and dates
+- Return budget_instance_id
+
+**Acceptance Criteria**:
+- ✅ Period created in database
+- ✅ Category rows created from template
+- ✅ All data copied correctly
+
+**Likely Areas/Files**:
+- `src-tauri/src/modules/commands/budget.rs` (new command)
+- `src/services/budgetService.ts` (new function)
+
+**Complexity**: M  
+**Dependencies**: TASK-2.2, TASK-3.2
+
+---
+
+### TASK-6.3: Update Grid to Show New Period
+**Goal**: Open / navigate to the new period budget instance grid  
+**Scope**:
+- After creating a budget instance, navigate to its grid view
+- Ensure the grid header reflects the current period (cadence + date range)
+- Ensure category rows load for that instance
+
+**Acceptance Criteria**:
+- ✅ App opens the new budget instance grid view
+- ✅ Grid header shows cadence and dates
+- ✅ Grid displays category rows for that instance
+
+**Likely Areas/Files**:
+- `src/components/features/BudgetGrid/PeriodGrid.tsx` (modify)
+
+**Complexity**: S  
+**Dependencies**: TASK-6.2, TASK-4.2
+
+---
+
+## Phase 7: Export & Backup
+
+### TASK-7.1: Implement CSV Export Backend
+**Goal**: Export data to CSV format  
+**Scope**:
+- Create `export_to_csv` command
+- Query all budget instances, categories, and received/spent line items
+- Format as CSV (with headers)
+- Return CSV string or write to file
+
+**Acceptance Criteria**:
+- ✅ CSV includes all data
+- ✅ CSV format valid (opens in Excel)
+- ✅ Headers correct
+
+**Likely Areas/Files**:
+- `src-tauri/src/modules/commands/export.rs` (new)
+- `src/services/exportService.ts` (new)
+
+**Complexity**: M  
+**Dependencies**: TASK-2.4
+
+---
+
+### TASK-7.2: Implement CSV Export UI
+**Goal**: Export CSV via Settings UI  
+**Scope**:
+- Export button in Settings
+- File picker to save CSV
+- Success/error messages
+- Loading state
+
+**Acceptance Criteria**:
+- ✅ User can click "Export CSV"
+- ✅ File picker opens
+- ✅ CSV saved
+- ✅ Success message shown
+
+**Likely Areas/Files**:
+- `src/components/pages/Settings.tsx` (modify)
+- `src/components/features/Settings/ExportSettings.tsx` (new)
+
+**Complexity**: S  
+**Dependencies**: TASK-7.1
+
+---
+
+### TASK-7.3: Implement Backup Guidance UI
+**Goal**: Show backup instructions  
+**Scope**:
+- Backup section in Settings
+- Instructions text
+- File location display (clickable)
+- Copy file button (optional)
+
+**Acceptance Criteria**:
+- ✅ Backup section visible
+- ✅ Instructions displayed
+- ✅ File location shown
+- ✅ User can copy file (optional)
+
+**Likely Areas/Files**:
+- `src/components/features/Settings/BackupSettings.tsx` (new)
+
+**Complexity**: S  
+**Dependencies**: TASK-1.1
+
+---
+
+## Phase 8: Polish & Testing
+
+### TASK-8.1: Error Handling
+**Goal**: Comprehensive error handling  
+**Scope**:
+- Error messages for all failure cases
+- User-friendly error dialogs
+- Error logging
+- Recovery flows
+
+**Acceptance Criteria**:
+- ✅ All errors show user-friendly messages
+- ✅ Errors logged
+- ✅ User can recover
+
+**Likely Areas/Files**:
+- All components (add error handling)
+- `src/utils/errorHandler.ts` (new utility)
+
+**Complexity**: M  
+**Dependencies**: All previous tasks
+
+---
+
+### TASK-8.2: Internationalization (i18n)
+**Goal**: Support English and German  
+**Scope**:
+- Set up react-i18next
+- Create translation files (en.json, de.json)
+- Translate UI strings
+- Currency formatting (CHF/EUR)
+- Language selector in Settings
+
+**Acceptance Criteria**:
+- ✅ UI supports EN and DE
+- ✅ User can switch language
+- ✅ Currency formatted correctly
+
+**Likely Areas/Files**:
+- `src/i18n/` (new folder)
+- `src/i18n/en.json` (new)
+- `src/i18n/de.json` (new)
+- All components (add translations)
+
+**Complexity**: M  
+**Dependencies**: All UI tasks
+
+---
+
+### TASK-8.3: Testing & Bug Fixes
+**Goal**: Test MVP and fix bugs  
+**Scope**:
+- Manual testing of all flows
+- Bug tracking
+- Performance testing
+- Fix critical bugs
+
+**Acceptance Criteria**:
+- ✅ All MVP features tested
+- ✅ Critical bugs fixed
+- ✅ Performance acceptable
+
+**Likely Areas/Files**:
+- Test plan document
+- Bug fixes across codebase
+
+**Complexity**: L  
+**Dependencies**: All previous tasks
+
+---
+
+## Next Backlog (Post-MVP)
+
+### CSV Import
+- Import transactions from CSV
+- Validate CSV format
+- Map CSV columns to database fields
+
+### PDF Reports
+- Generate PDF reports
+- Include charts/graphs
+- Customizable report templates
+
+### Advanced Reconciliation
+- Bank statement import
+- Transaction matching
+- Reconciliation workflow
+
+### Custom Columns
+- User-defined columns
+- Formula support
+- Custom calculations
+
+---
+
+## References
+
+- See **MVP_PLAN.md** for phase overview
+- See **PRODUCT_REQUIREMENTS.md** for requirements
+- See **DATA_MODEL.md** for schema details
