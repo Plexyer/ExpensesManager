@@ -152,6 +152,13 @@
    - **Rows**: Global categories (e.g., Food, Rent, Fuel)
    - **Columns**: Category fields for the current period (MVP: Category name, Received date, Received amount, Spent amount)
    - **Cells**: Totals/fields for the selected category in the current period
+3. **Column Details (CONFIRMED)**:
+   - **Received date**: DERIVED column showing first/last dates from received line items
+     - Single date format: "YYYY-MM-DD" (if only one received line item)
+     - Date range format: "YYYY-MM-DD - YYYY-MM-DD" (if multiple received line items)
+     - Empty if no received line items
+   - **Received amount**: Sum of all received line items (includes template default as first entry)
+   - **Spent amount**: Sum of all spent line items
 
 ### Step 2: Navigate Grid
 1. User can:
@@ -179,16 +186,20 @@
 1. User double-clicks **Received amount** or **Spent amount** cell (e.g., "Groceries" → "Spent amount")
 2. **Screen**: Line-item modal
 3. **Header**: "Groceries - [Current Period]" + "Received" or "Spent"
-4. **Content**: Line-item table (empty or with existing line items)
+4. **Content**: Line-item table (CONFIRMED behavior below)
 
-### Step 2: View Existing Transactions
+### Step 2: View Existing Transactions (CONFIRMED)
 1. **Table columns**:
-   - Date (required)
-   - Time (optional)
+   - Date (required, ISO format)
+   - Time (optional, defaults to 00:00:00 if not provided) (CONFIRMED)
    - Description
    - Amount
+   - Currency (CHF/EUR for MVP) (CONFIRMED)
    - Actions (Edit/Delete)
-2. User can scroll if many transactions
+2. **For Received amount modal** (CONFIRMED):
+   - First row is auto-created from template default amount (marked as template default)
+   - Each subsequent row represents money received from various sources
+3. User can scroll if many transactions (virtualization for large lists) (CONFIRMED)
 
 ### Step 3: Add Transaction
 1. User clicks "Add Transaction" button

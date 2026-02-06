@@ -1,4 +1,11 @@
-# Encryption Specification (DRAFT)
+# Encryption Specification (CONFIRMED)
+
+## Status: CONFIRMED
+
+Key decisions from user answers:
+- **Encryption**: Use rusqlite + SQLCipher (CONFIRMED)
+- **Password Hashing**: Use Argon2id exclusively (CONFIRMED - no backward compatibility with SHA256)
+- **Target Platform**: Windows 11 only for MVP (CONFIRMED - MacOS/Linux deferred to post-MVP)
 
 ## Overview
 
@@ -142,7 +149,7 @@ fn decrypt_database(encrypted: &[u8], key: &[u8]) -> Vec<u8> {
 
 ---
 
-## Recommended Approach: SQLCipher
+## Confirmed Approach: SQLCipher (CONFIRMED)
 
 ### Rationale
 - Industry standard for encrypted SQLite
@@ -150,16 +157,19 @@ fn decrypt_database(encrypted: &[u8], key: &[u8]) -> Vec<u8> {
 - Less application code complexity
 - Well-tested and secure
 
-### Implementation Steps
-1. **Research**: Check if `rusqlite` supports SQLCipher feature flag
-2. **Alternative**: Use `sqlcipher` crate or compile from source
-3. **Key Derivation**: Implement Argon2id KDF (use `argon2` crate)
-4. **File Format**: Design header format (magic number, salt, KDF params)
-5. **Integration**: Modify `DbState` to handle encrypted connections
-6. **Testing**: Test encryption/decryption, wrong password handling
+### Implementation Steps (CONFIRMED)
+1. **Use rusqlite with SQLCipher feature flag** - Target Windows 11 only for MVP
+2. **Key Derivation**: Implement Argon2id KDF exclusively (use `argon2` crate)
+3. **File Format**: Design header format (magic number, salt, KDF params)
+4. **Integration**: Modify `DbState` to handle encrypted connections
+5. **Testing**: Test encryption/decryption, wrong password handling
+
+### Platform Support (CONFIRMED)
+- **MVP**: Windows 11 only
+- **Post-MVP**: MacOS and Linux support can be added later
 
 ### Fallback Plan
-If SQLCipher integration is too complex:
+If SQLCipher integration encounters issues on Windows 11:
 1. Use app-level encryption (AES-256-GCM)
 2. Keep decrypted database in memory
 3. Encrypt on save, decrypt on load
@@ -330,11 +340,11 @@ struct FileHeader {
 
 ---
 
-## Open Questions
+## Resolved Questions (CONFIRMED)
 
-1. **SQLCipher Rust bindings**: Does `rusqlite` support SQLCipher feature flag?
-2. **Performance**: Is SQLCipher performance acceptable for MVP?
-3. **Binary size**: How much does SQLCipher add to binary size?
-4. **Cross-platform**: Does SQLCipher work on all target platforms (Windows/macOS/Linux)?
+1. **SQLCipher Rust bindings**: Use rusqlite with SQLCipher feature flag (CONFIRMED)
+2. **Password Hashing**: Use Argon2id exclusively - no SHA256 backward compatibility (CONFIRMED)
+3. **Target Platform**: Windows 11 only for MVP (CONFIRMED)
+4. **Cross-platform**: MacOS/Linux support deferred to post-MVP (CONFIRMED)
 
-**Status**: DRAFT - Needs research and implementation
+**Status**: CONFIRMED - Ready for implementation

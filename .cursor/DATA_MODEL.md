@@ -1,5 +1,15 @@
 # Data Model
 
+## Key Decisions (CONFIRMED from user answers)
+
+| Decision | Status | Details |
+|----------|--------|---------|
+| Time Storage | CONFIRMED | ISO 8601 datetime, default 00:00:00 if time not provided |
+| Received Date | CONFIRMED | DERIVED column (computed from line items' first/last dates) |
+| Template Defaults | CONFIRMED | Become FIRST received line item when creating period |
+| Currency | CONFIRMED | Multi-currency via additional columns, fixed conversion for MVP |
+| Single File | CONFIRMED | One file per app instance for MVP |
+
 ## Current Schema (CONFIRMED from database/mod.rs and migrations)
 
 ### Core Tables
@@ -144,14 +154,16 @@ CREATE TABLE period_budget_instances (
 **Purpose**: One **budget instance per explicit period** (the main grid represents exactly one of these at a time)  
 **Status**: DRAFT - needs implementation
 
-#### `budget_instance_categories`
+#### `budget_instance_categories` (CONFIRMED SCHEMA)
 ```sql
 CREATE TABLE budget_instance_categories (
     budget_instance_category_id INTEGER PRIMARY KEY AUTOINCREMENT,
     budget_instance_id INTEGER NOT NULL,
     global_category_id INTEGER NOT NULL,
-    received_date DATE, -- defaulted from income_arrival_date; editable per category
+    -- NOTE: received_date is DERIVED (computed), not stored (CONFIRMED)
+    -- It shows first/last dates from received line items
     default_amount DECIMAL(10,2) NOT NULL DEFAULT 0, -- from template for this period
+    default_currency TEXT NOT NULL DEFAULT 'CHF', -- CONFIRMED: template main currency
     sort_order INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (budget_instance_id) REFERENCES period_budget_instances(budget_instance_id) ON DELETE CASCADE,
@@ -160,18 +172,24 @@ CREATE TABLE budget_instance_categories (
 );
 ```
 **Purpose**: Category rows for a budget instance (rows reference **global unique categories**)  
-**Status**: DRAFT - needs implementation
+**Status**: CONFIRMED - ready for implementation
 
-#### `category_line_items`
+**Key Decisions (CONFIRMED)**:
+- `received_date`: NOT stored in table. DERIVED from line items (CONFIRMED). Shows first and last dates from received line items. If only one line item, shows single date.
+- `default_currency`: Template's main currency setting (CONFIRMED)
+
+#### `category_line_items` (CONFIRMED SCHEMA)
 ```sql
 CREATE TABLE category_line_items (
     line_item_id INTEGER PRIMARY KEY AUTOINCREMENT,
     budget_instance_category_id INTEGER NOT NULL,
     kind TEXT NOT NULL, -- 'received' | 'spent'
-    occurred_at TEXT NOT NULL, -- ISO8601 datetime; time optional in UI
+    occurred_at TEXT NOT NULL, -- ISO 8601 datetime (CONFIRMED: default time 00:00:00 if not provided)
     description TEXT,
     amount DECIMAL(10,2) NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'CHF', -- CONFIRMED: multi-currency support
     notes TEXT,
+    is_template_default BOOLEAN DEFAULT FALSE, -- CONFIRMED: marks first auto-created received item from template
     deleted_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -179,7 +197,12 @@ CREATE TABLE category_line_items (
 );
 ```
 **Purpose**: Dated line items that roll up into **Received amount** / **Spent amount** cells for the current budget instance grid  
-**Status**: DRAFT - needs implementation
+**Status**: CONFIRMED - ready for implementation
+
+**Key Decisions (CONFIRMED)**:
+- `occurred_at`: ISO 8601 datetime format. If user doesn't provide time, default to 00:00:00 (CONFIRMED)
+- `is_template_default`: When creating period from template, first received line item is auto-created with template's default amount and this flag set to TRUE (CONFIRMED)
+- `currency`: Each line item can have its own currency (CHF/EUR for MVP) (CONFIRMED)
 
 ### Modified Tables
 
@@ -239,9 +262,28 @@ WHERE bic.budget_instance_id = ?
 GROUP BY bic.budget_instance_category_id;
 ```
 
-### Received/Distributed Date
-- **Stored**: `budget_instance_categories.received_date` (defaults to `period_budget_instances.income_arrival_date`)
-- **Display**: Format based on user locale (EN/DE)
+### Received Date (CONFIRMED - DERIVED)
+- **NOT stored**: Computed from line items (CONFIRMED)
+- **Query**: Get MIN and MAX occurred_at from received line items for this category
+- **Display**: 
+  - Single date if only one received line item: "YYYY-MM-DD"
+  - Date range if multiple: "YYYY-MM-DD - YYYY-MM-DD"
+  - Empty if no received line items
+- **Format**: ISO format, displayed based on user locale (EN/DE)
+
+```sql
+-- Query to get received date range for a category
+SELECT 
+    budget_instance_category_id,
+    MIN(DATE(occurred_at)) as first_received_date,
+    MAX(DATE(occurred_at)) as last_received_date,
+    COUNT(*) as received_count
+FROM category_line_items
+WHERE budget_instance_category_id = ? 
+    AND kind = 'received' 
+    AND deleted_at IS NULL
+GROUP BY budget_instance_category_id;
+```
 
 ---
 
@@ -266,29 +308,35 @@ CREATE INDEX idx_line_items_kind ON category_line_items(kind);
 
 ---
 
-## Currency & Locale (MVP)
+## Currency & Locale (CONFIRMED)
 
-### Initial Currencies
-- **CHF** (Swiss Franc)
+### Initial Currencies (MVP)
+- **CHF** (Swiss Franc) - default
 - **EUR** (Euro)
 
-### Storage
-- **Option 1**: Store currency per envelope
-  ```sql
-  ALTER TABLE envelopes ADD COLUMN currency TEXT NOT NULL DEFAULT 'CHF';
-  ```
-- **Option 2**: Store currency per finance file (global)
-  ```sql
-  ALTER TABLE finance_files ADD COLUMN default_currency TEXT NOT NULL DEFAULT 'CHF';
-  ```
+### Currency Storage (CONFIRMED)
+- **Template main currency**: Stored in `budget_templates.default_currency` (CONFIRMED)
+- **Line item currency**: Each line item can have its own currency (CONFIRMED)
+- **Multi-currency columns**: Users can add columns like "Received amount (CHF)", "Received amount (EUR)" (CONFIRMED)
+- **Conversion ratio**: FIXED number stored in app settings for MVP (CONFIRMED)
+- **Post-MVP**: Live conversion rates via API
 
-### Initial Languages
+```sql
+-- Template level currency
+ALTER TABLE budget_templates ADD COLUMN default_currency TEXT NOT NULL DEFAULT 'CHF';
+
+-- App settings for conversion (stored in localStorage or separate settings table)
+-- Example: { "CHF_EUR": 0.95, "EUR_CHF": 1.05 }
+```
+
+### Initial Languages (MVP)
 - **English** (EN) - default
 - **German** (DE)
 
-### Storage
-- Store in finance file metadata or user preferences
-- Use i18n library (e.g., react-i18next) for translations
+### Language Storage (CONFIRMED)
+- **Location**: App settings (localStorage), NOT in finance file (CONFIRMED)
+- Same finance file can be opened in different languages by different users
+- Use react-i18next for translations
 
 ---
 

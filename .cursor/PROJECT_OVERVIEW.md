@@ -32,14 +32,15 @@
 ### Backend
 - **Tauri 2** desktop framework
 - **Rust** (edition 2021)
-- **rusqlite 0.31** (bundled) for SQLite database
+- **rusqlite 0.31** with SQLCipher feature flag for encrypted SQLite database (CONFIRMED)
 - **serde + serde_json** for serialization
-- **sha2 0.10** for password hashing (SHA256)
+- **argon2** for password hashing (Argon2id) - CONFIRMED (replacing SHA256)
 
 ### Storage
-- **SQLite** database (currently unencrypted)
-- **Location**: `app_data_dir/expenses_encrypted.sqlite` (CONFIRMED from `src-tauri/src/modules/database/mod.rs:22`)
-- **Encryption**: Placeholder exists (`src-tauri/src/modules/security/encryption.rs`), SQLCipher not integrated
+- **SQLite** database with SQLCipher encryption (CONFIRMED)
+- **Location**: User-selected portable file location (file picker)
+- **Encryption**: SQLCipher via rusqlite feature flag (CONFIRMED)
+- **Target Platform**: Windows 11 only for MVP (CONFIRMED - MacOS/Linux post-MVP)
 
 ---
 
@@ -189,17 +190,19 @@ npm run tauri build  # Build production app
 
 ## Security Status (CONFIRMED)
 
-### Current
-- ✅ Password hashing exists (SHA256 via `sha2` crate)
+### Current Implementation Status
+- ✅ Password hashing exists (SHA256 via `sha2` crate) - TO BE REPLACED
 - ✅ `verify_master_password` command exists
 - ❌ Database is **unencrypted** (SQLite plaintext)
 - ❌ No SQLCipher integration
 - ❌ No file-level encryption
 - ❌ Encryption module is placeholder (`src-tauri/src/modules/security/encryption.rs`)
 
-### MVP Needed
+### MVP Decisions (CONFIRMED)
+- **Password Hashing**: Argon2id exclusively (CONFIRMED - replacing SHA256, fresh start)
+- **Database Encryption**: SQLCipher via rusqlite feature flag (CONFIRMED)
+- **Target Platform**: Windows 11 only for MVP (CONFIRMED)
 - Master password creation/unlock flow
-- SQLCipher integration OR app-level encryption
 - Encrypted portable finance files
 
 ---

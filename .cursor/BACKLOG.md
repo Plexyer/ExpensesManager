@@ -715,15 +715,80 @@ Each task includes:
 - Include charts/graphs
 - Customizable report templates
 
-### Advanced Reconciliation
-- Bank statement import
-- Transaction matching
-- Reconciliation workflow
-
-### Custom Columns
+### Custom Columns (CONFIRMED - plan for extensibility)
 - User-defined columns
 - Formula support
 - Custom calculations
+- **Note**: MVP architecture should be extensible to support this feature (CONFIRMED)
+
+### MacOS/Linux Support
+- Extend SQLCipher integration to MacOS
+- Extend SQLCipher integration to Linux
+- Cross-platform testing
+
+### Locale-Specific Date Formats
+- Add locale option for CSV export dates
+- Add locale option for UI date display
+
+### Live Currency Conversion Rates
+- API integration for real-time exchange rates
+- Replace fixed conversion ratio
+
+---
+
+## Future Features / Premium Features (CONFIRMED - OUT OF SCOPE for MVP)
+
+These features were explicitly identified by the user as future premium features. They are OUT OF SCOPE for MVP but documented here for future planning.
+
+### FUTURE-1: Bank Integration (Premium)
+**Description**: Connect banking apps like UBS E-banking (read-only) for transaction verification.
+
+**Scope**:
+- Read-only connection to banking APIs
+- Verify if periodic transactions have gone through
+- Auto-import transaction data (date, time, amount, notes)
+- Transaction matching with budget entries
+
+**Status**: OUT OF SCOPE for MVP (CONFIRMED)
+
+---
+
+### FUTURE-2: Receipt Scanning (Premium)
+**Description**: Photograph receipts and use AI/algorithm to extract data.
+
+**Scope**:
+- Camera integration for receipt capture
+- OCR or AI-based text extraction
+- Auto-populate transaction fields from receipt data
+- Store receipt image with transaction
+
+**Status**: OUT OF SCOPE for MVP (CONFIRMED)
+
+---
+
+### FUTURE-3: Cloud Sync (Premium)
+**Description**: Server-based storage with account access from anywhere.
+
+**Scope**:
+- User account system
+- Server-side database storage
+- Sync across devices
+- User doesn't need to manage file location
+- Access from anywhere via account login
+
+**Status**: OUT OF SCOPE for MVP (CONFIRMED)
+
+---
+
+### FUTURE-4: Advanced Reconciliation
+**Description**: Bank statement import and transaction matching.
+
+**Scope**:
+- Import bank statements (CSV, OFX, QIF)
+- Match imported transactions to budget entries
+- Reconciliation workflow and status tracking
+
+**Status**: OUT OF SCOPE for MVP (mentioned as premium feature)
 
 ---
 
@@ -732,3 +797,4 @@ Each task includes:
 - See **MVP_PLAN.md** for phase overview
 - See **PRODUCT_REQUIREMENTS.md** for requirements
 - See **DATA_MODEL.md** for schema details
+- See **QUESTIONS_FOR_USER.md** for all confirmed decisions

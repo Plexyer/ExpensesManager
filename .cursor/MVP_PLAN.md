@@ -4,6 +4,19 @@
 
 This document outlines the step-by-step implementation plan for the ExpensesManager MVP. Each step includes checkpoints and acceptance criteria.
 
+## Key Confirmed Decisions
+
+| Decision | Status | Details |
+|----------|--------|---------|
+| Target Platform | CONFIRMED | Windows 11 only for MVP |
+| Encryption | CONFIRMED | SQLCipher via rusqlite |
+| Password Hashing | CONFIRMED | Argon2id (replacing SHA256) |
+| Grid Editing | CONFIRMED | Modal-only (no inline editing) |
+| Performance | CONFIRMED | <100ms target, <500ms acceptable, loading screens required |
+| Testing | CONFIRMED | Write automated tests during development |
+| Multi-currency | CONFIRMED | Fixed conversion ratio, multi-currency columns |
+| Virtualization | CONFIRMED | Use for large lists |
+
 ---
 
 ## Phase 1: Foundation - File System & Encryption
@@ -484,19 +497,24 @@ This document outlines the step-by-step implementation plan for the ExpensesMana
 
 ---
 
-### Step 8.3: Testing
-**Goal**: Test MVP features  
+### Step 8.3: Automated Testing (CONFIRMED)
+**Goal**: Write automated tests during development  
 **Scope**:
-- Manual testing of all flows
-- Fix bugs
-- Performance testing
+- Write unit tests for Rust backend commands (CONFIRMED)
+- Write integration tests for critical flows (CONFIRMED)
+- Write frontend tests for key components (CONFIRMED)
+- Manual testing by user for final verification (CONFIRMED)
 
 **Acceptance Criteria**:
-- ✅ All MVP features tested
+- ✅ Automated tests exist for each feature (CONFIRMED - write tests during development)
+- ✅ Tests verify features work and prevent regressions
+- ✅ All MVP features manually tested by user
 - ✅ Critical bugs fixed
-- ✅ Performance acceptable
+- ✅ Performance targets met: <100ms grid load, <500ms acceptable for large datasets (CONFIRMED)
 
 **Likely Files**:
+- `src-tauri/src/tests/` (Rust tests)
+- `src/__tests__/` (Frontend tests)
 - Test plan document
 
 **Complexity**: L (Large)

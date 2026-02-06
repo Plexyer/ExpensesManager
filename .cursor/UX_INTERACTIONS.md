@@ -11,10 +11,11 @@
 - **Enter**: Move down (or open modal if double-clicked)
 - **Escape**: Deselect cell / close modal
 
-### Cell Editing
-- **Double-click**: Opens transaction modal (not inline editing)
+### Cell Editing (CONFIRMED - Modal Only)
+- **Double-click**: Opens transaction modal (CONFIRMED - no inline editing for MVP)
 - **F2**: Opens transaction modal (alternative to double-click)
-- **Modal editing**: All transaction editing happens in modal, not inline
+- **Modal editing**: All transaction editing happens in modal, not inline (CONFIRMED)
+- **Inline editing**: OUT OF SCOPE for MVP, may be added post-MVP
 
 ### Grid Navigation
 - **Scroll**: Mouse wheel or scrollbar (vertical for categories)
@@ -113,22 +114,27 @@
 
 ---
 
-## Loading States
+## Loading States (CONFIRMED - REQUIRED)
 
-### Grid Loading
-- **Initial load**: Skeleton grid or spinner
+**IMPORTANT**: Loading screens/indicators are REQUIRED for operations that may take time (CONFIRMED). Users should understand when something is loading rather than think the app is frozen.
+
+### Grid Loading (CONFIRMED)
+- **Initial load**: Skeleton grid or spinner (REQUIRED)
 - **Refresh**: Subtle loading indicator (top right)
 - **Cell update**: Brief highlight animation when cell updates
+- **Performance target**: <100ms for grid load, <500ms acceptable for large datasets (CONFIRMED)
 
-### Modal Loading
+### Modal Loading (CONFIRMED)
 - **Opening**: Fade-in animation (200ms)
-- **Saving**: Disable form, show "Saving..." text
-- **Loading transactions**: Skeleton table rows
+- **Saving**: Disable form, show "Saving..." text (REQUIRED)
+- **Loading transactions**: Skeleton table rows (REQUIRED for large lists)
+- **Virtualization**: Render only visible rows for performance (CONFIRMED)
 
-### File Operations
-- **Creating file**: Progress bar or spinner
-- **Opening file**: "Opening..." message
-- **Exporting**: Progress bar with "Exporting... X%"
+### File Operations (CONFIRMED)
+- **Creating file**: Progress bar or spinner (REQUIRED)
+- **Opening file**: "Opening..." message with spinner (REQUIRED)
+- **Decrypting**: Show "Unlocking file..." indicator (REQUIRED)
+- **Exporting**: Progress bar with "Exporting... X%" (REQUIRED)
 
 ---
 
@@ -204,12 +210,18 @@
 
 ---
 
-## Performance Optimizations
+## Performance Optimizations (CONFIRMED)
 
-### Grid Virtualization
-- **Large datasets**: Only render visible cells
-- **Scroll performance**: Smooth scrolling with 1000+ cells
+### Grid Virtualization (CONFIRMED)
+- **Large datasets**: Only render visible cells (CONFIRMED - use virtualization)
+- **Scroll performance**: Smooth scrolling with 1000+ rows
 - **Lazy loading**: Load transaction data on-demand (when cell opened)
+- **Target**: <100ms for grid load (CONFIRMED)
+
+### List Virtualization (CONFIRMED)
+- **Line item lists**: Use virtualization for large transaction lists (CONFIRMED)
+- **Category lists**: Use virtualization if many categories
+- **Render visible only**: Don't render off-screen items
 
 ### Debouncing
 - **Search/filter**: Debounce input (300ms delay)
@@ -218,6 +230,12 @@
 ### Caching
 - **Grid data**: Cache in Redux, refresh on changes
 - **Templates**: Cache in Redux, refresh on template changes
+
+### Loading Indicators (CONFIRMED - REQUIRED)
+- **Always show loading states**: Never leave user wondering if app is frozen (CONFIRMED)
+- **<100ms**: No loading indicator needed
+- **100ms-500ms**: Subtle spinner or skeleton
+- **>500ms**: Full loading screen with message
 
 ---
 

@@ -240,43 +240,52 @@
 
 ---
 
-## Internationalization (i18n)
+## Internationalization (i18n) (CONFIRMED)
 
 ### Initial Languages (MVP)
 - **English** (EN) - default
 - **German** (DE)
 
+### Language Storage (CONFIRMED)
+- Language preference stored in **app settings (localStorage)**, NOT in finance file
+- Same finance file can be opened in different languages by different users
+- UI strings (columns, labels) are translated based on user's language setting
+
 ### Initial Currencies (MVP)
-- **CHF** (Swiss Franc)
+- **CHF** (Swiss Franc) - default
 - **EUR** (Euro)
 
-### Architecture
-- Use i18n library (e.g., react-i18next) or simple translation map
-- Store user language preference in finance file
-- Currency per envelope (or global setting)
+### Currency Architecture (CONFIRMED)
+- **Template main currency**: Set in template settings (default CHF)
+- **Multi-currency per period**: Users can add columns like "Received amount (CHF)", "Received amount (EUR)"
+- **Conversion ratio**: FIXED number for MVP (configurable in settings)
+- **Post-MVP**: Live conversion rates via API
 
 ---
 
-## Performance Requirements
+## Performance Requirements (CONFIRMED)
 
-### Grid Performance
+### Grid Performance (CONFIRMED)
 - **Target**: Smooth scrolling with large category lists (many rows)
-- **Solution**: Virtual scrolling (AG Grid or custom virtualization) if needed
+- **Solution**: Virtualization for large lists - render only visible rows (CONFIRMED)
 - **Lazy loading**: Load transactions on-demand (when cell opened)
 
-### Database Performance
-- **Target**: < 100ms for grid data load
+### Database Performance (CONFIRMED)
+- **Target**: < 100ms for grid data load (CONFIRMED)
+- **Acceptable**: < 500ms for large datasets (CONFIRMED)
+- **Loading screens**: REQUIRED for operations that may take time (CONFIRMED)
 - **Solution**: Indexes on key columns (period_id, envelope_id, date)
 - **Caching**: Cache grid data in Redux, refresh on changes
 
 ---
 
-## Security Requirements
+## Security Requirements (CONFIRMED)
 
-### Encryption
-- **Database**: SQLCipher (preferred) OR app-level encryption
-- **Password**: Master password with Argon2id KDF (recommended)
+### Encryption (CONFIRMED)
+- **Database**: SQLCipher via rusqlite feature flag (CONFIRMED)
+- **Password**: Master password with Argon2id KDF exclusively (CONFIRMED - no SHA256)
 - **Storage**: Salt + KDF params stored in file metadata
+- **Target Platform**: Windows 11 only for MVP (CONFIRMED)
 
 ### Threat Model
 - **Wrong password**: Show error, don't reveal if file exists
