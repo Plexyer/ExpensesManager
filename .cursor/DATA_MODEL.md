@@ -9,6 +9,44 @@
 | Template Defaults | CONFIRMED | Become FIRST received line item when creating period |
 | Currency | CONFIRMED | Multi-currency via additional columns, fixed conversion for MVP |
 | Single File | CONFIRMED | One file per app instance for MVP |
+| **Stub File Format** | CONFIRMED | Temporary JSON format for MVP testing (see below) |
+
+---
+
+## Temporary Stub File Format (MVP Testing Only)
+
+> **⚠️ MVP STUB ONLY**: Before SQLCipher is implemented, we use a plaintext JSON stub file to test create/open/unlock flows.
+
+**Full specification**: See `.cursor/FINANCEDB_STUB_SPEC.md`
+
+### Schema Summary
+
+```json
+{
+  "format": "financedb_stub",
+  "version": 1,
+  "created_at": "2026-02-06T14:30:00Z",
+  "master_password": "<PLAINTEXT_FOR_MVP_ONLY>",
+  "password_hint": "<optional string>",
+  "metadata": {
+    "app_version": "0.1.0",
+    "platform": "windows"
+  }
+}
+```
+
+### Purpose
+- Enable testing of UI flows before SQLCipher implementation
+- Verify file picker → password modal → unlock flow works end-to-end
+- Allow development of features that require an "open" file state
+
+### Limitations
+- **NO financial data storage** (just auth info)
+- **Plaintext passwords** (insecure, testing only)
+- **Will be replaced** by SQLCipher encrypted SQLite
+
+### Migration
+When SQLCipher is ready, stub files become obsolete. Users create new encrypted files. No data migration needed since stub files contain no financial data.
 
 ## Current Schema (CONFIRMED from database/mod.rs and migrations)
 
@@ -342,6 +380,29 @@ ALTER TABLE budget_templates ADD COLUMN default_currency TEXT NOT NULL DEFAULT '
 
 ## Migration Strategy
 
+### Phase 0: Stub File Format (MVP Testing Only)
+
+Before real data storage, we use a temporary JSON stub file format for testing UI flows.
+
+**Stub File Schema**:
+```json
+{
+  "format": "financedb_stub",
+  "version": 1,
+  "created_at": "2026-02-06T14:30:00Z",
+  "master_password": "plaintext_password",
+  "password_hint": "optional hint"
+}
+```
+
+**⚠️ WARNING**: Stub files store passwords in PLAINTEXT. For testing only.
+
+**Stub → SQLCipher Migration**:
+- Stub files contain no financial data (just auth info for testing)
+- When SQLCipher is implemented (Phase 4), users create new real files
+- Old stub files become obsolete (no data migration needed)
+- See `.cursor/FINANCEDB_STUB_SPEC.md` for full specification
+
 ### Phase 1: Add Period System
 1. Create `period_budget_instances` table
 2. Create `budget_instance_categories` table
@@ -357,7 +418,9 @@ ALTER TABLE budget_templates ADD COLUMN default_currency TEXT NOT NULL DEFAULT '
 
 ### Phase 4: Encryption
 1. Add encryption support (SQLCipher or app-level)
-2. Migrate existing unencrypted database to encrypted
+2. Replace stub file format with real encrypted SQLite
+3. New files created as encrypted DB (not stub JSON)
+4. Stub files from Phase 0 become obsolete
 
 ---
 

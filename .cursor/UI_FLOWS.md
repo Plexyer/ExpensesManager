@@ -12,7 +12,7 @@
 ### Step 2: Create File
 1. User clicks "Create New Finance File"
 2. **Screen**: File picker dialog
-3. User selects save location (e.g., `Documents/MyFinance.encrypted`)
+3. User selects save location (e.g., `Documents/MyFinance.financedb`)
 4. User clicks "Save"
 
 ### Step 3: Set Master Password
@@ -25,10 +25,21 @@
 4. User clicks "Create File"
 
 ### Step 4: File Creation
+
+#### MVP Stub Version (Temporary)
+1. System writes JSON stub file to chosen location
+2. Stub contains: format, version, created_at, master_password (plaintext), password_hint
+3. System marks file as "open" in app state
+4. **Screen**: Main grid (empty state)
+
+> **⚠️ MVP STUB ONLY**: The stub format stores passwords in plaintext for testing. See `.cursor/FINANCEDB_STUB_SPEC.md`.
+
+#### Final Version (SQLCipher - Future)
 1. System creates encrypted SQLite file at chosen location
 2. System initializes database schema
-3. System stores password hash + encryption key
-4. **Screen**: Main grid (empty state)
+3. System derives encryption key from password (Argon2id)
+4. Password NOT stored (implicit in encryption)
+5. **Screen**: Main grid (empty state)
 
 ---
 
@@ -42,27 +53,51 @@
 ### Step 2: Select File
 1. **Screen**: File picker dialog
 2. User navigates to finance file location
-3. User selects `.encrypted` file
+3. User selects `.financedb` file
 4. User clicks "Open"
 
-### Step 3: Unlock File
+### Step 3: Read File & Show Unlock Modal
+
+#### MVP Stub Version (Temporary)
+1. System reads JSON stub file
+2. System validates format field is `"financedb_stub"`
+3. System extracts `password_hint` (if present)
+4. **Screen**: Password unlock modal (with hint available)
+
+#### Final Version (SQLCipher - Future)
+1. System reads file header (salt, KDF params, hint)
+2. **Screen**: Password unlock modal (with hint available)
+
+### Step 4: Unlock File
 1. **Screen**: Password unlock modal
 2. **Fields**:
    - "Master Password" (password input)
-   - "Show Password" (checkbox, optional)
-   - "Forgot Password?" (link, shows hint if available)
+   - "Show Password" (toggle)
+   - "Show Hint" (button, shows hint if available)
 3. User enters password
 4. User clicks "Unlock"
 
-### Step 4: File Unlock
-1. System verifies password
-2. System decrypts database
-3. System loads data
-4. **Screen**: Main grid (with existing periods if any)
+### Step 5: Verify Password & Open
+
+#### MVP Stub Version (Temporary)
+1. System compares entered password to `master_password` field in stub
+2. If match → file marked as "open" in app state
+3. If mismatch → show error, allow retry
+4. **Screen**: Main grid (empty for stub - no data storage yet)
+
+#### Final Version (SQLCipher - Future)
+1. System derives key from password (Argon2id)
+2. System attempts to decrypt database
+3. If success → file unlocked, data loaded
+4. If failure → show error, allow retry
+5. **Screen**: Main grid (with existing periods if any)
 
 ### Error Cases
 - **Wrong password**: Show error "Incorrect password. Please try again."
+- **Invalid JSON (stub)**: Show error "Unable to read file. The file may be corrupted."
+- **Wrong format (stub)**: Show error "This file is not a valid finance file."
 - **File corrupted**: Show error "File is corrupted. Please restore from backup."
+- **Too many attempts**: After 5 failures, show lockout message (session-based)
 
 ---
 

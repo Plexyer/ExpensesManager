@@ -5,12 +5,19 @@ import {
   clearError,
   completeFileCreation,
   cancelPasswordCreation,
+  completeFileUnlock,
+  cancelFileUnlock,
 } from "../../../store/slices/fileSlice";
 import PasswordCreationModal from "./PasswordCreationModal";
+import PasswordUnlockModal from "./PasswordUnlockModal";
+import {
+  createStubFile,
+  verifyStubPassword,
+} from "../../../services/fileService";
 
 const Onboarding = () => {
   const dispatch = useAppDispatch();
-  const { isLoading, error, onboardingStep, filePath } = useAppSelector(
+  const { isLoading, error, onboardingStep, filePath, passwordHint } = useAppSelector(
     (state) => state.file
   );
 
@@ -27,13 +34,18 @@ const Onboarding = () => {
   };
 
   const handlePasswordSubmit = async (
-    _password: string,
+    password: string,
     hint: string | null
   ): Promise<void> => {
-    // TODO: In TASK-1.5/1.6, this will call Tauri command to create encrypted file
-    // For now, just complete the file creation flow
-    // Password is passed but not stored - it will be used by encryption in future task
-    // Using _password prefix to indicate intentionally unused (will be used in TASK-1.5)
+    if (!filePath) {
+      throw new Error("No file path selected");
+    }
+    
+    // Create the stub file on disk
+    // ⚠️ MVP STUB: Password stored in plaintext (will be replaced by SQLCipher)
+    await createStubFile(filePath, password, hint);
+    
+    // Complete the file creation flow
     dispatch(completeFileCreation({ hint }));
   };
 
@@ -41,7 +53,25 @@ const Onboarding = () => {
     dispatch(cancelPasswordCreation());
   };
 
+  const handleUnlockSubmit = async (password: string): Promise<void> => {
+    if (!filePath) {
+      throw new Error("No file path selected");
+    }
+    
+    // Verify password against the stub file
+    // ⚠️ MVP STUB: Plaintext password comparison (will be replaced by SQLCipher)
+    const fileInfo = await verifyStubPassword(filePath, password);
+    
+    // Success - complete unlock with hint from file
+    dispatch(completeFileUnlock({ hint: fileInfo.password_hint }));
+  };
+
+  const handleUnlockCancel = () => {
+    dispatch(cancelFileUnlock());
+  };
+
   const isPasswordModalOpen = onboardingStep === "create-password";
+  const isUnlockModalOpen = onboardingStep === "unlock-password";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
@@ -206,6 +236,15 @@ const Onboarding = () => {
         onClose={handlePasswordCancel}
         onSubmit={handlePasswordSubmit}
         filePath={filePath || ""}
+      />
+
+      {/* Password Unlock Modal */}
+      <PasswordUnlockModal
+        isOpen={isUnlockModalOpen}
+        onClose={handleUnlockCancel}
+        onSubmit={handleUnlockSubmit}
+        filePath={filePath || ""}
+        passwordHint={passwordHint}
       />
     </div>
   );

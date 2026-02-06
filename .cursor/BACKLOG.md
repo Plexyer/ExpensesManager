@@ -103,7 +103,7 @@ Each task includes:
 
 ---
 
-### TASK-1.3: Master Password Unlock Modal
+### TASK-1.3: Master Password Unlock Modal ✅ COMPLETED
 **Goal**: Implement password unlock UI  
 **Scope**:
 - Password input field
@@ -125,6 +125,75 @@ Each task includes:
 **Complexity**: S  
 **Dependencies**: TASK-1.1
 
+#### Implementation Notes
+- **Completed on**: 2026-02-06
+- **Summary**:
+  - Created PasswordUnlockModal component with password input, hint display, error handling
+  - Added attempt limiting (max 5 attempts, session-based lockout)
+  - Modified fileSlice: openExistingFile now goes to "unlock-password" step before marking file open
+  - Added completeFileUnlock and cancelFileUnlock Redux actions
+  - Integrated unlock modal into Onboarding component
+  - Stub behavior: password verification succeeds by default; passwords starting with "fail" trigger error for testing
+- **Files changed**:
+  - New: `src/components/features/Onboarding/PasswordUnlockModal.tsx`
+  - Modified: `src/store/slices/fileSlice.ts` (added unlock actions, changed openExistingFile flow)
+  - Modified: `src/components/features/Onboarding/Onboarding.tsx` (integrated unlock modal)
+- **Verification**:
+  - Run `npm run tauri dev` → click "Open Finance File" → select any .financedb → unlock modal appears
+  - Enter any password → file opens (stub success)
+  - Enter password starting with "fail" → shows error, can retry
+  - After 5 failures → shows lockout message, input disabled
+  - Cancel or Escape → returns to file selection
+
+---
+
+### TASK-STUB-1: Implement Temporary `.financedb` Stub File Creation/Unlock ✅ DONE
+**Goal**: Create a temporary plaintext file format to enable testing of create/open/unlock flows before SQLCipher  
+**Scope**:
+- Implement stub file write on "Create Finance File" completion
+- Implement stub file read on "Open Finance File"
+- Implement password verification against stub file
+- Display password hint from stub file
+- Enable further MVP feature development that requires an existing file
+
+**Acceptance Criteria**:
+- ✅ "Create Finance File" writes a `.financedb` JSON stub file to disk
+- ✅ Stub file contains: format identifier, version, created_at, master_password (plaintext), password_hint
+- ✅ "Open Finance File" reads and parses stub file
+- ✅ Unlock modal verifies password against stub file content
+- ✅ Wrong password shows error, correct password unlocks file
+- ✅ Password hint displayed if available and requested
+- ✅ Invalid/corrupted files show appropriate error messages
+
+**Likely Areas/Files**:
+- `src/services/fileService.ts` (add stub read/write functions)
+- `src/components/features/Onboarding/PasswordCreationModal.tsx` (call stub write on create)
+- `src/components/features/Onboarding/PasswordUnlockModal.tsx` (call stub verify, display hint)
+- `src/store/slices/fileSlice.ts` (minor state updates if needed)
+
+**Complexity**: S (Small)  
+**Dependencies**: TASK-1.1, TASK-1.2, TASK-1.3
+
+**⚠️ MVP STUB ONLY**: This is a TEMPORARY format with PLAINTEXT passwords. See `.cursor/FINANCEDB_STUB_SPEC.md` for full specification. Will be replaced by SQLCipher in TASK-1.6.
+
+**Implementation Notes**:
+- **Completed on**: 2026-02-06
+- **Summary**:
+  - Implemented stub file I/O in Rust via Tauri commands (no new dependencies)
+  - Added `create_stub_file`, `read_stub_file_info`, `verify_stub_password` commands
+  - Updated fileService.ts with TypeScript wrappers for Rust commands
+  - Updated Onboarding flow to create real files and verify passwords
+  - Password hint is now read from file and displayed in unlock modal
+- **Files changed**:
+  - `src-tauri/src/stub_file.rs` (NEW - Rust stub file module with tests)
+  - `src-tauri/src/lib.rs` (register Tauri commands)
+  - `src/services/fileService.ts` (add stub file functions)
+  - `src/store/slices/fileSlice.ts` (handle password hint from file)
+  - `src/components/features/Onboarding/Onboarding.tsx` (integrate stub file I/O)
+- **Verification**:
+  - 5 Rust unit tests pass (create, read, verify correct/wrong password, invalid file)
+  - TypeScript compiles with no errors
+
 ---
 
 ### TASK-1.4: Research SQLCipher Rust Integration
@@ -145,7 +214,7 @@ Each task includes:
 - Research notes
 
 **Complexity**: S (research only)  
-**Dependencies**: None
+**Dependencies**: None (can run in parallel with TASK-STUB-1)
 
 ---
 
@@ -178,20 +247,26 @@ Each task includes:
 - Encrypt database on save
 - Decrypt database on load
 - Handle wrong password errors
+- Replace stub file format with real encrypted SQLite
 
 **Acceptance Criteria**:
 - ✅ Database file is encrypted
 - ✅ File unlocks with correct password
 - ✅ Wrong password fails gracefully
 - ✅ File is portable (can be moved/copied)
+- ✅ New files created as encrypted SQLite (not stub JSON)
+- ✅ Stub files from TASK-STUB-1 are no longer created (MVP testing complete)
 
 **Likely Areas/Files**:
 - `src-tauri/src/modules/security/encryption.rs` (implement encryption)
 - `src-tauri/src/modules/database/mod.rs` (modify for encryption)
 - `src-tauri/Cargo.toml` (add encryption dependencies)
+- `src/services/fileService.ts` (replace stub functions with Tauri commands)
 
 **Complexity**: L  
 **Dependencies**: TASK-1.5
+
+**Migration Note**: When this task is complete, the stub file format (TASK-STUB-1) becomes obsolete. No migration of stub files is needed since they contain no real data (testing only). See `.cursor/FINANCEDB_STUB_SPEC.md` for migration strategy if needed.
 
 ---
 

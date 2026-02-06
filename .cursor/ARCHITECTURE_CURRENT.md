@@ -9,8 +9,20 @@
 |-------|--------|-------|
 | Phase 1.1 - File Picker | ✅ DONE | Tauri dialog, Redux store, Onboarding UI |
 | Phase 1.2 - Password Creation | ✅ DONE | Password modal with zxcvbn strength, validation |
-| Phase 1.2b - Password Unlock | ⏳ TODO | Next task (TASK-1.3) |
-| Phase 1.3 - Encryption | ⏳ TODO | Blocked by 1.2b |
+| Phase 1.2b - Password Unlock | ✅ DONE | Unlock modal with error handling, attempt limiting |
+| Phase 1.2c - Stub File Format | ✅ DONE | Temporary plaintext `.financedb` for testing (TASK-STUB-1) |
+| Phase 1.3 - Encryption | ⏳ NEXT | TASK-1.4 (research) then TASK-1.5/1.6 |
+
+### Stub File Format (Implemented 2026-02-06)
+
+**Solution Implemented**: Temporary stub file format with Rust backend (no new dependencies).
+
+**Components**:
+- `src-tauri/src/stub_file.rs`: Tauri commands for create/read/verify stub files
+- `src/services/fileService.ts`: TypeScript wrappers for Rust commands
+- Stub files are JSON with format `financedb_stub`, version `1`, plaintext password
+
+**⚠️ MVP STUB ONLY**: Password stored in plaintext. Will be replaced by SQLCipher in Phase 1.3.
 
 ---
 
@@ -356,16 +368,82 @@ pub fn create_monthly_budget(
 | Tailwind CSS | ✅ DONE | v4 configured via Vite plugin |
 | Onboarding UI | ✅ DONE | Create/Open file buttons with native dialogs |
 
+---
+
+## Stub File I/O Architecture (Temporary - MVP Testing)
+
+> **⚠️ MVP STUB ONLY**: This architecture is temporary. See `.cursor/FINANCEDB_STUB_SPEC.md` for full spec.
+
+### Overview
+
+Before SQLCipher encryption is implemented, we use a simple JSON stub file to enable testing of create/open/unlock flows.
+
+```
+┌─────────────────────────────────────┐
+│      React Frontend (TypeScript)    │
+│  - PasswordCreationModal            │
+│  - PasswordUnlockModal              │
+│  - fileService.ts                   │
+└──────────────┬──────────────────────┘
+               │ Tauri FS API (read/write)
+               │
+┌──────────────▼──────────────────────┐
+│      .financedb Stub File           │
+│  {                                  │
+│    "format": "financedb_stub",      │
+│    "version": 1,                    │
+│    "master_password": "plaintext",  │
+│    "password_hint": "optional"      │
+│  }                                  │
+└─────────────────────────────────────┘
+```
+
+### Data Flow
+
+#### Create Finance File
+1. User completes password creation modal
+2. `fileService.writeStubFile(path, password, hint)` called
+3. Tauri FS API writes JSON to selected path
+4. Redux state updated: `isFileOpen = true`
+
+#### Open Finance File
+1. User selects `.financedb` file
+2. `fileService.readStubFile(path)` called
+3. File parsed, `password_hint` extracted for modal
+4. Unlock modal shown
+5. User enters password
+6. `fileService.verifyStubPassword(path, input)` compares to stored password
+7. If match → Redux state updated: `isFileOpen = true`
+8. If mismatch → error shown, retry allowed
+
+### File Location
+
+- **User-chosen**: File saved to location selected in file picker
+- **No default location**: Unlike app data, finance files are portable
+- **Extension**: `.financedb` (same as future encrypted format)
+
+### Security Model (Stub Only)
+
+| Aspect | Stub (Temporary) | Final (SQLCipher) |
+|--------|------------------|-------------------|
+| Password storage | Plaintext in JSON | Not stored (implicit in encryption) |
+| Encryption | None | AES-256 via SQLCipher |
+| Password verification | String comparison | Decryption success/failure |
+| Security level | ⚠️ NONE | ✅ Strong |
+
+---
+
 ## Known Architecture Gaps (for MVP)
 
 1. ~~**No file picker system**~~ - ✅ Implemented (TASK-1.1)
-2. **No encryption** - Database is plaintext SQLite
-3. **No period system** - Currently no database schema implemented
-4. **No single-period category grid (corrected design)** - No grid UI yet
-5. **No CSV export** - No export functionality exists
-6. **Template cadence not modeled** - No template system implemented yet
-7. **No licensing system** - No license state, no app mode (Full vs Read-Only), no feature gating
-8. **No database** - No rusqlite/SQLite integration yet (file path only, no actual DB operations)
+2. ~~**No file creation**~~ - ⏳ Stub file format (TASK-STUB-1 next)
+3. **No encryption** - Database is plaintext SQLite (stub uses plaintext JSON)
+4. **No period system** - Currently no database schema implemented
+5. **No single-period category grid (corrected design)** - No grid UI yet
+6. **No CSV export** - No export functionality exists
+7. **Template cadence not modeled** - No template system implemented yet
+8. **No licensing system** - No license state, no app mode (Full vs Read-Only), no feature gating
+9. **No database** - No rusqlite/SQLite integration yet (file path only, no actual DB operations)
 
 ---
 

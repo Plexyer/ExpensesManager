@@ -22,6 +22,8 @@
 | NQ1 | ✅ RESOLVED | Template default appears as first received line item |
 | NQ2 | ✅ RESOLVED | Received date column shows first/last dates from line items |
 | NQ3 | ✅ RESOLVED | ISO datetime, default time 00:00:00 if not provided |
+| STUB-Q1 | ✅ RESOLVED | Plaintext password acceptable for MVP stub files |
+| STUB-Q2 | ✅ RESOLVED | Use `.financedb` extension for stub files |
 
 ---
 
@@ -399,6 +401,36 @@ These questions arise from the licensing specification and need user input for c
 
 ---
 
+---
+
+## Stub File Format (MVP Testing)
+
+### STUB-Q1: Plaintext Password Storage for MVP Stub ✅ RESOLVED
+**Question**: Is plaintext password storage acceptable for the temporary stub file format used during MVP testing?
+
+**Context**: Before SQLCipher is implemented, we need a simple file format to test create/open/unlock flows. Storing the password in plaintext is simpler (no new dependencies), but less secure.
+
+**Options**:
+- **Option A (Default)**: Plaintext password in JSON stub file (simpler, no new deps)
+- **Option B**: Hash password with Argon2id (more secure, requires argon2 crate earlier)
+
+**Answer**: Per user request in mission, default to "no new deps" — plaintext is acceptable for MVP stub testing only.
+
+**✅ DECISION**: Plaintext password storage is ACCEPTABLE for temporary stub files. These files are for MVP testing only and will be replaced by SQLCipher-encrypted databases. See `.cursor/FINANCEDB_STUB_SPEC.md`.
+
+---
+
+### STUB-Q2: Stub File Extension ✅ RESOLVED
+**Question**: Should the stub file use `.financedb` extension or a different extension (e.g., `.financedb.json`)?
+
+**Context**: Using `.financedb` means no UX changes when switching to real format. Using `.financedb.json` makes it clear it's a stub.
+
+**Answer**: Per user request, keep `.financedb` extension so UX doesn't need to change later.
+
+**✅ DECISION**: Use `.financedb` extension for stub files (same as future encrypted format).
+
+---
+
 ## References
 - **ENCRYPTION_SPEC.md**: Encryption questions
 - **DATA_MODEL.md**: Schema questions
@@ -406,3 +438,4 @@ These questions arise from the licensing specification and need user input for c
 - **BACKLOG.md**: Future features section
 - **LICENSING.md**: Licensing specification
 - **LICENSING_SUMMARY.md**: Licensing decisions summary
+- **FINANCEDB_STUB_SPEC.md**: Stub file format specification

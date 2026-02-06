@@ -7,6 +7,25 @@ Key decisions from user answers:
 - **Password Hashing**: Use Argon2id exclusively (CONFIRMED - no backward compatibility with SHA256)
 - **Target Platform**: Windows 11 only for MVP (CONFIRMED - MacOS/Linux deferred to post-MVP)
 
+---
+
+## ⚠️ Temporary Stub Format (MVP Testing)
+
+Before SQLCipher is implemented, we use a **temporary plaintext JSON stub file** to enable testing of the create/open/unlock UI flows.
+
+**See**: `.cursor/FINANCEDB_STUB_SPEC.md` for the stub file specification.
+
+| Aspect | Stub (Current) | SQLCipher (Target) |
+|--------|----------------|-------------------|
+| Format | JSON text | SQLite binary |
+| Password | Stored in plaintext | Not stored (implicit) |
+| Encryption | None | AES-256 via SQLCipher |
+| Purpose | UI testing | Production |
+
+**When SQLCipher is ready**, the stub format will be replaced. Stub files contain no financial data, so no migration is needed.
+
+---
+
 ## Overview
 
 The MVP requires encrypted portable finance files. This document outlines the encryption strategy, threat model, and implementation approach.

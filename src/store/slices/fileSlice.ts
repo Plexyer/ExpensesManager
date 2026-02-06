@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
-import { selectNewFilePath, selectExistingFilePath } from "../../services/fileService";
+import { selectNewFilePath, selectExistingFilePath, readStubFileInfo } from "../../services/fileService";
 
 export type OnboardingStep = "select" | "create-password" | "unlock-password" | "complete";
 
@@ -39,6 +39,12 @@ export const createNewFile = createAsyncThunk(
   }
 );
 
+export interface OpenFileResult {
+  path: string;
+  name: string;
+  passwordHint: string | null;
+}
+
 export const openExistingFile = createAsyncThunk(
   "file/openExisting",
   async (_, { rejectWithValue }) => {
@@ -48,7 +54,16 @@ export const openExistingFile = createAsyncThunk(
         // User cancelled - not an error
         return null;
       }
-      return result;
+      
+      // Read the stub file to validate format and get password hint
+      // This validates that the file is a valid stub file before showing unlock modal
+      const fileInfo = await readStubFileInfo(result.path);
+      
+      return {
+        path: result.path,
+        name: result.name,
+        passwordHint: fileInfo.password_hint,
+      } as OpenFileResult;
     } catch (error) {
       return rejectWithValue(error instanceof Error ? error.message : "Failed to open file");
     }
@@ -82,6 +97,26 @@ const fileSlice = createSlice({
       state.fileName = null;
       state.onboardingStep = "select";
     },
+    // Called after password is verified during file unlock
+    completeFileUnlock: (state, action: PayloadAction<{ hint: string | null }>) => {
+      state.passwordHint = action.payload.hint;
+      state.isFileOpen = true;
+      state.onboardingStep = "complete";
+    },
+    // Cancel file unlock and go back to file selection
+    cancelFileUnlock: (state) => {
+      state.filePath = null;
+      state.fileName = null;
+      state.onboardingStep = "select";
+    },
+    // Set password hint (used when reading from stub file)
+    setPasswordHint: (state, action: PayloadAction<string | null>) => {
+      state.passwordHint = action.payload;
+    },
+    // Set error message
+    setError: (state, action: PayloadAction<string>) => {
+      state.error = action.payload;
+    },
   },
   extraReducers: (builder) => {
     // Create new file - store path and go to password creation step
@@ -111,12 +146,14 @@ const fileSlice = createSlice({
         state.isLoading = true;
         state.error = null;
       })
-      .addCase(openExistingFile.fulfilled, (state, action: PayloadAction<{ path: string; name: string } | null>) => {
+      .addCase(openExistingFile.fulfilled, (state, action: PayloadAction<OpenFileResult | null>) => {
         state.isLoading = false;
         if (action.payload) {
           state.filePath = action.payload.path;
           state.fileName = action.payload.name;
-          state.isFileOpen = true;
+          state.passwordHint = action.payload.passwordHint;
+          // Don't mark as open yet - need password verification first
+          state.onboardingStep = "unlock-password";
         }
         // If null (cancelled), just stop loading - no state change
       })
@@ -127,5 +164,5 @@ const fileSlice = createSlice({
   },
 });
 
-export const { clearError, closeFile, completeFileCreation, cancelPasswordCreation } = fileSlice.actions;
+export const { clearError, closeFile, completeFileCreation, cancelPasswordCreation, completeFileUnlock, cancelFileUnlock, setPasswordHint, setError } = fileSlice.actions;
 export default fileSlice.reducer;

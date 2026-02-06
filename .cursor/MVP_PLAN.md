@@ -71,6 +71,32 @@ This document outlines the step-by-step implementation plan for the ExpensesMana
 
 ---
 
+### Step 1.2b: Temporary Stub File Format ⏳ NEXT
+**Goal**: Create a temporary plaintext file format to test create/open/unlock flows  
+**Scope**:
+- Write stub JSON file on "Create Finance File"
+- Read stub file on "Open Finance File"
+- Verify password against stub file
+- Enable MVP development before SQLCipher is ready
+
+**Acceptance Criteria**:
+- ✅ "Create" writes `.financedb` stub file to disk
+- ✅ "Open" reads stub file and presents unlock modal
+- ✅ Password verification works against stub content
+- ✅ Password hint displayed from stub file
+- ✅ Error handling for invalid/corrupted files
+
+**Likely Files**:
+- `src/services/fileService.ts` (add stub read/write)
+- `src/components/features/Onboarding/PasswordCreationModal.tsx` (call stub write)
+- `src/components/features/Onboarding/PasswordUnlockModal.tsx` (call stub verify)
+
+**Complexity**: S (Small)
+
+**⚠️ MVP STUB ONLY**: Temporary format with plaintext passwords. See `.cursor/FINANCEDB_STUB_SPEC.md`. Replaced by Step 1.3 (real encryption).
+
+---
+
 ### Step 1.3: Encryption Integration
 **Goal**: Integrate SQLCipher or app-level encryption  
 **Scope**:
@@ -78,12 +104,14 @@ This document outlines the step-by-step implementation plan for the ExpensesMana
 - Implement key derivation (Argon2id)
 - Implement file encryption/decryption
 - Test encryption/decryption flow
+- Replace stub file format with real encrypted SQLite
 
 **Acceptance Criteria**:
 - ✅ Database file is encrypted
 - ✅ File can be unlocked with correct password
 - ✅ Wrong password fails to unlock
 - ✅ File can be moved/copied (portable)
+- ✅ Stub format replaced with real encrypted DB
 
 **Likely Files**:
 - `src-tauri/src/modules/security/encryption.rs` (implement)
