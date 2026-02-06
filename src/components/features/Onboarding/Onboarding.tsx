@@ -11,8 +11,8 @@ import {
 import PasswordCreationModal from "./PasswordCreationModal";
 import PasswordUnlockModal from "./PasswordUnlockModal";
 import {
-  createStubFile,
-  verifyStubPassword,
+  createEncryptedDb,
+  openEncryptedDb,
 } from "../../../services/fileService";
 
 const Onboarding = () => {
@@ -41,9 +41,8 @@ const Onboarding = () => {
       throw new Error("No file path selected");
     }
     
-    // Create the stub file on disk
-    // ⚠️ MVP STUB: Password stored in plaintext (will be replaced by SQLCipher)
-    await createStubFile(filePath, password, hint);
+    // Create the encrypted database on disk
+    await createEncryptedDb(filePath, password, hint);
     
     // Complete the file creation flow
     dispatch(completeFileCreation({ hint }));
@@ -58,9 +57,8 @@ const Onboarding = () => {
       throw new Error("No file path selected");
     }
     
-    // Verify password against the stub file
-    // ⚠️ MVP STUB: Plaintext password comparison (will be replaced by SQLCipher)
-    const fileInfo = await verifyStubPassword(filePath, password);
+    // Open and unlock the encrypted database
+    const fileInfo = await openEncryptedDb(filePath, password);
     
     // Success - complete unlock with hint from file
     dispatch(completeFileUnlock({ hint: fileInfo.password_hint }));

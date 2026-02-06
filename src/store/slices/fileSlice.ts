@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
-import { selectNewFilePath, selectExistingFilePath, readStubFileInfo } from "../../services/fileService";
+import { selectNewFilePath, selectExistingFilePath, getDbInfo } from "../../services/fileService";
 
 export type OnboardingStep = "select" | "create-password" | "unlock-password" | "complete";
 
@@ -55,9 +55,9 @@ export const openExistingFile = createAsyncThunk(
         return null;
       }
       
-      // Read the stub file to validate format and get password hint
-      // This validates that the file is a valid stub file before showing unlock modal
-      const fileInfo = await readStubFileInfo(result.path);
+      // Read database info to validate format and get password hint
+      // This validates that the file is a valid encrypted database before showing unlock modal
+      const fileInfo = await getDbInfo(result.path);
       
       return {
         path: result.path,

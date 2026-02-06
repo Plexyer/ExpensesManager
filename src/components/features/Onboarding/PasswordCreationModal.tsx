@@ -118,9 +118,13 @@ const PasswordCreationModal = ({
       // Clear password from memory after successful submit
       clearForm();
     } catch (error) {
-      setSubmitError(
-        error instanceof Error ? error.message : "Failed to create file"
-      );
+      // Tauri invoke errors can be strings or Error objects
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : typeof error === "string" 
+          ? error 
+          : "Failed to create file";
+      setSubmitError(errorMessage);
     } finally {
       setIsSubmitting(false);
     }

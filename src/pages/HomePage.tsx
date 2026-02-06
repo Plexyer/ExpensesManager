@@ -1,12 +1,21 @@
 import { useAppSelector, useAppDispatch } from "../store/hooks";
 import { closeFile } from "../store/slices/fileSlice";
+import { closeDb } from "../services/fileService";
 import Onboarding from "../components/features/Onboarding/Onboarding";
 
 const HomePage = () => {
   const { isFileOpen, fileName, filePath } = useAppSelector((state) => state.file);
   const dispatch = useAppDispatch();
 
-  const handleCloseFile = () => {
+  const handleCloseFile = async () => {
+    try {
+      // Close the database connection in the backend first
+      await closeDb();
+    } catch (error) {
+      // Log but don't block - if close fails, we still want to reset UI state
+      console.error("Error closing database:", error);
+    }
+    // Reset frontend state
     dispatch(closeFile());
   };
 

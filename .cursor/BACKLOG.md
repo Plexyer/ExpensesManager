@@ -272,7 +272,7 @@ Each task includes:
 
 ---
 
-### TASK-1.6: Implement Database Encryption
+### TASK-1.6: Implement Database Encryption ✅ COMPLETED
 **Goal**: Encrypt database file with SQLCipher or app-level encryption  
 **Scope**:
 - Integrate SQLCipher OR implement app-level AES-256-GCM
@@ -289,22 +289,30 @@ Each task includes:
 - ✅ New files created as encrypted SQLite (not stub JSON)
 - ✅ Stub files from TASK-STUB-1 are no longer created (MVP testing complete)
 
-**Likely Areas/Files**:
-- `src-tauri/src/modules/security/encryption.rs` (implement encryption)
-- `src-tauri/src/modules/database/mod.rs` (modify for encryption)
-- `src-tauri/Cargo.toml` (add encryption dependencies)
-- `src/services/fileService.ts` (replace stub functions with Tauri commands)
+**Completed Files**:
+- `src-tauri/src/file_header.rs` - Plaintext file header with salt, KDF params, hint
+- `src-tauri/src/encrypted_db.rs` - SQLCipher database operations + Tauri commands
+- `src-tauri/src/lib.rs` - Updated to register DbState and new commands
+- `src-tauri/Cargo.toml` - Added rusqlite, tempfile, thiserror
+- `src/services/fileService.ts` - Replaced stub functions with encrypted DB calls
+- `src/store/slices/fileSlice.ts` - Updated to use getDbInfo
+- `src/components/features/Onboarding/Onboarding.tsx` - Updated to use encrypted DB
+- Removed `src-tauri/src/stub_file.rs` (no longer needed)
+
+**Implementation Notes**:
+- Uses SQLCipher via `rusqlite` with `bundled-sqlcipher-vendored-openssl` feature
+- Uses Argon2id for key derivation (bypasses SQLCipher's PBKDF2 via raw hex key)
+- File format: EFM1 header (magic + version + salt + KDF params + hint) + encrypted SQLite
+- 17 tests passing (file_header, encrypted_db, kdf)
 
 **Complexity**: L  
 **Dependencies**: TASK-1.5
-
-**Migration Note**: When this task is complete, the stub file format (TASK-STUB-1) becomes obsolete. No migration of stub files is needed since they contain no real data (testing only). See `.cursor/FINANCEDB_STUB_SPEC.md` for migration strategy if needed.
 
 ---
 
 ## Phase 2: Data Model - Budget Instances & Categories
 
-### TASK-2.1: Create Periods Table Migration
+### TASK-2.1: Create Periods Table Migration ✅ COMPLETED
 **Goal**: Add a **budget instance per period** table to schema (one main grid per budget instance)  
 **Scope**:
 - Create migration file
@@ -323,6 +331,23 @@ Each task includes:
 
 **Complexity**: S  
 **Dependencies**: None (can do in parallel with Phase 1)
+
+#### Implementation Notes
+- **Completed on**: 2026-02-06
+- **Summary**:
+  - Created `migrations.rs` module with schema versioning via `_meta.schema_version`
+  - Migration v1 creates base MVP tables: `global_categories`, `budget_templates`, `template_categories`, `period_budget_instances`
+  - Migrations run automatically on both create and open paths
+  - Added `MigrationError` variant to `EncryptedDbError`
+- **Files changed**:
+  - `src-tauri/src/migrations.rs` (NEW - migration module with v1 schema)
+  - `src-tauri/src/encrypted_db.rs` (added migration calls, MigrationError variant)
+  - `src-tauri/src/lib.rs` (added `mod migrations`)
+- **Verification**:
+  - 28 Rust tests pass (7 new migration tests)
+  - `cargo build` succeeds with no warnings
+  - Tables created: `global_categories`, `budget_templates`, `template_categories`, `period_budget_instances`
+  - Indexes created: 6 indexes for query performance
 
 ---
 
@@ -1133,6 +1158,47 @@ These are not new features but architectural safeguards that MUST be in place to
   - Run `npm run tauri dev` → Create New Finance File → select location → modal appears
   - Resize window to 720px height → form scrolls, buttons reachable
   - Resize window to normal size → no unnecessary scrollbar
+
+---
+
+### TASK-FIX-2: Close File Button Does Not Close Backend Connection ✅ COMPLETED
+**Goal**: Fix "Close File" button to properly close the database connection in the backend  
+**Scope**:
+- Call `closeDb()` Tauri command when closing a file, not just Redux state reset
+- Make `close_db` idempotent (safe to call multiple times)
+- Fix error handling to properly display Tauri error strings
+
+**Acceptance Criteria**:
+- ✅ After closing a file, user can create a new file
+- ✅ After closing a file, user can reopen the same file
+- ✅ Errors display actual messages instead of generic fallbacks
+
+**Likely Areas/Files**:
+- `src/pages/HomePage.tsx`
+- `src-tauri/src/encrypted_db.rs`
+- `src/components/features/Onboarding/PasswordCreationModal.tsx`
+- `src/components/features/Onboarding/PasswordUnlockModal.tsx`
+
+**Complexity**: S  
+**Dependencies**: TASK-1.6
+
+#### Implementation Notes
+- **Completed on**: 2026-02-06
+- **Summary**:
+  - Root cause: `handleCloseFile` only dispatched Redux `closeFile()` but did NOT call `closeDb()` to close the actual Rust database connection
+  - Backend `DbState.conn` remained open, causing `AlreadyOpen` errors on subsequent create/open attempts
+  - Fixed `handleCloseFile` to call `await closeDb()` before dispatching Redux action
+  - Made `close_db_internal` idempotent (succeeds even if no DB is open)
+  - Fixed error handling in modals to extract Tauri string errors (not just `Error` objects)
+- **Files changed**:
+  - Modified: `src/pages/HomePage.tsx` (added async closeDb call before Redux dispatch)
+  - Modified: `src-tauri/src/encrypted_db.rs` (made close_db idempotent)
+  - Modified: `src/components/features/Onboarding/PasswordCreationModal.tsx` (fixed error extraction)
+  - Modified: `src/components/features/Onboarding/PasswordUnlockModal.tsx` (fixed error extraction)
+- **Verification**:
+  - Run `npm run tauri dev` → Create file → Close file → Create new file → Works
+  - Close file → Reopen same file → Works
+  - All 21 Rust tests pass
 
 ---
 

@@ -13,13 +13,19 @@ export interface FileDialogResult {
 }
 
 /**
- * Information returned when reading a stub file (password excluded for security).
+ * Information about a database file (password excluded for security).
  */
-export interface StubFileInfo {
+export interface DbFileInfo {
   format: string;
   version: number;
-  created_at: string;
   password_hint: string | null;
+}
+
+/**
+ * Result of creating a new database.
+ */
+export interface CreateDbResult {
+  path: string;
 }
 
 /**
@@ -77,32 +83,27 @@ const extractFileName = (filePath: string): string => {
 };
 
 // ============================================================================
-// STUB FILE OPERATIONS (MVP ONLY - Will be replaced by SQLCipher)
+// ENCRYPTED DATABASE OPERATIONS (SQLCipher)
 // ============================================================================
 //
-// ⚠️ WARNING: These functions use a temporary plaintext file format.
-// The password is stored in plaintext for MVP testing purposes only.
-// This will be replaced by SQLCipher-encrypted SQLite in TASK-1.6.
-//
-// See .cursor/FINANCEDB_STUB_SPEC.md for the stub file specification.
+// These functions interact with SQLCipher-encrypted database files.
+// The encryption key is derived from the master password using Argon2id.
 // ============================================================================
 
 /**
- * Creates a new stub file at the specified path.
- * 
- * ⚠️ MVP STUB ONLY - Stores password in plaintext!
- * 
+ * Creates a new encrypted database file at the specified path.
+ *
  * @param path - Full path to the file to create
- * @param password - Master password (will be stored in plaintext for MVP)
+ * @param password - Master password for encryption
  * @param hint - Optional password hint
- * @throws Error if file cannot be written
+ * @throws Error if file cannot be created
  */
-export const createStubFile = async (
+export const createEncryptedDb = async (
   path: string,
   password: string,
   hint: string | null
-): Promise<void> => {
-  await invoke("create_stub_file", {
+): Promise<CreateDbResult> => {
+  return await invoke<CreateDbResult>("create_encrypted_db", {
     path,
     password,
     hint: hint || null,
@@ -110,27 +111,49 @@ export const createStubFile = async (
 };
 
 /**
- * Reads stub file info without exposing the password.
- * 
- * @param path - Full path to the stub file
+ * Reads database info without opening/decrypting.
+ * Used to show password hint before user enters password.
+ *
+ * @param path - Full path to the database file
  * @returns File info including hint, version, etc.
  * @throws Error if file is invalid or cannot be read
  */
-export const readStubFileInfo = async (path: string): Promise<StubFileInfo> => {
-  return await invoke<StubFileInfo>("read_stub_file_info", { path });
+export const getDbInfo = async (path: string): Promise<DbFileInfo> => {
+  return await invoke<DbFileInfo>("get_db_info", { path });
 };
 
 /**
- * Verifies a password against a stub file.
- * 
- * @param path - Full path to the stub file
- * @param password - Password to verify
+ * Opens and unlocks an existing encrypted database.
+ *
+ * @param path - Full path to the database file
+ * @param password - Master password for decryption
  * @returns File info if password is correct
  * @throws Error if password is wrong or file is invalid
  */
-export const verifyStubPassword = async (
+export const openEncryptedDb = async (
   path: string,
   password: string
-): Promise<StubFileInfo> => {
-  return await invoke<StubFileInfo>("verify_stub_password", { path, password });
+): Promise<DbFileInfo> => {
+  return await invoke<DbFileInfo>("open_encrypted_db", { path, password });
+};
+
+/**
+ * Closes the current database connection.
+ *
+ * @throws Error if no database is open or close fails
+ */
+export const closeDb = async (): Promise<void> => {
+  await invoke("close_db");
+};
+
+/**
+ * Diagnostic function: get detailed file information for debugging.
+ * Useful for diagnosing password/encryption issues.
+ *
+ * @param path - Full path to the database file
+ * @returns Diagnostic report as a string
+ * @throws Error if file cannot be read or is invalid
+ */
+export const diagnoseDbFile = async (path: string): Promise<string> => {
+  return await invoke<string>("diagnose_db_file", { path });
 };

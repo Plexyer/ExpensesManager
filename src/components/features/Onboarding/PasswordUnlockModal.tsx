@@ -58,7 +58,13 @@ const PasswordUnlockModal = ({
       if (newAttemptCount >= MAX_ATTEMPTS) {
         setError("Too many failed attempts. Please restart the application to try again.");
       } else {
-        setError(err instanceof Error ? err.message : "Incorrect password. Please try again.");
+        // Tauri invoke errors can be strings or Error objects
+        const errorMessage = err instanceof Error 
+          ? err.message 
+          : typeof err === "string" 
+            ? err 
+            : "Incorrect password. Please try again.";
+        setError(errorMessage);
       }
     } finally {
       setIsSubmitting(false);
