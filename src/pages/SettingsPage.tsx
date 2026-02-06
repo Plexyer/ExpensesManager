@@ -1,26 +1,21 @@
-import { Link } from "react-router-dom";
+import { useAppSelector } from "../store/hooks";
+import AppHeader from "../components/common/AppHeader";
+import Onboarding from "../components/features/Onboarding/Onboarding";
 
 const SettingsPage = () => {
+  const { isFileOpen } = useAppSelector((state) => state.file);
+
+  // Show onboarding if no file is open
+  if (!isFileOpen) {
+    return <Onboarding />;
+  }
+
   return (
-    <div className="min-h-screen bg-slate-900">
-      {/* Header */}
-      <header className="bg-slate-800 border-b border-slate-700 px-6 py-4">
-        <div className="flex items-center gap-4">
-          <Link
-            to="/"
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            aria-label="Go back to home"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </Link>
-          <h1 className="text-lg font-semibold text-white">Settings</h1>
-        </div>
-      </header>
+    <div className="min-h-screen bg-slate-900 flex flex-col">
+      <AppHeader />
 
       {/* Main Content */}
-      <main className="p-6">
+      <main className="flex-1 p-6">
         <div className="max-w-2xl mx-auto">
           <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-8 text-center">
             <div className="w-16 h-16 rounded-2xl bg-slate-700/50 border border-slate-600 flex items-center justify-center mx-auto mb-4">

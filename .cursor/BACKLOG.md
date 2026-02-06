@@ -496,7 +496,7 @@ Each task includes:
 
 ## Phase 3: Templates - Cadence + Defaults
 
-### TASK-3.1: Update Template UI - Cadence
+### TASK-3.1: Update Template UI - Cadence ✅ COMPLETED
 **Goal**: Add cadence selection to template creation form  
 **Scope**:
 - Add cadence dropdown to template form
@@ -514,6 +514,65 @@ Each task includes:
 
 **Complexity**: S  
 **Dependencies**: TASK-2.3
+
+#### Implementation Notes
+- **Completed on**: 2026-02-06
+- **Summary**:
+  - Added full template CRUD with cadence dropdown (monthly, biweekly, weekly, daily, yearly, custom)
+  - Added global category management (create, list, delete) with inline creation during template editing
+  - Added template-category linking with default amounts
+  - Created AppHeader component for navigation when file is open (Home, Templates, Settings, Close File)
+  - All pages now use consistent AppHeader navigation
+- **Files changed**:
+  - Backend: `src-tauri/src/encrypted_db.rs` (added 11 new Tauri commands), `src-tauri/src/lib.rs` (registered commands)
+  - Types: `src/types/category.types.ts`, `src/types/template.types.ts` (new)
+  - Services: `src/services/categoryService.ts`, `src/services/templateService.ts` (new)
+  - Redux: `src/store/slices/categorySlice.ts`, `src/store/slices/templateSlice.ts` (new), `src/store/store.ts` (updated)
+  - UI: `src/components/common/AppHeader.tsx` (new), `src/pages/TemplatesPage.tsx` (new), `src/pages/HomePage.tsx` (updated), `src/pages/SettingsPage.tsx` (updated), `src/App.tsx` (updated)
+- **Tests/verification**:
+  - Rust tests: 48 passed, 0 failed
+  - Frontend build: successful
+  - All linter checks passed
+
+---
+
+### TASK-3.1.1: BUG - Templates/Categories Not Persisted After App Restart
+**Goal**: Investigate and fix why templates and global categories are not persisted after closing and reopening the app  
+**Scope**:
+- Debug database persistence for templates and global categories
+- Verify SQLCipher transactions are being committed
+- Check if database file is being properly closed/flushed
+- Ensure data is written to the correct file path
+
+**Symptoms**:
+- Templates created during a session work correctly
+- Template categories (links) work correctly during the session
+- After closing the app and reopening the same finance file, templates and categories are gone
+- The INSERT statements exist in the Rust backend (`encrypted_db.rs`), so the issue may be:
+  1. SQLCipher autocommit not working as expected
+  2. Database connection not properly flushed before close
+  3. File path mismatch between create and reopen
+  4. Encryption key derivation producing different keys on reopen
+
+**Acceptance Criteria**:
+- Templates persist across app restarts
+- Global categories persist across app restarts
+- Template-category links persist across app restarts
+
+**Likely Areas/Files**:
+- `src-tauri/src/encrypted_db.rs` (INSERT/SELECT commands, connection management)
+- `src-tauri/src/encrypted_db.rs` (`close_db` command - verify proper close)
+- `src-tauri/src/kdf.rs` (verify key derivation is deterministic)
+
+**Complexity**: M  
+**Dependencies**: TASK-3.1
+
+**Debugging Steps**:
+1. Add logging to INSERT commands to confirm they execute
+2. Check if `close_db` is called before app exit
+3. Verify the database file size increases after creating templates
+4. Test with SQLite browser to inspect the encrypted file
+5. Compare key derivation on create vs reopen
 
 ---
 

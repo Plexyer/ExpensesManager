@@ -20,6 +20,21 @@ pub fn run() {
             encrypted_db::close_db,
             encrypted_db::diagnose_db_file,
             encrypted_db::get_grid_data,
+            // Global category commands
+            encrypted_db::create_global_category,
+            encrypted_db::list_global_categories,
+            encrypted_db::delete_global_category,
+            // Template commands
+            encrypted_db::create_template,
+            encrypted_db::list_templates,
+            encrypted_db::get_template,
+            encrypted_db::update_template,
+            encrypted_db::delete_template,
+            // Template category commands
+            encrypted_db::get_template_categories,
+            encrypted_db::add_category_to_template,
+            encrypted_db::remove_category_from_template,
+            encrypted_db::update_template_category_amount,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

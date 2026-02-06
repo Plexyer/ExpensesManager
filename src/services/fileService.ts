@@ -210,6 +210,6 @@ export const getGridData = async (
   budgetInstanceId: number
 ): Promise<GetGridDataResult> => {
   return await invoke<GetGridDataResult>("get_grid_data", {
-    budget_instance_id: budgetInstanceId,
+    budgetInstanceId,
   });
 };

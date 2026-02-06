@@ -609,6 +609,655 @@ fn get_grid_data_internal(
     })
 }
 
+// ============================================================================
+// Global Category Commands
+// ============================================================================
+
+/// A global category definition.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GlobalCategory {
+    pub global_category_id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Arguments for creating a global category.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateGlobalCategoryArgs {
+    pub name: String,
+    pub description: Option<String>,
+}
+
+/// Creates a new global category.
+#[tauri::command]
+pub fn create_global_category(
+    args: CreateGlobalCategoryArgs,
+    db_state: State<DbState>,
+) -> Result<GlobalCategory, String> {
+    create_global_category_internal(&args, &db_state).map_err(|e| e.to_string())
+}
+
+fn create_global_category_internal(
+    args: &CreateGlobalCategoryArgs,
+    db_state: &State<DbState>,
+) -> Result<GlobalCategory, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    conn.execute(
+        "INSERT INTO global_categories (name, description) VALUES (?, ?)",
+        rusqlite::params![&args.name, &args.description],
+    )?;
+
+    let id = conn.last_insert_rowid();
+
+    // Fetch the created category
+    let category = conn.query_row(
+        "SELECT global_category_id, name, description, created_at, updated_at FROM global_categories WHERE global_category_id = ?",
+        [id],
+        |row| {
+            Ok(GlobalCategory {
+                global_category_id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
+            })
+        },
+    )?;
+
+    Ok(category)
+}
+
+/// Lists all global categories.
+#[tauri::command]
+pub fn list_global_categories(db_state: State<DbState>) -> Result<Vec<GlobalCategory>, String> {
+    list_global_categories_internal(&db_state).map_err(|e| e.to_string())
+}
+
+fn list_global_categories_internal(
+    db_state: &State<DbState>,
+) -> Result<Vec<GlobalCategory>, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT global_category_id, name, description, created_at, updated_at FROM global_categories ORDER BY name",
+    )?;
+
+    let categories = stmt
+        .query_map([], |row| {
+            Ok(GlobalCategory {
+                global_category_id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(categories)
+}
+
+/// Deletes a global category by ID.
+/// Fails if the category is used in any template.
+#[tauri::command]
+pub fn delete_global_category(
+    global_category_id: i64,
+    db_state: State<DbState>,
+) -> Result<(), String> {
+    delete_global_category_internal(global_category_id, &db_state).map_err(|e| e.to_string())
+}
+
+fn delete_global_category_internal(
+    global_category_id: i64,
+    db_state: &State<DbState>,
+) -> Result<(), EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    // Check if category is used in any template
+    let in_use: bool = conn
+        .query_row(
+            "SELECT 1 FROM template_categories WHERE global_category_id = ? LIMIT 1",
+            [global_category_id],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if in_use {
+        return Err(EncryptedDbError::DatabaseError(
+            "Cannot delete category: it is used in one or more templates.".to_string(),
+        ));
+    }
+
+    let rows_deleted = conn.execute(
+        "DELETE FROM global_categories WHERE global_category_id = ?",
+        [global_category_id],
+    )?;
+
+    if rows_deleted == 0 {
+        return Err(EncryptedDbError::DatabaseError(format!(
+            "Category {} not found.",
+            global_category_id
+        )));
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// Template Commands
+// ============================================================================
+
+/// A budget template definition.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Template {
+    pub template_id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub cadence: String,
+    pub default_currency: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// A category linked to a template with its default amount.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TemplateCategory {
+    pub template_category_id: i64,
+    pub global_category_id: i64,
+    pub category_name: String,
+    pub allocated_amount: f64,
+    pub category_type: String,
+    pub sort_order: i64,
+}
+
+/// Arguments for creating a template.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateTemplateArgs {
+    pub name: String,
+    pub description: Option<String>,
+    pub cadence: String,
+    pub default_currency: String,
+}
+
+/// Arguments for updating a template.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateTemplateArgs {
+    pub name: String,
+    pub description: Option<String>,
+    pub cadence: String,
+    pub default_currency: String,
+}
+
+/// Arguments for adding a category to a template.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AddTemplateCategoryArgs {
+    pub template_id: i64,
+    pub global_category_id: i64,
+    pub allocated_amount: f64,
+    pub category_type: Option<String>,
+}
+
+/// Creates a new budget template.
+#[tauri::command]
+pub fn create_template(
+    args: CreateTemplateArgs,
+    db_state: State<DbState>,
+) -> Result<Template, String> {
+    create_template_internal(&args, &db_state).map_err(|e| e.to_string())
+}
+
+fn create_template_internal(
+    args: &CreateTemplateArgs,
+    db_state: &State<DbState>,
+) -> Result<Template, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    // Validate cadence
+    let valid_cadences = ["monthly", "biweekly", "weekly", "daily", "yearly", "custom"];
+    if !valid_cadences.contains(&args.cadence.as_str()) {
+        return Err(EncryptedDbError::DatabaseError(format!(
+            "Invalid cadence: {}. Must be one of: {}",
+            args.cadence,
+            valid_cadences.join(", ")
+        )));
+    }
+
+    conn.execute(
+        "INSERT INTO budget_templates (name, description, cadence, default_currency) VALUES (?, ?, ?, ?)",
+        rusqlite::params![&args.name, &args.description, &args.cadence, &args.default_currency],
+    )?;
+
+    let id = conn.last_insert_rowid();
+
+    // Fetch the created template
+    let template = conn.query_row(
+        "SELECT template_id, name, description, cadence, default_currency, created_at, updated_at FROM budget_templates WHERE template_id = ?",
+        [id],
+        |row| {
+            Ok(Template {
+                template_id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                cadence: row.get(3)?,
+                default_currency: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        },
+    )?;
+
+    Ok(template)
+}
+
+/// Lists all budget templates.
+#[tauri::command]
+pub fn list_templates(db_state: State<DbState>) -> Result<Vec<Template>, String> {
+    list_templates_internal(&db_state).map_err(|e| e.to_string())
+}
+
+fn list_templates_internal(
+    db_state: &State<DbState>,
+) -> Result<Vec<Template>, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT template_id, name, description, cadence, default_currency, created_at, updated_at FROM budget_templates ORDER BY name",
+    )?;
+
+    let templates = stmt
+        .query_map([], |row| {
+            Ok(Template {
+                template_id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                cadence: row.get(3)?,
+                default_currency: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(templates)
+}
+
+/// Gets a single template by ID.
+#[tauri::command]
+pub fn get_template(
+    template_id: i64,
+    db_state: State<DbState>,
+) -> Result<Template, String> {
+    get_template_internal(template_id, &db_state).map_err(|e| e.to_string())
+}
+
+fn get_template_internal(
+    template_id: i64,
+    db_state: &State<DbState>,
+) -> Result<Template, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let template = conn.query_row(
+        "SELECT template_id, name, description, cadence, default_currency, created_at, updated_at FROM budget_templates WHERE template_id = ?",
+        [template_id],
+        |row| {
+            Ok(Template {
+                template_id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                cadence: row.get(3)?,
+                default_currency: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        },
+    ).map_err(|e| {
+        if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
+            EncryptedDbError::DatabaseError(format!("Template {} not found.", template_id))
+        } else {
+            EncryptedDbError::from(e)
+        }
+    })?;
+
+    Ok(template)
+}
+
+/// Updates an existing template.
+#[tauri::command]
+pub fn update_template(
+    template_id: i64,
+    args: UpdateTemplateArgs,
+    db_state: State<DbState>,
+) -> Result<Template, String> {
+    update_template_internal(template_id, &args, &db_state).map_err(|e| e.to_string())
+}
+
+fn update_template_internal(
+    template_id: i64,
+    args: &UpdateTemplateArgs,
+    db_state: &State<DbState>,
+) -> Result<Template, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    // Validate cadence
+    let valid_cadences = ["monthly", "biweekly", "weekly", "daily", "yearly", "custom"];
+    if !valid_cadences.contains(&args.cadence.as_str()) {
+        return Err(EncryptedDbError::DatabaseError(format!(
+            "Invalid cadence: {}. Must be one of: {}",
+            args.cadence,
+            valid_cadences.join(", ")
+        )));
+    }
+
+    let rows_updated = conn.execute(
+        "UPDATE budget_templates SET name = ?, description = ?, cadence = ?, default_currency = ?, updated_at = datetime('now') WHERE template_id = ?",
+        rusqlite::params![&args.name, &args.description, &args.cadence, &args.default_currency, template_id],
+    )?;
+
+    if rows_updated == 0 {
+        return Err(EncryptedDbError::DatabaseError(format!(
+            "Template {} not found.",
+            template_id
+        )));
+    }
+
+    // Fetch the updated template
+    get_template_internal(template_id, db_state)
+}
+
+/// Deletes a template by ID.
+#[tauri::command]
+pub fn delete_template(
+    template_id: i64,
+    db_state: State<DbState>,
+) -> Result<(), String> {
+    delete_template_internal(template_id, &db_state).map_err(|e| e.to_string())
+}
+
+fn delete_template_internal(
+    template_id: i64,
+    db_state: &State<DbState>,
+) -> Result<(), EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let rows_deleted = conn.execute(
+        "DELETE FROM budget_templates WHERE template_id = ?",
+        [template_id],
+    )?;
+
+    if rows_deleted == 0 {
+        return Err(EncryptedDbError::DatabaseError(format!(
+            "Template {} not found.",
+            template_id
+        )));
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// Template Category Commands
+// ============================================================================
+
+/// Gets all categories for a template.
+#[tauri::command]
+pub fn get_template_categories(
+    template_id: i64,
+    db_state: State<DbState>,
+) -> Result<Vec<TemplateCategory>, String> {
+    get_template_categories_internal(template_id, &db_state).map_err(|e| e.to_string())
+}
+
+fn get_template_categories_internal(
+    template_id: i64,
+    db_state: &State<DbState>,
+) -> Result<Vec<TemplateCategory>, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT 
+            tc.template_category_id,
+            tc.global_category_id,
+            gc.name AS category_name,
+            tc.allocated_amount,
+            tc.category_type,
+            tc.sort_order
+        FROM template_categories tc
+        JOIN global_categories gc ON gc.global_category_id = tc.global_category_id
+        WHERE tc.template_id = ?
+        ORDER BY tc.sort_order, tc.template_category_id
+        "#,
+    )?;
+
+    let categories = stmt
+        .query_map([template_id], |row| {
+            Ok(TemplateCategory {
+                template_category_id: row.get(0)?,
+                global_category_id: row.get(1)?,
+                category_name: row.get(2)?,
+                allocated_amount: row.get(3)?,
+                category_type: row.get(4)?,
+                sort_order: row.get(5)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(categories)
+}
+
+/// Adds a category to a template.
+#[tauri::command]
+pub fn add_category_to_template(
+    args: AddTemplateCategoryArgs,
+    db_state: State<DbState>,
+) -> Result<TemplateCategory, String> {
+    add_category_to_template_internal(&args, &db_state).map_err(|e| e.to_string())
+}
+
+fn add_category_to_template_internal(
+    args: &AddTemplateCategoryArgs,
+    db_state: &State<DbState>,
+) -> Result<TemplateCategory, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    // Get next sort order
+    let max_sort: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(sort_order), 0) FROM template_categories WHERE template_id = ?",
+            [args.template_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    let category_type = args.category_type.clone().unwrap_or_else(|| "expense".to_string());
+
+    conn.execute(
+        "INSERT INTO template_categories (template_id, global_category_id, allocated_amount, category_type, sort_order) VALUES (?, ?, ?, ?, ?)",
+        rusqlite::params![args.template_id, args.global_category_id, args.allocated_amount, &category_type, max_sort + 1],
+    )?;
+
+    let id = conn.last_insert_rowid();
+
+    // Fetch the created template category with joined name
+    let tc = conn.query_row(
+        r#"
+        SELECT 
+            tc.template_category_id,
+            tc.global_category_id,
+            gc.name AS category_name,
+            tc.allocated_amount,
+            tc.category_type,
+            tc.sort_order
+        FROM template_categories tc
+        JOIN global_categories gc ON gc.global_category_id = tc.global_category_id
+        WHERE tc.template_category_id = ?
+        "#,
+        [id],
+        |row| {
+            Ok(TemplateCategory {
+                template_category_id: row.get(0)?,
+                global_category_id: row.get(1)?,
+                category_name: row.get(2)?,
+                allocated_amount: row.get(3)?,
+                category_type: row.get(4)?,
+                sort_order: row.get(5)?,
+            })
+        },
+    )?;
+
+    Ok(tc)
+}
+
+/// Removes a category from a template.
+#[tauri::command]
+pub fn remove_category_from_template(
+    template_category_id: i64,
+    db_state: State<DbState>,
+) -> Result<(), String> {
+    remove_category_from_template_internal(template_category_id, &db_state).map_err(|e| e.to_string())
+}
+
+fn remove_category_from_template_internal(
+    template_category_id: i64,
+    db_state: &State<DbState>,
+) -> Result<(), EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let rows_deleted = conn.execute(
+        "DELETE FROM template_categories WHERE template_category_id = ?",
+        [template_category_id],
+    )?;
+
+    if rows_deleted == 0 {
+        return Err(EncryptedDbError::DatabaseError(format!(
+            "Template category {} not found.",
+            template_category_id
+        )));
+    }
+
+    Ok(())
+}
+
+/// Updates the allocated amount for a template category.
+#[tauri::command]
+pub fn update_template_category_amount(
+    template_category_id: i64,
+    allocated_amount: f64,
+    db_state: State<DbState>,
+) -> Result<(), String> {
+    update_template_category_amount_internal(template_category_id, allocated_amount, &db_state)
+        .map_err(|e| e.to_string())
+}
+
+fn update_template_category_amount_internal(
+    template_category_id: i64,
+    allocated_amount: f64,
+    db_state: &State<DbState>,
+) -> Result<(), EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let rows_updated = conn.execute(
+        "UPDATE template_categories SET allocated_amount = ? WHERE template_category_id = ?",
+        rusqlite::params![allocated_amount, template_category_id],
+    )?;
+
+    if rows_updated == 0 {
+        return Err(EncryptedDbError::DatabaseError(format!(
+            "Template category {} not found.",
+            template_category_id
+        )));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
