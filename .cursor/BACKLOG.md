@@ -864,6 +864,8 @@ Each task includes:
 **Complexity**: S  
 **Dependencies**: TASK-LIC-1, TASK-LIC-4
 
+**Status**: ⏳ Deferred until post-MVP (low priority; perpetual license works offline by default)
+
 ---
 
 ### TASK-LIC-8: Old Generation License Banner
@@ -888,7 +890,69 @@ Each task includes:
 **Complexity**: M  
 **Dependencies**: TASK-LIC-4
 
-**Status**: Deferred (requires server infrastructure - post-MVP)
+**Status**: ⏳ Deferred until post-MVP (requires server infrastructure)
+
+---
+
+## MVP Licensing Safeguards (Non-Negotiable)
+
+These are not new features but architectural safeguards that MUST be in place to avoid major rework later.
+
+### TASK-SAFEGUARD-1: App Mode Plumbing (Full vs Read-Only)
+**Goal**: Ensure app mode state exists and is respected throughout the codebase  
+**Scope**:
+- Create license state slice with `mode: 'full' | 'read-only'`
+- All write actions check mode before proceeding
+- Mode can be switched when license is imported/removed
+
+**Why Now**: If we build components without mode awareness, we'll have to retrofit every write action later.
+
+**Acceptance Criteria**:
+- ✅ License state exists with mode field
+- ✅ Sample write action respects mode (template for others)
+- ✅ Mode switching works when license state changes
+
+**Complexity**: S  
+**Dependencies**: None (should be early)
+
+---
+
+### TASK-SAFEGUARD-2: Export Always Available
+**Goal**: Ensure export command and UI are never gated by license status  
+**Scope**:
+- Export backend command has NO license checks
+- Export UI button is NEVER disabled based on mode
+- Add explicit comment in code: "// NON-NEGOTIABLE: Export always available"
+
+**Why Now**: Export is a UX non-negotiable from LICENSING.md. If we accidentally add mode gating, we violate the no-lock-in principle.
+
+**Acceptance Criteria**:
+- ✅ Export works in Full Mode
+- ✅ Export works in Read-Only Mode
+- ✅ Code has explicit documentation
+
+**Complexity**: S  
+**Dependencies**: TASK-7.1 (CSV Export Backend)
+
+---
+
+### TASK-SAFEGUARD-3: Database Open/Unlock Never Blocked
+**Goal**: Ensure opening and unlocking encrypted database is license-independent  
+**Scope**:
+- File picker and open flows have NO license checks
+- Password unlock has NO license checks
+- License state is determined AFTER database is open
+- Add explicit comment: "// NON-NEGOTIABLE: DB access never requires license"
+
+**Why Now**: Users must always access their data. If we add license checks to the open flow, we trap user data.
+
+**Acceptance Criteria**:
+- ✅ Can open database with no license
+- ✅ Can unlock database with no license
+- ✅ License state determined after unlock
+
+**Complexity**: S  
+**Dependencies**: TASK-1.6 (Database Encryption)
 
 ---
 

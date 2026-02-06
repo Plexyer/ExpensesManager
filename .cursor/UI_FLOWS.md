@@ -312,7 +312,9 @@
 
 ---
 
-## Flow 9: Read-Only Mode Experience (CONFIRMED from LICENSING.md)
+## Flow 9: Read-Only Mode Experience (CONFIRMED from LICENSING.md) — MVP
+
+> **MVP Note**: This flow is REQUIRED for MVP. Read-Only mode is the default experience for users without a valid license.
 
 ### Scenario: User without valid license
 
@@ -348,7 +350,9 @@
 
 ---
 
-## Flow 10: Import License File (CONFIRMED from LICENSING.md)
+## Flow 10: Import License File (CONFIRMED from LICENSING.md) — MVP
+
+> **MVP Note**: This flow is REQUIRED for MVP. Users must be able to import a perpetual license file to unlock Full Mode.
 
 ### Step 1: Navigate to License
 1. User clicks "Settings" in sidebar
@@ -378,7 +382,9 @@
 
 ---
 
-## Flow 11: Offline Mode Toggle (CONFIRMED from LICENSING.md)
+## Flow 11: Offline Mode Toggle (CONFIRMED from LICENSING.md) — DEFERRED
+
+> **Post-MVP**: This flow is DEFERRED. Perpetual licenses work fully offline by default; the explicit toggle is a nice-to-have for post-MVP.
 
 ### Prerequisite: Valid Perpetual License
 
@@ -406,7 +412,9 @@
 
 ---
 
-## Flow 12: Old Generation License Banner (CONFIRMED from LICENSING.md)
+## Flow 12: Old Generation License Banner (CONFIRMED from LICENSING.md) — DEFERRED
+
+> **Post-MVP**: This flow is DEFERRED. It requires server infrastructure for license status checks, which is out of scope for MVP.
 
 ### Scenario: User has valid license but newer generation exists on server
 
@@ -436,3 +444,4 @@
 - See **UX_INTERACTIONS.md** for interaction patterns
 - See **MVP_PLAN.md** for implementation roadmap
 - See **LICENSING.md** for authoritative licensing spec
+- See **LICENSING_MVP_IMPACTS.md** for MVP vs deferred licensing breakdown

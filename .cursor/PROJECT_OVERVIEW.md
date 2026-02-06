@@ -225,16 +225,33 @@ See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_SUMMA
 - **Read-Only Mode**: Read + Export only (on expiry or no license)
 
 ### Key Licensing Rules (CONFIRMED)
-- **No lock-in**: Users can ALWAYS Open Database + Export, even in Read-Only
+- **No lock-in**: Users can ALWAYS Open Database + Export, even in Read-Only (NON-NEGOTIABLE for MVP)
 - **Offline-first**: Perpetual plan works fully offline forever
 - **Privacy-first**: No email/account required for perpetual licenses
 - **Feature gating**: Based on `build_release_date <= feature_updates_until` (NOT system clock)
-- **Old generation handling**: Valid signature → Full Mode; show banner to update, don't disrupt
+- **Old generation handling**: Valid signature → Full Mode; show banner to update, don't disrupt (post-MVP)
+
+### MVP Licensing Scope
+For MVP, we implement:
+- ✅ Read-Only mode as default (no license)
+- ✅ Perpetual license file import + offline signature verification
+- ✅ Full Mode activation on valid license
+- ✅ Export ALWAYS available (non-negotiable)
+- ✅ DB open/unlock never blocked by license
+
+Deferred to post-MVP:
+- ❌ Payment/purchase flow (open question: LQ1)
+- ❌ Subscription system (Basic Paid, Premium)
+- ❌ Server infrastructure
+- ❌ Recovery secret flow
+- ❌ Offline Mode toggle UI
+
+See `.cursor/LICENSING_MVP_IMPACTS.md` for complete breakdown.
 
 ### Licensing Artifacts
 - **Perpetual License File**: Signed portable file (`license_id`, `generation`, `feature_updates_until`, `signature`)
-- **Recovery Secret**: For license recovery without account
-- **Lease Token**: For subscription plans (requires periodic refresh)
+- **Recovery Secret**: For license recovery without account (post-MVP)
+- **Lease Token**: For subscription plans (post-MVP)
 
 ---
 

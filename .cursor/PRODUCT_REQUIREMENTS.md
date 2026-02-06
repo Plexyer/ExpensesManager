@@ -58,24 +58,28 @@
 
 ## Licensing Requirements (CONFIRMED)
 
-See `.cursor/LICENSING.md` for authoritative source.
+See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_MVP_IMPACTS.md` for MVP scope details.
 
 ### MVP Licensing Scope
 
-**In Scope for MVP**:
-- Read-Only mode (fallback when no valid license)
-- Export always available (even in Read-Only)
-- Perpetual license file import/validation
+**In Scope for MVP** (see LICENSING_MVP_IMPACTS.md for details):
+- Read-Only mode as default (fallback when no valid license)
+- Export ALWAYS available, even in Read-Only (NON-NEGOTIABLE)
+- Database open/unlock NEVER blocked by license (NON-NEGOTIABLE)
+- Perpetual license file import/validation (offline)
 - Full Mode activation with valid license
-- Basic license status display
+- Basic license status display in Settings
+- App mode state management (Full vs Read-Only)
 
-**Deferred (Post-MVP)**:
-- In-app purchase flow
-- Subscription lease token system (Basic Paid / Premium)
+**Deferred (Post-MVP)** — All licensing questions (LQ1-LQ5) remain OPEN:
+- In-app purchase flow (LQ1 open)
+- Subscription lease token system (Basic Paid / Premium) (LQ4 open)
 - Server-side license issuance
-- Recovery secret flow (server-side)
+- Recovery secret flow (server-side) (LQ3 open)
 - Offline Mode toggle UI
 - Premium features (cloud sync, bank sync, receipt AI)
+- Old generation license banner (requires server)
+- Bugfix distribution mechanics (LQ2 open)
 
 ### Licensing User Stories (MVP)
 

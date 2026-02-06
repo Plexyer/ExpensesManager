@@ -318,6 +318,8 @@ All documented in BACKLOG.md under "Future Features / Premium Features" section.
 
 These questions arise from the licensing specification and need user input for complete planning.
 
+> **Note**: All licensing follow-up questions are **deferred until post-MVP**. The MVP will implement the minimum licensing infrastructure (Read-Only mode, license file import, export always available) without resolving these questions. They remain OPEN for future decision.
+
 ### LQ1: Payment Provider Choice
 **Question**: Which payment provider should be used for license purchases?
 
@@ -329,7 +331,7 @@ These questions arise from the licensing specification and need user input for c
 
 **Impact**: Affects server-side implementation for license issuance and webhook handling.
 
-**Status**: ⏳ OPEN
+**Status**: ⏳ OPEN — *Deferred until post-MVP (requires server infrastructure)*
 
 ---
 
@@ -345,7 +347,7 @@ These questions arise from the licensing specification and need user input for c
 
 **Impact**: Affects release/versioning strategy and update distribution.
 
-**Status**: ⏳ OPEN
+**Status**: ⏳ OPEN — *Deferred until post-MVP (distribution mechanics not needed for MVP)*
 
 ---
 
@@ -362,7 +364,7 @@ These questions arise from the licensing specification and need user input for c
 
 **Impact**: Affects purchase flow UX and user experience.
 
-**Status**: ⏳ OPEN
+**Status**: ⏳ OPEN — *Deferred until post-MVP (requires purchase flow implementation)*
 
 ---
 
@@ -378,7 +380,7 @@ These questions arise from the licensing specification and need user input for c
 
 **Impact**: Affects lease token `offline_allowed_until` calculation.
 
-**Status**: ⏳ OPEN (suggested values provided)
+**Status**: ⏳ OPEN (suggested values provided) — *Deferred until post-MVP (subscription system not in MVP)*
 
 ---
 
@@ -393,7 +395,7 @@ These questions arise from the licensing specification and need user input for c
 
 **Impact**: Affects Premium purchase flow and entitlement checks.
 
-**Status**: ⏳ OPEN (confirmation requested)
+**Status**: ⏳ OPEN (confirmation requested) — *Deferred until post-MVP (Premium features not in MVP)*
 
 ---
 

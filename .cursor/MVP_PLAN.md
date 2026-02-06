@@ -461,6 +461,8 @@ This document outlines the step-by-step implementation plan for the ExpensesMana
 
 ## Phase 7.5: Licensing & App Modes (CONFIRMED from LICENSING.md)
 
+> **Scope Note**: This phase implements ONLY the MVP-relevant licensing requirements. See `.cursor/LICENSING_MVP_IMPACTS.md` for the full breakdown of what's MVP vs deferred. All open licensing questions (LQ1-LQ5) remain deferred until post-MVP.
+
 ### Step 7.5.1: App Mode State Management
 **Goal**: Implement Full Mode vs Read-Only Mode  
 **Scope**:
@@ -478,6 +480,8 @@ This document outlines the step-by-step implementation plan for the ExpensesMana
 - `src/components/common/ModeIndicator.tsx` (new)
 
 **Complexity**: S (Small)
+
+**MVP Priority**: HIGH - This is foundational for licensing
 
 ---
 
@@ -524,7 +528,7 @@ This document outlines the step-by-step implementation plan for the ExpensesMana
 
 ---
 
-### Step 7.5.4: Feature Gating (CONFIRMED)
+### Step 7.5.4: Feature Gating Hook (CONFIRMED)
 **Goal**: Gate features by build release date  
 **Scope**:
 - Add build metadata with release date
@@ -542,7 +546,27 @@ This document outlines the step-by-step implementation plan for the ExpensesMana
 
 **Complexity**: S (Small)
 
-**Checkpoint**: App modes work, license import works, feature gating implemented
+**MVP Note**: For MVP, this is a "hook" - the metadata must exist, but actual gating can be minimal since MVP features are all "base" features.
+
+**Checkpoint**: App modes work, license import works, feature gating hook in place
+
+---
+
+### Deferred Licensing (Post-MVP)
+
+The following licensing items are **explicitly deferred** and NOT part of the MVP:
+
+| Item | Reason |
+|------|--------|
+| Payment/purchase flow | Requires server + payment provider (LQ1 open) |
+| Subscription lease tokens | Requires server infrastructure |
+| Recovery secret flow | Requires purchase flow (LQ3 open) |
+| Offline Mode toggle UI | Low priority; perpetual works offline by default |
+| Old generation license banner | Requires server for status check |
+| Bugfix distribution mechanics | Policy decision (LQ2 open) |
+| Premium features | Explicitly out of scope |
+
+See `.cursor/LICENSING_MVP_IMPACTS.md` for complete details.
 
 ---
 

@@ -324,7 +324,7 @@ pub fn create_monthly_budget(
 
 ## Licensing Architecture (CONFIRMED)
 
-See `.cursor/LICENSING.md` for authoritative source.
+See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_MVP_IMPACTS.md` for MVP scope breakdown.
 
 ### License State Management
 
