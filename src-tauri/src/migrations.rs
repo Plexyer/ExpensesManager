@@ -17,7 +17,7 @@ use rusqlite::Connection;
 use thiserror::Error;
 
 /// Current schema version. Increment when adding new migrations.
-pub const CURRENT_SCHEMA_VERSION: u32 = 2;
+pub const CURRENT_SCHEMA_VERSION: u32 = 3;
 
 /// Errors that can occur during migrations.
 #[derive(Debug, Error)]
@@ -101,6 +101,7 @@ fn apply_migration(conn: &Connection, version: u32) -> Result<(), MigrationError
     match version {
         1 => apply_migration_v1(conn),
         2 => apply_migration_v2(conn),
+        3 => apply_migration_v3(conn),
         _ => Err(MigrationError::UnknownVersion(version)),
     }
 }
@@ -274,6 +275,88 @@ CREATE INDEX IF NOT EXISTS idx_bic_instance_sort
     ON budget_instance_categories(budget_instance_id, sort_order);
 "#;
 
+/// Migration v3: Create category_line_items table.
+///
+/// This table stores received/spent line items for each category within
+/// a budget instance. Line items have explicit timestamps and support
+/// soft deletion.
+fn apply_migration_v3(conn: &Connection) -> Result<(), MigrationError> {
+    let tx = conn.unchecked_transaction()?;
+
+    tx.execute_batch(MIGRATION_V3_SQL)?;
+
+    tx.execute(
+        "INSERT OR REPLACE INTO _meta (key, value) VALUES ('schema_version', '3')",
+        [],
+    )?;
+
+    tx.commit()?;
+
+    Ok(())
+}
+
+/// SQL for migration v3: Category line items table.
+///
+/// Creates the table that stores received/spent line items for each
+/// category envelope within a budget instance. Supports:
+/// - 'received' and 'spent' line item types via `kind` column
+/// - ISO 8601 timestamps for occurred_at
+/// - Multi-currency (CHF/EUR for MVP)
+/// - Soft deletion via deleted_at
+/// - Template default tracking via is_template_default flag
+const MIGRATION_V3_SQL: &str = r#"
+-- ============================================================================
+-- Migration v3: Category Line Items Table
+-- ============================================================================
+-- Creates the category_line_items table that stores received/spent entries
+-- for each category envelope. Each line item has an explicit timestamp and
+-- amount, supporting rollup calculations for the main grid.
+-- ============================================================================
+
+-- Category line items: Received/spent entries per category envelope
+CREATE TABLE IF NOT EXISTS category_line_items (
+    line_item_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    budget_instance_category_id INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('received', 'spent')),
+    occurred_at TEXT NOT NULL, -- ISO 8601 datetime
+    description TEXT,
+    amount REAL NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'CHF',
+    notes TEXT,
+    is_template_default INTEGER NOT NULL DEFAULT 0, -- 0 = false, 1 = true
+    deleted_at TEXT NULL, -- soft delete, ISO 8601 datetime
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (budget_instance_category_id) 
+        REFERENCES budget_instance_categories(budget_instance_category_id) ON DELETE CASCADE
+);
+
+-- ============================================================================
+-- Indexes for performance
+-- ============================================================================
+
+-- Primary lookup: Get all line items for a category envelope
+CREATE INDEX IF NOT EXISTS idx_line_items_bic_id 
+    ON category_line_items(budget_instance_category_id);
+
+-- Date-based queries: Filter by occurred_at
+CREATE INDEX IF NOT EXISTS idx_line_items_occurred_at 
+    ON category_line_items(occurred_at);
+
+-- Filter by kind (received vs spent)
+CREATE INDEX IF NOT EXISTS idx_line_items_kind 
+    ON category_line_items(kind);
+
+-- Composite index: For rollup queries filtering by category, kind, and deletion status
+CREATE INDEX IF NOT EXISTS idx_line_items_bic_kind_deleted 
+    ON category_line_items(budget_instance_category_id, kind, deleted_at);
+
+-- Partial index: For date range queries on non-deleted items
+CREATE INDEX IF NOT EXISTS idx_line_items_bic_occurred_active 
+    ON category_line_items(budget_instance_category_id, occurred_at) 
+    WHERE deleted_at IS NULL;
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,7 +522,10 @@ mod tests {
     #[test]
     fn test_migration_v2_creates_budget_instance_categories() {
         let conn = create_test_db();
-        apply_initial_schema(&conn).unwrap();
+
+        // Apply only v1 and v2 (not all migrations)
+        apply_migration_v1(&conn).unwrap();
+        apply_migration_v2(&conn).unwrap();
 
         // Verify schema version is now 2
         let version = get_schema_version(&conn).unwrap();
@@ -642,7 +728,7 @@ mod tests {
     fn test_migration_v1_to_v2_upgrade() {
         let conn = create_test_db();
 
-        // First apply v1 only by setting version to 0 and running v1
+        // First apply v1 only
         apply_migration_v1(&conn).unwrap();
         let version_after_v1 = get_schema_version(&conn).unwrap();
         assert_eq!(version_after_v1, 1);
@@ -657,8 +743,8 @@ mod tests {
             .collect();
         assert!(tables_v1.is_empty(), "budget_instance_categories should not exist after v1");
 
-        // Now run pending migrations (should apply v2)
-        run_pending(&conn).unwrap();
+        // Apply v2 only
+        apply_migration_v2(&conn).unwrap();
 
         // Verify version is now 2
         let version_after_v2 = get_schema_version(&conn).unwrap();
@@ -675,6 +761,312 @@ mod tests {
         assert!(
             tables_v2.contains(&"budget_instance_categories".to_string()),
             "budget_instance_categories should exist after upgrade to v2"
+        );
+    }
+
+    // ========================================================================
+    // Migration v3 Tests: category_line_items table
+    // ========================================================================
+
+    #[test]
+    fn test_migration_v3_creates_category_line_items() {
+        let conn = create_test_db();
+        apply_initial_schema(&conn).unwrap();
+
+        // Verify schema version is now 3
+        let version = get_schema_version(&conn).unwrap();
+        assert_eq!(version, 3);
+
+        // Verify category_line_items table exists
+        let tables: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert!(
+            tables.contains(&"category_line_items".to_string()),
+            "category_line_items table should exist"
+        );
+    }
+
+    #[test]
+    fn test_migration_v3_creates_indexes() {
+        let conn = create_test_db();
+        apply_initial_schema(&conn).unwrap();
+
+        // Query for v3 indexes
+        let indexes: Vec<String> = conn
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_line_items_%' ORDER BY name",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        // Check expected indexes exist
+        assert!(
+            indexes.contains(&"idx_line_items_bic_id".to_string()),
+            "idx_line_items_bic_id should exist"
+        );
+        assert!(
+            indexes.contains(&"idx_line_items_occurred_at".to_string()),
+            "idx_line_items_occurred_at should exist"
+        );
+        assert!(
+            indexes.contains(&"idx_line_items_kind".to_string()),
+            "idx_line_items_kind should exist"
+        );
+        assert!(
+            indexes.contains(&"idx_line_items_bic_kind_deleted".to_string()),
+            "idx_line_items_bic_kind_deleted should exist"
+        );
+        assert!(
+            indexes.contains(&"idx_line_items_bic_occurred_active".to_string()),
+            "idx_line_items_bic_occurred_active should exist"
+        );
+    }
+
+    #[test]
+    fn test_migration_v3_table_structure() {
+        let conn = create_test_db();
+        apply_initial_schema(&conn).unwrap();
+
+        // Insert prerequisite data
+        conn.execute(
+            "INSERT INTO global_categories (name) VALUES ('Test Category')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO budget_templates (name, cadence) VALUES ('Test Template', 'monthly')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO period_budget_instances (cadence, start_date, template_id) VALUES ('monthly', '2026-02-01', 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO budget_instance_categories (budget_instance_id, global_category_id, default_amount) VALUES (1, 1, 500.00)",
+            [],
+        )
+        .unwrap();
+
+        // Insert a received line item
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, description, amount, currency, is_template_default) VALUES (1, 'received', '2026-02-01T00:00:00', 'Salary', 5000.00, 'CHF', 1)",
+            [],
+        )
+        .unwrap();
+
+        // Insert a spent line item
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, description, amount, currency) VALUES (1, 'spent', '2026-02-05T14:30:00', 'Groceries', 150.50, 'CHF')",
+            [],
+        )
+        .unwrap();
+
+        // Verify data was inserted
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM category_line_items",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+
+        // Verify received item values
+        let (kind, amount, is_default): (String, f64, i64) = conn
+            .query_row(
+                "SELECT kind, amount, is_template_default FROM category_line_items WHERE line_item_id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(kind, "received");
+        assert!((amount - 5000.0).abs() < 0.01);
+        assert_eq!(is_default, 1);
+
+        // Verify spent item values
+        let (kind2, amount2): (String, f64) = conn
+            .query_row(
+                "SELECT kind, amount FROM category_line_items WHERE line_item_id = 2",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(kind2, "spent");
+        assert!((amount2 - 150.50).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_migration_v3_kind_check_constraint() {
+        let conn = create_test_db();
+        apply_initial_schema(&conn).unwrap();
+
+        // Insert prerequisite data
+        conn.execute(
+            "INSERT INTO global_categories (name) VALUES ('Test Category')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO budget_templates (name, cadence) VALUES ('Test Template', 'monthly')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO period_budget_instances (cadence, start_date, template_id) VALUES ('monthly', '2026-02-01', 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO budget_instance_categories (budget_instance_id, global_category_id, default_amount) VALUES (1, 1, 500.00)",
+            [],
+        )
+        .unwrap();
+
+        // Try to insert with invalid kind - should fail due to CHECK constraint
+        let result = conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount) VALUES (1, 'invalid', '2026-02-01T00:00:00', 100.00)",
+            [],
+        );
+        assert!(
+            result.is_err(),
+            "Invalid kind value should be rejected by CHECK constraint"
+        );
+
+        // Valid kinds should work
+        let result_received = conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount) VALUES (1, 'received', '2026-02-01T00:00:00', 100.00)",
+            [],
+        );
+        assert!(result_received.is_ok(), "'received' should be valid");
+
+        let result_spent = conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount) VALUES (1, 'spent', '2026-02-02T00:00:00', 50.00)",
+            [],
+        );
+        assert!(result_spent.is_ok(), "'spent' should be valid");
+    }
+
+    #[test]
+    fn test_migration_v3_cascade_delete() {
+        let conn = create_test_db();
+        // Enable foreign keys
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+        apply_initial_schema(&conn).unwrap();
+
+        // Insert prerequisite data
+        conn.execute(
+            "INSERT INTO global_categories (name) VALUES ('Test Category')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO budget_templates (name, cadence) VALUES ('Test Template', 'monthly')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO period_budget_instances (cadence, start_date, template_id) VALUES ('monthly', '2026-02-01', 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO budget_instance_categories (budget_instance_id, global_category_id, default_amount) VALUES (1, 1, 500.00)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount) VALUES (1, 'spent', '2026-02-01T00:00:00', 100.00)",
+            [],
+        )
+        .unwrap();
+
+        // Verify line item exists
+        let count_before: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM category_line_items",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count_before, 1);
+
+        // Delete the budget_instance_category - should cascade to line items
+        conn.execute(
+            "DELETE FROM budget_instance_categories WHERE budget_instance_category_id = 1",
+            [],
+        )
+        .unwrap();
+
+        // Verify line item was deleted via cascade
+        let count_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM category_line_items",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            count_after, 0,
+            "category_line_items should be deleted via cascade"
+        );
+    }
+
+    #[test]
+    fn test_migration_v2_to_v3_upgrade() {
+        let conn = create_test_db();
+
+        // First apply v1 and v2
+        apply_migration_v1(&conn).unwrap();
+        apply_migration_v2(&conn).unwrap();
+        let version_after_v2 = get_schema_version(&conn).unwrap();
+        assert_eq!(version_after_v2, 2);
+
+        // Verify category_line_items does NOT exist yet
+        let tables_v2: Vec<String> = conn
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'category_line_items'",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert!(
+            tables_v2.is_empty(),
+            "category_line_items should not exist after v2"
+        );
+
+        // Now run pending migrations (should apply v3)
+        run_pending(&conn).unwrap();
+
+        // Verify version is now 3
+        let version_after_v3 = get_schema_version(&conn).unwrap();
+        assert_eq!(version_after_v3, 3);
+
+        // Verify category_line_items now exists
+        let tables_v3: Vec<String> = conn
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'category_line_items'",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert!(
+            tables_v3.contains(&"category_line_items".to_string()),
+            "category_line_items should exist after upgrade to v3"
         );
     }
 }

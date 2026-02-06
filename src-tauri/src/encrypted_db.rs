@@ -61,6 +61,42 @@ pub struct CreateDbResult {
     pub path: String,
 }
 
+// ============================================================================
+// Grid Data Structures
+// ============================================================================
+
+/// One category row in the grid for a budget instance (with rollup totals).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GridCategoryRow {
+    /// Primary key of the budget_instance_category
+    pub budget_instance_category_id: i64,
+    /// Foreign key to global_categories
+    pub global_category_id: i64,
+    /// Category name from global_categories
+    pub category_name: String,
+    /// Default amount from template (allocated budget)
+    pub default_amount: f64,
+    /// Currency code (e.g., "CHF", "EUR")
+    pub default_currency: String,
+    /// Display order
+    pub sort_order: i64,
+    /// Sum of all non-deleted 'received' line items
+    pub received_total: f64,
+    /// Sum of all non-deleted 'spent' line items
+    pub spent_total: f64,
+    /// Calculated: received_total - spent_total
+    pub remaining: f64,
+}
+
+/// Response for get_grid_data: list of category rows with rollups for one budget instance.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetGridDataResult {
+    /// The budget instance ID these rows belong to
+    pub budget_instance_id: i64,
+    /// Category rows with rollup totals
+    pub rows: Vec<GridCategoryRow>,
+}
+
 /// Errors that can occur during encrypted database operations.
 #[derive(Debug, Error)]
 pub enum EncryptedDbError {
@@ -474,6 +510,105 @@ fn close_db_internal(db_state: &State<DbState>) -> Result<(), EncryptedDbError> 
     Ok(())
 }
 
+// ============================================================================
+// Grid Data Commands
+// ============================================================================
+
+/// Gets grid data for a budget instance, including category rows with rollup totals.
+///
+/// # Arguments
+/// * `budget_instance_id` - The ID of the budget instance to load
+/// * `db_state` - Global database state
+///
+/// # Returns
+/// Grid data with category rows including received_total, spent_total, and remaining.
+#[tauri::command]
+pub fn get_grid_data(
+    budget_instance_id: i64,
+    db_state: State<DbState>,
+) -> Result<GetGridDataResult, String> {
+    get_grid_data_internal(budget_instance_id, &db_state).map_err(|e| e.to_string())
+}
+
+fn get_grid_data_internal(
+    budget_instance_id: i64,
+    db_state: &State<DbState>,
+) -> Result<GetGridDataResult, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    // Validate that the budget instance exists
+    let instance_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM period_budget_instances WHERE budget_instance_id = ?",
+            [budget_instance_id],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if !instance_exists {
+        return Err(EncryptedDbError::DatabaseError(format!(
+            "Budget instance {} not found.",
+            budget_instance_id
+        )));
+    }
+
+    // Query all categories for this budget instance with rollup totals
+    // Single query approach for optimal performance
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT
+            bic.budget_instance_category_id,
+            bic.global_category_id,
+            gc.name AS category_name,
+            bic.default_amount,
+            bic.default_currency,
+            bic.sort_order,
+            COALESCE(SUM(CASE WHEN li.kind = 'received' THEN li.amount ELSE 0 END), 0) AS received_total,
+            COALESCE(SUM(CASE WHEN li.kind = 'spent' THEN li.amount ELSE 0 END), 0) AS spent_total
+        FROM budget_instance_categories bic
+        JOIN global_categories gc ON gc.global_category_id = bic.global_category_id
+        LEFT JOIN category_line_items li
+            ON li.budget_instance_category_id = bic.budget_instance_category_id
+            AND li.deleted_at IS NULL
+        WHERE bic.budget_instance_id = ?
+        GROUP BY bic.budget_instance_category_id
+        ORDER BY bic.sort_order, bic.budget_instance_category_id
+        "#,
+    )?;
+
+    let rows = stmt
+        .query_map([budget_instance_id], |row| {
+            let received_total: f64 = row.get(6)?;
+            let spent_total: f64 = row.get(7)?;
+            let remaining = received_total - spent_total;
+
+            Ok(GridCategoryRow {
+                budget_instance_category_id: row.get(0)?,
+                global_category_id: row.get(1)?,
+                category_name: row.get(2)?,
+                default_amount: row.get(3)?,
+                default_currency: row.get(4)?,
+                sort_order: row.get(5)?,
+                received_total,
+                spent_total,
+                remaining,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(GetGridDataResult {
+        budget_instance_id,
+        rows,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -879,5 +1014,419 @@ mod tests {
         println!("   - Select: 'SQLCipher 4-Standardwerte'");
         println!("3. Click OK");
         println!("========================================\n");
+    }
+
+    // ========================================================================
+    // Grid Data / Rollup Query Tests
+    // ========================================================================
+
+    /// Helper to set up a test database with schema for grid data tests
+    fn setup_grid_test_db() -> Connection {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        // Create encrypted DB with test key
+        let key_hex = "d".repeat(64);
+        let conn = create_sqlcipher_db(path, &key_hex).unwrap();
+
+        // Don't drop temp_file yet - keep it alive
+        std::mem::forget(temp_file);
+
+        conn
+    }
+
+    /// Helper to insert test data for grid tests
+    fn insert_grid_test_data(conn: &Connection) -> (i64, i64, i64) {
+        // Insert global category
+        conn.execute(
+            "INSERT INTO global_categories (name, description) VALUES ('Groceries', 'Food expenses')",
+            [],
+        )
+        .unwrap();
+        let global_cat_id: i64 = conn.last_insert_rowid();
+
+        // Insert budget template
+        conn.execute(
+            "INSERT INTO budget_templates (name, cadence, default_currency) VALUES ('Monthly Budget', 'monthly', 'CHF')",
+            [],
+        )
+        .unwrap();
+        let template_id: i64 = conn.last_insert_rowid();
+
+        // Insert period budget instance
+        conn.execute(
+            "INSERT INTO period_budget_instances (cadence, start_date, template_id) VALUES ('monthly', '2026-02-01', ?)",
+            [template_id],
+        )
+        .unwrap();
+        let budget_instance_id: i64 = conn.last_insert_rowid();
+
+        // Insert budget instance category
+        conn.execute(
+            "INSERT INTO budget_instance_categories (budget_instance_id, global_category_id, default_amount, default_currency, sort_order) VALUES (?, ?, 500.00, 'CHF', 0)",
+            [budget_instance_id, global_cat_id],
+        )
+        .unwrap();
+        let bic_id: i64 = conn.last_insert_rowid();
+
+        (budget_instance_id, bic_id, global_cat_id)
+    }
+
+    #[test]
+    fn test_grid_data_empty_instance() {
+        let conn = setup_grid_test_db();
+
+        // Insert budget instance with no categories
+        conn.execute(
+            "INSERT INTO period_budget_instances (cadence, start_date) VALUES ('monthly', '2026-02-01')",
+            [],
+        )
+        .unwrap();
+        let budget_instance_id: i64 = conn.last_insert_rowid();
+
+        // Query grid data directly (can't use State<DbState> in unit tests)
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT
+                bic.budget_instance_category_id,
+                bic.global_category_id,
+                gc.name AS category_name,
+                bic.default_amount,
+                bic.default_currency,
+                bic.sort_order,
+                COALESCE(SUM(CASE WHEN li.kind = 'received' THEN li.amount ELSE 0 END), 0) AS received_total,
+                COALESCE(SUM(CASE WHEN li.kind = 'spent' THEN li.amount ELSE 0 END), 0) AS spent_total
+            FROM budget_instance_categories bic
+            JOIN global_categories gc ON gc.global_category_id = bic.global_category_id
+            LEFT JOIN category_line_items li
+                ON li.budget_instance_category_id = bic.budget_instance_category_id
+                AND li.deleted_at IS NULL
+            WHERE bic.budget_instance_id = ?
+            GROUP BY bic.budget_instance_category_id
+            ORDER BY bic.sort_order, bic.budget_instance_category_id
+            "#,
+        ).unwrap();
+
+        let rows: Vec<i64> = stmt
+            .query_map([budget_instance_id], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert!(rows.is_empty(), "Empty instance should have no category rows");
+    }
+
+    #[test]
+    fn test_grid_data_no_line_items() {
+        let conn = setup_grid_test_db();
+        let (budget_instance_id, _bic_id, _global_cat_id) = insert_grid_test_data(&conn);
+
+        // Query without any line items
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT
+                bic.budget_instance_category_id,
+                bic.default_amount,
+                COALESCE(SUM(CASE WHEN li.kind = 'received' THEN li.amount ELSE 0 END), 0) AS received_total,
+                COALESCE(SUM(CASE WHEN li.kind = 'spent' THEN li.amount ELSE 0 END), 0) AS spent_total
+            FROM budget_instance_categories bic
+            JOIN global_categories gc ON gc.global_category_id = bic.global_category_id
+            LEFT JOIN category_line_items li
+                ON li.budget_instance_category_id = bic.budget_instance_category_id
+                AND li.deleted_at IS NULL
+            WHERE bic.budget_instance_id = ?
+            GROUP BY bic.budget_instance_category_id
+            "#,
+        ).unwrap();
+
+        let row = stmt.query_row([budget_instance_id], |row| {
+            Ok((
+                row.get::<_, f64>(1)?,
+                row.get::<_, f64>(2)?,
+                row.get::<_, f64>(3)?,
+            ))
+        }).unwrap();
+
+        let (default_amount, received_total, spent_total) = row;
+        assert!((default_amount - 500.0).abs() < 0.01, "Default amount should be 500");
+        assert!((received_total - 0.0).abs() < 0.01, "Received total should be 0");
+        assert!((spent_total - 0.0).abs() < 0.01, "Spent total should be 0");
+    }
+
+    #[test]
+    fn test_grid_data_received_only() {
+        let conn = setup_grid_test_db();
+        let (budget_instance_id, bic_id, _global_cat_id) = insert_grid_test_data(&conn);
+
+        // Insert received line items
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'received', '2026-02-01T00:00:00', 1000.00, 'CHF')",
+            [bic_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'received', '2026-02-05T00:00:00', 500.00, 'CHF')",
+            [bic_id],
+        ).unwrap();
+
+        // Query rollups
+        let (received_total, spent_total): (f64, f64) = conn.query_row(
+            r#"
+            SELECT
+                COALESCE(SUM(CASE WHEN li.kind = 'received' THEN li.amount ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN li.kind = 'spent' THEN li.amount ELSE 0 END), 0)
+            FROM budget_instance_categories bic
+            LEFT JOIN category_line_items li
+                ON li.budget_instance_category_id = bic.budget_instance_category_id
+                AND li.deleted_at IS NULL
+            WHERE bic.budget_instance_id = ?
+            GROUP BY bic.budget_instance_category_id
+            "#,
+            [budget_instance_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap();
+
+        assert!((received_total - 1500.0).abs() < 0.01, "Received should be 1500");
+        assert!((spent_total - 0.0).abs() < 0.01, "Spent should be 0");
+    }
+
+    #[test]
+    fn test_grid_data_spent_only() {
+        let conn = setup_grid_test_db();
+        let (budget_instance_id, bic_id, _global_cat_id) = insert_grid_test_data(&conn);
+
+        // Insert spent line items
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'spent', '2026-02-02T10:30:00', 50.00, 'CHF')",
+            [bic_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'spent', '2026-02-03T14:00:00', 75.50, 'CHF')",
+            [bic_id],
+        ).unwrap();
+
+        // Query rollups
+        let (received_total, spent_total): (f64, f64) = conn.query_row(
+            r#"
+            SELECT
+                COALESCE(SUM(CASE WHEN li.kind = 'received' THEN li.amount ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN li.kind = 'spent' THEN li.amount ELSE 0 END), 0)
+            FROM budget_instance_categories bic
+            LEFT JOIN category_line_items li
+                ON li.budget_instance_category_id = bic.budget_instance_category_id
+                AND li.deleted_at IS NULL
+            WHERE bic.budget_instance_id = ?
+            GROUP BY bic.budget_instance_category_id
+            "#,
+            [budget_instance_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap();
+
+        assert!((received_total - 0.0).abs() < 0.01, "Received should be 0");
+        assert!((spent_total - 125.50).abs() < 0.01, "Spent should be 125.50");
+    }
+
+    #[test]
+    fn test_grid_data_mixed_received_and_spent() {
+        let conn = setup_grid_test_db();
+        let (budget_instance_id, bic_id, _global_cat_id) = insert_grid_test_data(&conn);
+
+        // Insert received
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'received', '2026-02-01T00:00:00', 1000.00, 'CHF')",
+            [bic_id],
+        ).unwrap();
+
+        // Insert spent
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'spent', '2026-02-02T10:30:00', 250.00, 'CHF')",
+            [bic_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'spent', '2026-02-03T14:00:00', 100.00, 'CHF')",
+            [bic_id],
+        ).unwrap();
+
+        // Query rollups
+        let (received_total, spent_total): (f64, f64) = conn.query_row(
+            r#"
+            SELECT
+                COALESCE(SUM(CASE WHEN li.kind = 'received' THEN li.amount ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN li.kind = 'spent' THEN li.amount ELSE 0 END), 0)
+            FROM budget_instance_categories bic
+            LEFT JOIN category_line_items li
+                ON li.budget_instance_category_id = bic.budget_instance_category_id
+                AND li.deleted_at IS NULL
+            WHERE bic.budget_instance_id = ?
+            GROUP BY bic.budget_instance_category_id
+            "#,
+            [budget_instance_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap();
+
+        assert!((received_total - 1000.0).abs() < 0.01, "Received should be 1000");
+        assert!((spent_total - 350.0).abs() < 0.01, "Spent should be 350");
+
+        let remaining = received_total - spent_total;
+        assert!((remaining - 650.0).abs() < 0.01, "Remaining should be 650");
+    }
+
+    #[test]
+    fn test_grid_data_excludes_deleted_items() {
+        let conn = setup_grid_test_db();
+        let (budget_instance_id, bic_id, _global_cat_id) = insert_grid_test_data(&conn);
+
+        // Insert received (not deleted)
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'received', '2026-02-01T00:00:00', 1000.00, 'CHF')",
+            [bic_id],
+        ).unwrap();
+
+        // Insert spent (not deleted)
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'spent', '2026-02-02T10:30:00', 100.00, 'CHF')",
+            [bic_id],
+        ).unwrap();
+
+        // Insert soft-deleted items (should be excluded)
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency, deleted_at) VALUES (?, 'received', '2026-02-01T12:00:00', 500.00, 'CHF', datetime('now'))",
+            [bic_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency, deleted_at) VALUES (?, 'spent', '2026-02-03T14:00:00', 200.00, 'CHF', datetime('now'))",
+            [bic_id],
+        ).unwrap();
+
+        // Query rollups
+        let (received_total, spent_total): (f64, f64) = conn.query_row(
+            r#"
+            SELECT
+                COALESCE(SUM(CASE WHEN li.kind = 'received' THEN li.amount ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN li.kind = 'spent' THEN li.amount ELSE 0 END), 0)
+            FROM budget_instance_categories bic
+            LEFT JOIN category_line_items li
+                ON li.budget_instance_category_id = bic.budget_instance_category_id
+                AND li.deleted_at IS NULL
+            WHERE bic.budget_instance_id = ?
+            GROUP BY bic.budget_instance_category_id
+            "#,
+            [budget_instance_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap();
+
+        // Deleted items should NOT be counted
+        assert!((received_total - 1000.0).abs() < 0.01, "Received should be 1000 (exclude deleted 500)");
+        assert!((spent_total - 100.0).abs() < 0.01, "Spent should be 100 (exclude deleted 200)");
+    }
+
+    #[test]
+    fn test_grid_data_multiple_categories() {
+        let conn = setup_grid_test_db();
+
+        // Insert multiple global categories
+        conn.execute("INSERT INTO global_categories (name) VALUES ('Groceries')", []).unwrap();
+        let cat1_id: i64 = conn.last_insert_rowid();
+        conn.execute("INSERT INTO global_categories (name) VALUES ('Transport')", []).unwrap();
+        let cat2_id: i64 = conn.last_insert_rowid();
+        conn.execute("INSERT INTO global_categories (name) VALUES ('Entertainment')", []).unwrap();
+        let cat3_id: i64 = conn.last_insert_rowid();
+
+        // Insert budget instance
+        conn.execute(
+            "INSERT INTO period_budget_instances (cadence, start_date) VALUES ('monthly', '2026-02-01')",
+            [],
+        ).unwrap();
+        let budget_instance_id: i64 = conn.last_insert_rowid();
+
+        // Insert budget instance categories with different sort orders
+        conn.execute(
+            "INSERT INTO budget_instance_categories (budget_instance_id, global_category_id, default_amount, sort_order) VALUES (?, ?, 300.00, 2)",
+            [budget_instance_id, cat1_id],
+        ).unwrap();
+        let bic1_id: i64 = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO budget_instance_categories (budget_instance_id, global_category_id, default_amount, sort_order) VALUES (?, ?, 150.00, 1)",
+            [budget_instance_id, cat2_id],
+        ).unwrap();
+        let bic2_id: i64 = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO budget_instance_categories (budget_instance_id, global_category_id, default_amount, sort_order) VALUES (?, ?, 100.00, 3)",
+            [budget_instance_id, cat3_id],
+        ).unwrap();
+
+        // Insert some line items
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount) VALUES (?, 'spent', '2026-02-02T00:00:00', 50.00)",
+            [bic1_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount) VALUES (?, 'received', '2026-02-01T00:00:00', 200.00)",
+            [bic2_id],
+        ).unwrap();
+
+        // Query all rows
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT
+                gc.name,
+                bic.sort_order,
+                COALESCE(SUM(CASE WHEN li.kind = 'received' THEN li.amount ELSE 0 END), 0) AS received_total,
+                COALESCE(SUM(CASE WHEN li.kind = 'spent' THEN li.amount ELSE 0 END), 0) AS spent_total
+            FROM budget_instance_categories bic
+            JOIN global_categories gc ON gc.global_category_id = bic.global_category_id
+            LEFT JOIN category_line_items li
+                ON li.budget_instance_category_id = bic.budget_instance_category_id
+                AND li.deleted_at IS NULL
+            WHERE bic.budget_instance_id = ?
+            GROUP BY bic.budget_instance_category_id
+            ORDER BY bic.sort_order, bic.budget_instance_category_id
+            "#,
+        ).unwrap();
+
+        let rows: Vec<(String, i64, f64, f64)> = stmt
+            .query_map([budget_instance_id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert_eq!(rows.len(), 3, "Should have 3 categories");
+
+        // Should be sorted by sort_order: Transport (1), Groceries (2), Entertainment (3)
+        assert_eq!(rows[0].0, "Transport");
+        assert_eq!(rows[0].1, 1);
+        assert!((rows[0].2 - 200.0).abs() < 0.01); // received
+
+        assert_eq!(rows[1].0, "Groceries");
+        assert_eq!(rows[1].1, 2);
+        assert!((rows[1].3 - 50.0).abs() < 0.01); // spent
+
+        assert_eq!(rows[2].0, "Entertainment");
+        assert_eq!(rows[2].1, 3);
+        assert!((rows[2].2 - 0.0).abs() < 0.01); // no line items
+        assert!((rows[2].3 - 0.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_grid_data_category_name_from_global() {
+        let conn = setup_grid_test_db();
+        let (budget_instance_id, _bic_id, _global_cat_id) = insert_grid_test_data(&conn);
+
+        // Query to verify category name comes from global_categories
+        let category_name: String = conn.query_row(
+            r#"
+            SELECT gc.name
+            FROM budget_instance_categories bic
+            JOIN global_categories gc ON gc.global_category_id = bic.global_category_id
+            WHERE bic.budget_instance_id = ?
+            "#,
+            [budget_instance_id],
+            |row| row.get(0),
+        ).unwrap();
+
+        assert_eq!(category_name, "Groceries", "Category name should come from global_categories");
     }
 }

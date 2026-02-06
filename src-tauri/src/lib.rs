@@ -19,6 +19,7 @@ pub fn run() {
             encrypted_db::get_db_info,
             encrypted_db::close_db,
             encrypted_db::diagnose_db_file,
+            encrypted_db::get_grid_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

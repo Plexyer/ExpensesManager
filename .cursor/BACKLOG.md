@@ -387,29 +387,38 @@ Each task includes:
 
 ---
 
-### TASK-2.3: Add Cadence to Templates
+### TASK-2.3: Add Cadence to Templates ✅ SCHEMA COMPLETED
 **Goal**: Store template cadence/period length (corrected design requirement)  
 **Scope**:
-- Create migration file
-- Add `cadence` column to `budget_templates` table
+- ~~Create migration file~~ (Done in MIGRATION_V1_SQL)
+- ~~Add `cadence` column to `budget_templates` table~~ (Already present)
 - Default cadence for existing records (e.g., 'monthly') and allow editing
-- Update template creation/editing code (UI + command)
+- Update template creation/editing code (UI + command) → Deferred to TASK-3.1
 
 **Acceptance Criteria**:
-- ✅ `budget_templates` has `cadence` column
-- ✅ Existing records have default cadence
-- ✅ Template creation includes cadence
+- ✅ `budget_templates` has `cadence` column (DONE - in v1 schema)
+- ✅ Existing records have default cadence (DONE - DEFAULT 'monthly')
+- ⏳ Template creation includes cadence (UI work in TASK-3.1)
 
 **Likely Areas/Files**:
-- `src-tauri/migrations/YYYY_MM_add_cadence_to_templates.sql` (new)
-- `src-tauri/src/modules/commands/budget.rs` (modify template commands)
+- ~~`src-tauri/migrations/YYYY_MM_add_cadence_to_templates.sql` (new)~~ N/A
+- `src-tauri/src/modules/commands/budget.rs` (modify template commands) → TASK-3.1
 
 **Complexity**: S  
 **Dependencies**: None
 
+#### Implementation Notes
+- **Confirmed on**: 2026-02-06
+- **Summary**:
+  - The `cadence` column was already added to `budget_templates` in MIGRATION_V1_SQL
+  - Column: `cadence TEXT NOT NULL DEFAULT 'monthly'`
+  - Schema work is complete; remaining UI/command work should be tracked in TASK-3.1
+- **Verification**:
+  - Confirmed in `src-tauri/src/migrations.rs` line ~54
+
 ---
 
-### TASK-2.4: Update Transactions Schema
+### TASK-2.4: Update Transactions Schema ✅ COMPLETED
 **Goal**: Store received/spent line items per category within a budget instance  
 **Scope**:
 - Add a line-items table (or extend existing) that links to a budget-instance category row
@@ -421,7 +430,7 @@ Each task includes:
 **Acceptance Criteria**:
 - ✅ Line items link to (budget instance + category row)
 - ✅ Foreign keys correct
-- ✅ Existing data migrated
+- ✅ Existing data migrated (N/A - new schema, no legacy data)
 
 **Likely Areas/Files**:
 - `src-tauri/migrations/YYYY_MM_update_transactions.sql` (new)
@@ -430,9 +439,24 @@ Each task includes:
 **Complexity**: M  
 **Dependencies**: TASK-2.2
 
+#### Implementation Notes
+- **Completed on**: 2026-02-06
+- **Summary**:
+  - Created migration v3 with `category_line_items` table
+  - Table stores received/spent line items with ISO 8601 timestamps
+  - Supports multi-currency (CHF/EUR), soft deletion, template default tracking
+  - CHECK constraint enforces `kind IN ('received', 'spent')`
+  - 5 indexes for rollup query performance
+  - FK cascades to `budget_instance_categories`
+- **Files changed**:
+  - `src-tauri/src/migrations.rs` (added migration v3, updated CURRENT_SCHEMA_VERSION to 3, added 6 tests)
+- **Verification**:
+  - All 40 Rust tests pass (6 new migration v3 tests)
+  - `cargo build` succeeds with no warnings
+
 ---
 
-### TASK-2.5: Implement Rollup Queries
+### TASK-2.5: Implement Rollup Queries ✅ COMPLETED
 **Goal**: Calculate received/spent totals per category for one budget instance  
 **Scope**:
 - Create SQL query for received total (sum received line items)
@@ -446,10 +470,27 @@ Each task includes:
 - ✅ Query performance acceptable (< 100ms)
 
 **Likely Areas/Files**:
-- `src-tauri/src/modules/commands/budget.rs` (new command: `get_grid_data`)
+- `src-tauri/src/encrypted_db.rs` (new command: `get_grid_data`)
 
 **Complexity**: M  
 **Dependencies**: TASK-2.4
+
+#### Implementation Notes
+- **Completed on**: 2026-02-06
+- **Summary**:
+  - Added `GridCategoryRow` and `GetGridDataResult` structs
+  - Implemented `get_grid_data` Tauri command with optimized single-query rollup
+  - Query joins `budget_instance_categories`, `global_categories`, `category_line_items`
+  - Correctly sums `received` and `spent` line items, excludes soft-deleted
+  - Calculates `remaining = received_total - spent_total` in Rust
+  - Added TypeScript types and `getGridData()` function
+- **Files changed**:
+  - `src-tauri/src/encrypted_db.rs` (structs, command, 9 new tests)
+  - `src-tauri/src/lib.rs` (registered command)
+  - `src/services/fileService.ts` (TS types and function)
+- **Verification**:
+  - All 48 Rust tests pass (9 new rollup tests)
+  - `cargo build` succeeds with no warnings
 
 ---
 

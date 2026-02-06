@@ -157,3 +157,59 @@ export const closeDb = async (): Promise<void> => {
 export const diagnoseDbFile = async (path: string): Promise<string> => {
   return await invoke<string>("diagnose_db_file", { path });
 };
+
+// ============================================================================
+// GRID DATA OPERATIONS
+// ============================================================================
+//
+// These functions load budget grid data with rollup calculations.
+// ============================================================================
+
+/**
+ * One category row in the grid for a budget instance (with rollup totals).
+ */
+export interface GridCategoryRow {
+  /** Primary key of the budget_instance_category */
+  budget_instance_category_id: number;
+  /** Foreign key to global_categories */
+  global_category_id: number;
+  /** Category name from global_categories */
+  category_name: string;
+  /** Default amount from template (allocated budget) */
+  default_amount: number;
+  /** Currency code (e.g., "CHF", "EUR") */
+  default_currency: string;
+  /** Display order */
+  sort_order: number;
+  /** Sum of all non-deleted 'received' line items */
+  received_total: number;
+  /** Sum of all non-deleted 'spent' line items */
+  spent_total: number;
+  /** Calculated: received_total - spent_total */
+  remaining: number;
+}
+
+/**
+ * Response for getGridData: list of category rows with rollups for one budget instance.
+ */
+export interface GetGridDataResult {
+  /** The budget instance ID these rows belong to */
+  budget_instance_id: number;
+  /** Category rows with rollup totals */
+  rows: GridCategoryRow[];
+}
+
+/**
+ * Gets grid data for a budget instance, including category rows with rollup totals.
+ *
+ * @param budgetInstanceId - The ID of the budget instance to load
+ * @returns Grid data with category rows including received_total, spent_total, and remaining
+ * @throws Error if no database is open or budget instance not found
+ */
+export const getGridData = async (
+  budgetInstanceId: number
+): Promise<GetGridDataResult> => {
+  return await invoke<GetGridDataResult>("get_grid_data", {
+    budget_instance_id: budgetInstanceId,
+  });
+};
