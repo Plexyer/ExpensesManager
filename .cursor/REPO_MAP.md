@@ -1,6 +1,44 @@
 # Repository Map
 
-## Directory Structure (CONFIRMED)
+> **Last Updated**: 2026-02-06  
+> **Note**: This document contains both TARGET (planned) and CURRENT structure. Much of the detailed structure below is PLANNED and not yet implemented.
+
+## Current Implementation (as of 2026-02-06)
+
+After TASK-1.1 completion, the actual implemented structure is:
+
+```
+src/
+├── App.tsx                    # Router setup (/, /settings)
+├── main.tsx                   # Entry point with Redux Provider + MemoryRouter
+├── index.css                  # Tailwind imports
+├── components/
+│   └── features/
+│       └── Onboarding/
+│           └── Onboarding.tsx # Create/Open file UI
+├── pages/
+│   ├── HomePage.tsx           # Conditional onboarding or file-open view
+│   └── SettingsPage.tsx       # Placeholder
+├── services/
+│   └── fileService.ts         # Tauri dialog wrapper
+└── store/
+    ├── store.ts               # Redux store config
+    ├── hooks.ts               # Typed useAppDispatch/useAppSelector
+    └── slices/
+        └── fileSlice.ts       # File state management
+
+src-tauri/
+├── src/
+│   ├── lib.rs                 # Tauri app with dialog plugin
+│   └── main.rs                # Binary entry point
+├── Cargo.toml                 # Dependencies (tauri-plugin-dialog)
+└── capabilities/
+    └── default.json           # dialog:default permission
+```
+
+---
+
+## Directory Structure (TARGET - planned)
 
 ```
 ExpensesManager/

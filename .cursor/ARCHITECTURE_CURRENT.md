@@ -1,6 +1,19 @@
 # Current Architecture
 
-## Architecture Overview (CONFIRMED)
+> **Last Updated**: 2026-02-06  
+> **Note**: This document contains both the TARGET architecture (planned) and CURRENT implementation status. Sections marked "(PLANNED)" describe intended design; sections marked "(IMPLEMENTED)" reflect actual code.
+
+## MVP Progress
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| Phase 1.1 - File Picker | ✅ DONE | Tauri dialog, Redux store, Onboarding UI |
+| Phase 1.2 - Password Flow | ⏳ TODO | Next task |
+| Phase 1.3 - Encryption | ⏳ TODO | Blocked by 1.2 |
+
+---
+
+## Architecture Overview (TARGET)
 
 ```
 ┌─────────────────────────────────────┐
@@ -31,7 +44,32 @@
 
 ---
 
-## Frontend Architecture (CONFIRMED)
+## Frontend Architecture (CURRENT - as of 2026-02-06)
+
+### Actual Component Structure
+```
+App (root, src/App.tsx)
+└── Routes (MemoryRouter)
+    ├── "/" → HomePage
+    │   ├── Onboarding (when no file open)
+    │   └── File Selected View (when file open)
+    └── "/settings" → SettingsPage (placeholder)
+```
+
+### Actual Redux Store
+```typescript
+// src/store/store.ts
+{
+  file: FileState  // filePath, fileName, isFileOpen, isLoading, error
+}
+```
+
+### Actual Services
+- `src/services/fileService.ts` - Tauri dialog wrapper (selectNewFilePath, selectExistingFilePath)
+
+---
+
+## Frontend Architecture (TARGET - planned)
 
 ### React Structure
 
@@ -289,36 +327,44 @@ pub fn create_monthly_budget(
 
 ## Dependencies (CONFIRMED)
 
-### Frontend (`package.json`)
+### Frontend (`package.json`) - Updated 2026-02-06
 - React 18.3.1
-- Redux Toolkit 2.2.7
-- React Router DOM 6.26.2
-- Tailwind CSS 4.1.11
-- AG Grid Community 32.3.3
-- Headless UI 2.1.10
-- Lucide React 0.471.0
+- Redux Toolkit 2.11.2
+- React Redux 9.2.0
+- React Router DOM 7.13.0
+- Tailwind CSS 4.1.18 (via @tailwindcss/vite)
 - Tauri API 2.x
+- @tauri-apps/plugin-dialog 2.6.0
 
-### Backend (`src-tauri/Cargo.toml`)
+### Backend (`src-tauri/Cargo.toml`) - Updated 2026-02-06
 - Tauri 2
-- rusqlite 0.31 (bundled)
+- tauri-plugin-dialog 2.6.0
+- tauri-plugin-opener 2
 - serde 1.x
 - serde_json 1.x
-- sha2 0.10
-- thiserror 1.0
-- time 0.3
 
 ---
 
+## Current Implementation Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| File picker system | ✅ DONE | TASK-1.1 completed 2026-02-06; Tauri dialog plugin integrated |
+| Redux store | ✅ DONE | fileSlice with path/loading/error state |
+| React Router | ✅ DONE | MemoryRouter with `/` and `/settings` routes |
+| Tailwind CSS | ✅ DONE | v4 configured via Vite plugin |
+| Onboarding UI | ✅ DONE | Create/Open file buttons with native dialogs |
+
 ## Known Architecture Gaps (for MVP)
 
-1. **No file picker system** - Currently single database in app_data_dir
+1. ~~**No file picker system**~~ - ✅ Implemented (TASK-1.1)
 2. **No encryption** - Database is plaintext SQLite
-3. **No period system** - Currently month/year, not cadence-based periods
-4. **No single-period category grid (corrected design)** - Current UI is category list/grid, not a period budget instance grid with Received/Spent columns and line-item modals
+3. **No period system** - Currently no database schema implemented
+4. **No single-period category grid (corrected design)** - No grid UI yet
 5. **No CSV export** - No export functionality exists
-6. **Template cadence not modeled** - Corrected design requires cadence/period length per template; current schema does not encode it explicitly
+6. **Template cadence not modeled** - No template system implemented yet
 7. **No licensing system** - No license state, no app mode (Full vs Read-Only), no feature gating
+8. **No database** - No rusqlite/SQLite integration yet (file path only, no actual DB operations)
 
 ---
 

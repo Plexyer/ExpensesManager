@@ -24,7 +24,7 @@ This document outlines the step-by-step implementation plan for the ExpensesMana
 
 ## Phase 1: Foundation - File System & Encryption
 
-### Step 1.1: File Picker Integration
+### Step 1.1: File Picker Integration ✅ COMPLETED (2026-02-06)
 **Goal**: Add file picker to create/open finance files  
 **Scope**: 
 - Integrate Tauri file dialog API
@@ -37,10 +37,12 @@ This document outlines the step-by-step implementation plan for the ExpensesMana
 - ✅ User can click "Open Finance File" → file picker opens
 - ✅ Selected file path stored in app state
 
-**Likely Files**:
-- `src/components/Onboarding.tsx` (new)
-- `src/services/fileService.ts` (new)
-- `src-tauri/src/modules/commands/file.rs` (new)
+**Implemented Files**:
+- `src/components/features/Onboarding/Onboarding.tsx` - Onboarding UI
+- `src/services/fileService.ts` - Tauri dialog wrapper
+- `src/store/slices/fileSlice.ts` - Redux file state
+- `src/pages/HomePage.tsx`, `src/pages/SettingsPage.tsx` - Pages
+- `src-tauri/src/lib.rs` - Dialog plugin registration
 
 **Complexity**: S (Small)
 

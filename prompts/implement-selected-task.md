@@ -29,89 +29,120 @@ MANDATORY: USE THE `.cursor/` SYSTEM
 Before making changes, you MUST consult and follow these (if they exist):
 1) `.cursor/RULES.md` (highest priority)
 2) `.cursor/MVP_PLAN.md`
-3) `.cursor/BACKLOG.md` (for scope/acceptance criteria)
-4) `.cursor/commands/` relevant runbooks
-5) `.cursor/skills/` relevant playbooks
+3) `.cursor/BACKLOG.md`
+4) Relevant `.cursor/commands/` runbooks
+5) Relevant `.cursor/skills/` playbooks
 6) `.cursor/agents.md` + relevant `.cursor/agents/*` subagents
-7) `.cursor/MCP_RECOMMENDATIONS.md` (only as optional support; do not install/configure MCPs unless I explicitly ask)
+7) `.cursor/MCP_RECOMMENDATIONS.md` (reference only; do not install/configure MCPs unless I explicitly ask)
 
 SUBAGENT POLICY (IMPORTANT)
 - You SHOULD spin up subagents when the selected task touches their domain OR risk is non-trivial.
-- Use only the minimum number of subagents needed.
-- Subagents are for analysis and concrete recommendations; YOU still implement.
-- Examples:
-  - DB/schema/encryption → run `sqlite_encryption_designer` and/or `data_modeler`
-  - UI grid/modal → run `react_grid_architect` and/or `ux_flow_writer`
-  - Security/privacy implications → run `security_privacy_reviewer`
-  - Performance-sensitive list/grid → run `performance_specialist`
-  - Test approach → run `testing_qa`
+- Use only the minimum number needed.
+- Subagents advise; YOU implement.
+- Typical mapping:
+  - DB/encryption/schema → `sqlite_encryption_designer`, `data_modeler`
+  - UI grid/modal → `react_grid_architect`, `ux_flow_writer`
+  - Security/privacy → `security_privacy_reviewer`
+  - Performance-sensitive UI → `performance_specialist`
+  - Test approach → `testing_qa`
+  - Export → `export_csv_engineer`
 
-SUBAGENT OUTPUT REQUIREMENT
-When you use a subagent, you must summarize its output in the main response under:
-- “SUBAGENT FINDINGS”
-and explicitly state what you will apply vs defer.
+BACKLOG COMPLETION POLICY (NEW — REQUIRED)
+- You MUST ensure the selected task is tracked in `.cursor/BACKLOG.md` and update it after implementation.
+- Before implementing:
+  1) Open `.cursor/BACKLOG.md`.
+  2) Locate the exact task by its Title (must match the selected task title).
+  3) Confirm it is NOT already marked completed.
+  4) If you cannot confidently find the task entry, STOP and ask me how tasks are formatted/titled.
 
-COMMANDS/SKILLS USAGE
-- If a relevant command/runbook exists in `.cursor/commands/`, follow it.
-- If a relevant skill exists in `.cursor/skills/`, apply its checklist.
-- If none exist, proceed with best practice but do not invent new rules; keep it minimal.
+- After implementing successfully (and ONLY if acceptance criteria are met):
+  1) Mark that exact task as COMPLETED using the existing style in the backlog (e.g., checkbox `[x]`, status tag, etc.).
+  2) Under that SAME task, add a very short “Implementation Notes” section containing:
+     - Completed on: YYYY-MM-DD
+     - Summary: 1–3 bullets
+     - Files changed: short list
+     - Tests/verification: 1–2 bullets
+  3) Do NOT rewrite or reformat the backlog globally. Minimal edits to the one task only.
+
+- If you start implementation but cannot finish (blocked or missing info):
+  - Do NOT mark the task completed.
+  - Add a short note under that task:
+    - Status: BLOCKED (or IN PROGRESS)
+    - What’s done (1–2 bullets)
+    - What’s missing / NEEDED_FROM_USER (bullets)
+  - Then STOP and ask me.
 
 WORKFLOW (follow in order)
 1) RESTATE THE TASK
-- Re-state the selected task and acceptance criteria in your own words.
+- Re-state the selected task and acceptance criteria.
 
-2) QUICK CONTEXT CHECK (repo + cursor docs)
+2) BACKLOG PRE-CHECK
+- Find the task in `.cursor/BACKLOG.md` and confirm it is not completed.
+- If it is already completed, STOP and tell me (do not implement again).
+
+3) CONTEXT CHECK (repo + cursor docs)
 - Identify exact integration points:
   - React components/state, Tauri commands, Rust modules, DB layer, migrations, etc.
 - Confirm conventions (format/lint/build) used by repo.
 
-3) DECIDE IF SUBAGENTS ARE NEEDED
+4) DECIDE IF SUBAGENTS ARE NEEDED
 - List which subagents you will invoke (if any) and why.
-- Invoke them and collect their guidance BEFORE editing code.
+- Invoke them and summarize results under “SUBAGENT FINDINGS” before editing code.
 
-4) IMPLEMENTATION (smallest possible change set)
+5) IMPLEMENTATION (smallest possible change set)
 - Implement only what’s needed to satisfy acceptance criteria.
 - Respect existing conventions.
 - Add basic error handling + user-visible feedback where relevant.
 - Do not add new dependencies without approval.
 
-5) TESTING
+6) TESTING
 - If the repo has tests, add/adjust the most relevant minimal tests.
-- If not, provide a thorough manual test checklist and (optionally) a small “future tests” note.
+- If not, provide a thorough manual test checklist.
 
-6) DO A SELF-REVIEW PASS
+7) SELF-REVIEW
 - Verify scope: no extra features.
-- Verify security: no secrets logged; no sensitive data exposed.
+- Verify security: no secrets logged; no sensitive finance data exposed.
 - Verify MVP constraints respected.
 - Verify no new dependencies added.
+
+8) BACKLOG POST-UPDATE (REQUIRED)
+- Update `.cursor/BACKLOG.md` for this task:
+  - Mark completed (ONLY if criteria met)
+  - Add “Implementation Notes” under the task (very short)
+  - Minimal edits (only the one task)
 
 REQUIRED OUTPUT FORMAT
 A) TASK RESTATEMENT
 - Task:
 - Acceptance criteria:
 
-B) SUBAGENTS USED (if any)
+B) BACKLOG STATUS
+- Found task in `.cursor/BACKLOG.md`: yes/no
+- Was it already completed?: yes/no
+- Backlog updated after implementation?: yes/no
+
+C) SUBAGENTS USED (if any)
 - Which subagents:
 - Key findings:
 - What was applied:
 
-C) SUMMARY OF CHANGES
+D) SUMMARY OF CHANGES
 - 1–8 bullets describing what was implemented.
 
-D) FILES CHANGED
+E) FILES CHANGED
 - List every file touched with a short note.
 
-E) HOW TO VERIFY (manual)
-- Step-by-step checklist to run locally.
+F) HOW TO VERIFY (manual)
+- Step-by-step checklist.
 
-F) TESTS
+G) TESTS
 - Tests added/updated (or “none” + why)
-- If none: add “Future test suggestion” (1–3 bullets)
+- If none: “Future test suggestion” (1–3 bullets)
 
-G) NOTES / FOLLOW-UPS
+H) NOTES / FOLLOW-UPS
 - Follow-up backlog items (titles only)
 - Risks introduced + mitigations
 - NEEDED_FROM_USER (only if you had to stop)
 
 STOP
-Stop after implementation and verification steps. Do not automatically start the next backlog item.
+Stop after implementation and backlog update. Do not automatically start the next backlog item.

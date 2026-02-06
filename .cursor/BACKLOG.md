@@ -14,7 +14,7 @@ Each task includes:
 
 ## Phase 1: Foundation - File System & Encryption
 
-### TASK-1.1: Integrate Tauri File Dialog API
+### TASK-1.1: Integrate Tauri File Dialog API ✅ COMPLETED
 **Goal**: Add file picker to create/open finance files  
 **Scope**: 
 - Install/use Tauri file dialog plugin
@@ -37,6 +37,24 @@ Each task includes:
 
 **Complexity**: S  
 **Dependencies**: None
+
+#### Implementation Notes
+- **Completed on**: 2026-02-06
+- **Summary**:
+  - Installed Tauri dialog plugin (Rust + npm), Tailwind CSS v4, React Router, Redux Toolkit
+  - Created Onboarding component with "Create New" and "Open Existing" file buttons
+  - Created Redux store with fileSlice tracking filePath, fileName, isFileOpen, isLoading, error
+  - Created fileService wrapping Tauri dialog API for save/open dialogs with `.financedb` extension
+  - Set up app shell with MemoryRouter (`/` home, `/settings` placeholder)
+- **Files changed**:
+  - Frontend: `src/store/store.ts`, `src/store/slices/fileSlice.ts`, `src/store/hooks.ts`, `src/services/fileService.ts`, `src/components/features/Onboarding/Onboarding.tsx`, `src/pages/HomePage.tsx`, `src/pages/SettingsPage.tsx`, `src/App.tsx`, `src/main.tsx`, `src/index.css`
+  - Backend: `src-tauri/src/lib.rs`, `src-tauri/Cargo.toml`, `src-tauri/capabilities/default.json`
+  - Config: `package.json`, `vite.config.ts`, `index.html`
+- **Verification**:
+  - Run `npm run tauri dev` → onboarding screen appears
+  - Click "Create New Finance File" → native save dialog opens with `.financedb` filter
+  - Click "Open Finance File" → native open dialog opens
+  - File selection updates Redux state and shows "File Selected Successfully" screen
 
 ---
 
