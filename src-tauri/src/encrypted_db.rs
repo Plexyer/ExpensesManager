@@ -811,4 +811,73 @@ mod tests {
 
         println!("\n[SUCCESS] App close/reopen simulation passed!");
     }
+
+    /// Debug helper: Extract pure SQLCipher database and print the raw hex key
+    /// for use with DB Browser for SQLite.
+    ///
+    /// Run with: cargo test extract_db_for_browser -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn extract_db_for_browser() {
+        use std::io::{Read, Seek, SeekFrom};
+
+        // ============================================================
+        // CHANGE THESE VALUES TO YOUR FILE AND PASSWORD
+        // ============================================================
+        let financedb_path = r"C:\Users\k1ker\Downloads\my-budget.financedb";
+        let output_db_path = r"C:\Users\k1ker\Downloads\extracted.db";
+        let password = "12jjKHoZH2Aq2%";
+        // ============================================================
+
+        println!("\n========================================");
+        println!("DB EXTRACTION FOR SQLITE BROWSER");
+        println!("========================================\n");
+
+        // Read header
+        let mut file = std::fs::File::open(financedb_path)
+            .expect(&format!("Cannot open file: {}", financedb_path));
+        let header = crate::file_header::FileHeader::read_from(&mut file)
+            .expect("Cannot read header - is this a valid .financedb file?");
+
+        println!("File header info:");
+        println!("  Version: {}", header.version);
+        println!("  Header size: {} bytes", header.size());
+        println!("  Password hint: {:?}", header.password_hint);
+        println!();
+
+        // Derive key using Argon2id
+        let key = crate::kdf::derive_key(password, &header.salt)
+            .expect("Key derivation failed");
+        let key_hex = crate::kdf::key_to_hex(&key);
+
+        println!("========================================");
+        println!("RAW HEX KEY FOR DB BROWSER:");
+        println!("0x{}", key_hex);
+        println!("========================================\n");
+
+        // Extract database portion (skip header)
+        let header_size = header.size();
+        file.seek(SeekFrom::Start(header_size as u64)).unwrap();
+        let mut db_bytes = Vec::new();
+        file.read_to_end(&mut db_bytes).unwrap();
+
+        println!("Database size: {} bytes", db_bytes.len());
+
+        // Write pure SQLCipher database
+        std::fs::write(output_db_path, &db_bytes)
+            .expect(&format!("Cannot write to: {}", output_db_path));
+
+        println!("Extracted database saved to: {}\n", output_db_path);
+
+        println!("========================================");
+        println!("DB BROWSER FOR SQLITE SETTINGS:");
+        println!("========================================");
+        println!("1. Open the EXTRACTED file: {}", output_db_path);
+        println!("2. In the encryption dialog:");
+        println!("   - Change dropdown from 'Passphrase' to 'Raw Key'");
+        println!("   - Paste: 0x{}", key_hex);
+        println!("   - Select: 'SQLCipher 4-Standardwerte'");
+        println!("3. Click OK");
+        println!("========================================\n");
+    }
 }
