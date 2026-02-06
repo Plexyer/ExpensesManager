@@ -207,6 +207,37 @@ npm run tauri build  # Build production app
 
 ---
 
+## Licensing Model (CONFIRMED)
+
+See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_SUMMARY.md` for structured summary.
+
+### Plans Overview
+| Plan | Cost | License Type | Capabilities |
+|------|------|--------------|--------------|
+| **Free Read-Only Viewer** | Free | None | View, search, filter, print, export (no edits) |
+| **Perpetual Base** | ~20 CHF | Signed license file | Full base features, offline forever, 5yr feature updates |
+| **Extend Feature Updates** | +10 CHF | Reissued license | +5 years feature updates |
+| **Basic Paid (Rental)** | ~5 CHF/yr | Lease token + account | Base features, 30-day offline window |
+| **Premium** | ~5-10 CHF/mo | Requires base access | Cloud sync, bank sync, receipt AI/OCR |
+
+### App Modes
+- **Full Mode**: Read + Write enabled
+- **Read-Only Mode**: Read + Export only (on expiry or no license)
+
+### Key Licensing Rules (CONFIRMED)
+- **No lock-in**: Users can ALWAYS Open Database + Export, even in Read-Only
+- **Offline-first**: Perpetual plan works fully offline forever
+- **Privacy-first**: No email/account required for perpetual licenses
+- **Feature gating**: Based on `build_release_date <= feature_updates_until` (NOT system clock)
+- **Old generation handling**: Valid signature → Full Mode; show banner to update, don't disrupt
+
+### Licensing Artifacts
+- **Perpetual License File**: Signed portable file (`license_id`, `generation`, `feature_updates_until`, `signature`)
+- **Recovery Secret**: For license recovery without account
+- **Lease Token**: For subscription plans (requires periodic refresh)
+
+---
+
 ## References
 
 ### Key Files

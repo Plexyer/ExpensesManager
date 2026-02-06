@@ -128,9 +128,70 @@ Finance file (dataset)
 
 ---
 
+## Licensing Entities (CONFIRMED from LICENSING.md)
+
+### App Mode
+- **Meaning**: Current operating mode of the application
+- **Values**: `full` | `read-only`
+- **Determined by**: License state validation on startup and runtime
+
+### Perpetual License File
+- **Meaning**: Portable signed file that grants Full Mode access
+- **Fields**:
+  - `license_id` (public identifier)
+  - `generation` (integer, increments on reissue)
+  - `plan_type` = "perpetual"
+  - `feature_updates_until` (date)
+  - `issued_at` (date)
+  - `signature` (Ed25519 or equivalent)
+- **Storage**: User-selected location (imported via file picker)
+- **Validation**: Offline signature verification using embedded public key
+
+### Recovery Secret
+- **Meaning**: Privacy-first mechanism to recover/reissue license without account
+- **User receives**: Plaintext secret at purchase time
+- **Server stores**: `hash(recovery_secret)` only (Argon2/bcrypt)
+- **Flow**: User provides `license_id + recovery_secret` → Server reissues license
+
+### Lease Token (Post-MVP, for Subscriptions)
+- **Meaning**: Server-issued token for subscription plans
+- **Fields**:
+  - `account_id`
+  - `subscription_paid_until`
+  - `offline_allowed_until` (issued_at + 30 days + grace)
+  - `issued_at`
+  - `signature`
+- **Storage**: OS secure storage (keychain)
+- **Refresh**: Required periodically for Full Mode
+
+### Feature Update Eligibility
+- **Meaning**: Whether a feature/build is available to a license
+- **Logic**: `build_release_date <= feature_updates_until`
+- **Constraint**: NEVER use system clock; use build metadata's release date
+
+---
+
+## Relationships (Licensing)
+
+```
+App Instance
+  ├── License State
+  │     ├── Perpetual License File (imported)
+  │     │     └── signature verified → Full Mode
+  │     └── Lease Token (subscription, post-MVP)
+  │           └── valid + not expired → Full Mode
+  └── App Mode
+        ├── Full Mode → all base features
+        └── Read-Only Mode → view + export only
+```
+
+---
+
 ## References
 - `.cursor/PRODUCT_REQUIREMENTS.md`
 - `.cursor/UI_FLOWS.md`
 - `.cursor/UX_INTERACTIONS.md`
 - `.cursor/DATA_MODEL.md`
 - `.cursor/QUESTIONS_FOR_USER.md`
+- `.cursor/LICENSING.md`
+- `.cursor/LICENSING_SUMMARY.md`

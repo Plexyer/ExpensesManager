@@ -312,8 +312,127 @@
 
 ---
 
+## Flow 9: Read-Only Mode Experience (CONFIRMED from LICENSING.md)
+
+### Scenario: User without valid license
+
+#### Step 1: App Launch
+1. User opens app
+2. System checks for license file
+3. No valid license found → **Read-Only Mode**
+
+#### Step 2: Open Database
+1. User can still open any encrypted database file
+2. User enters password
+3. **Screen**: Main grid with **Read-Only banner** at top
+4. Banner text: "Read-Only Mode - Viewing only. Purchase a license to enable editing."
+5. Banner actions: "Purchase License" button · "Import License" button
+
+#### Step 3: View Data
+1. User can view all data normally
+2. User can search, filter, navigate
+3. User can print views
+
+#### Step 4: Export Data (ALWAYS AVAILABLE)
+1. User can click "Export" in menu
+2. Full export functionality works
+3. CSV/JSON export completes normally
+4. **UX Non-negotiable**: Export NEVER blocked
+
+#### Disabled Features (Read-Only)
+- Add/edit/delete transactions
+- Create/modify periods
+- Create/modify templates
+- Import data
+- Any write operations
+
+---
+
+## Flow 10: Import License File (CONFIRMED from LICENSING.md)
+
+### Step 1: Navigate to License
+1. User clicks "Settings" in sidebar
+2. **Screen**: Settings page
+3. User clicks "License" tab/section
+
+### Step 2: View License Status
+1. **Screen**: License section showing current status
+2. **If no license**: "No license. Running in Read-Only Mode."
+3. **If valid license**: License details (plan type, feature updates until, etc.)
+
+### Step 3: Import License
+1. User clicks "Import License" button
+2. **Screen**: File picker dialog
+3. User selects license file (`.json` or `.lic`)
+4. User clicks "Open"
+
+### Step 4: License Validation
+1. System validates signature using embedded public key
+2. **If valid**: 
+   - Show success: "License activated! Full Mode enabled."
+   - App switches to Full Mode
+   - License details shown
+3. **If invalid**:
+   - Show error: "Invalid license file. Please check and try again."
+   - Remain in Read-Only Mode
+
+---
+
+## Flow 11: Offline Mode Toggle (CONFIRMED from LICENSING.md)
+
+### Prerequisite: Valid Perpetual License
+
+### Step 1: Navigate to Settings
+1. User clicks "Settings" in sidebar
+2. **Screen**: Settings page
+3. User sees "Offline Mode" toggle
+
+### Step 2: Enable Offline Mode
+1. User clicks "Offline Mode" toggle to ON
+2. **Screen**: Warning dialog
+3. **Warning text**: "Offline Mode disables all internet access, including update checks and license verification. Continue?"
+4. User clicks "Enable"
+
+### Step 3: Offline Mode Active
+1. Toggle shows ON state
+2. **Indicator**: "Offline Mode" badge visible in header/footer
+3. No server calls made for any reason
+4. All base features work normally
+
+### Step 4: Disable Offline Mode
+1. User clicks toggle to OFF
+2. App resumes normal online behavior
+3. May check for updates and license status
+
+---
+
+## Flow 12: Old Generation License Banner (CONFIRMED from LICENSING.md)
+
+### Scenario: User has valid license but newer generation exists on server
+
+### Step 1: License Check (when online)
+1. App performs optional license status check
+2. Server responds: "outdated_generation"
+
+### Step 2: Show Banner
+1. **Banner**: Non-intrusive, dismissible
+2. **Text**: "A newer license version exists. Import it to continue receiving updates."
+3. **Actions**: "Restore / Import" button · "Dismiss" button
+
+### Step 3: User Actions
+- **Import**: Opens license import flow
+- **Dismiss**: Banner hidden (may reappear on next app launch)
+
+### Behavior
+- **NO disruption to Full Mode** - user continues working normally
+- Only feature-update downloads blocked
+- Offline use continues normally
+
+---
+
 ## References
 
 - See **PRODUCT_REQUIREMENTS.md** for detailed requirements
 - See **UX_INTERACTIONS.md** for interaction patterns
 - See **MVP_PLAN.md** for implementation roadmap
+- See **LICENSING.md** for authoritative licensing spec

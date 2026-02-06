@@ -16,6 +16,9 @@ This document outlines the step-by-step implementation plan for the ExpensesMana
 | Testing | CONFIRMED | Write automated tests during development |
 | Multi-currency | CONFIRMED | Fixed conversion ratio, multi-currency columns |
 | Virtualization | CONFIRMED | Use for large lists |
+| **Licensing** | CONFIRMED | Read-Only mode fallback, export always available |
+| **No Lock-In** | CONFIRMED | Users can ALWAYS access data + export |
+| **App Modes** | CONFIRMED | Full Mode (with license) / Read-Only Mode (default) |
 
 ---
 
@@ -456,6 +459,93 @@ This document outlines the step-by-step implementation plan for the ExpensesMana
 
 ---
 
+## Phase 7.5: Licensing & App Modes (CONFIRMED from LICENSING.md)
+
+### Step 7.5.1: App Mode State Management
+**Goal**: Implement Full Mode vs Read-Only Mode  
+**Scope**:
+- Create license state in Redux (mode, licenseType, licenseId, etc.)
+- Implement mode switching logic
+- Add mode indicator to UI
+
+**Acceptance Criteria**:
+- ✅ App tracks current mode (full / read-only)
+- ✅ Mode indicator visible in header/footer
+- ✅ Mode persists across sessions
+
+**Likely Files**:
+- `src/store/slices/licenseSlice.ts` (new)
+- `src/components/common/ModeIndicator.tsx` (new)
+
+**Complexity**: S (Small)
+
+---
+
+### Step 7.5.2: Read-Only Mode Behavior
+**Goal**: Disable write operations in Read-Only mode  
+**Scope**:
+- Disable add/edit/delete buttons when read-only
+- Show read-only banner
+- Ensure export is ALWAYS available (UX non-negotiable)
+
+**Acceptance Criteria**:
+- ✅ Write operations disabled in Read-Only mode
+- ✅ Clear visual indication of Read-Only state
+- ✅ **Export works in Read-Only mode** (NON-NEGOTIABLE)
+- ✅ View/search/filter works normally
+
+**Likely Files**:
+- All components with write actions (modify)
+- `src/components/common/ReadOnlyBanner.tsx` (new)
+
+**Complexity**: M (Medium)
+
+---
+
+### Step 7.5.3: License File Import
+**Goal**: Import perpetual license file  
+**Scope**:
+- File picker to select license file
+- Validate signature using embedded public key
+- Activate Full Mode on valid license
+
+**Acceptance Criteria**:
+- ✅ User can import license file via Settings
+- ✅ Valid license activates Full Mode
+- ✅ Invalid license shows error, remains Read-Only
+- ✅ License details shown in Settings
+
+**Likely Files**:
+- `src/components/features/Settings/LicenseSettings.tsx` (new)
+- `src-tauri/src/modules/commands/license.rs` (new)
+- `src-tauri/src/modules/security/license_verify.rs` (new)
+
+**Complexity**: M (Medium)
+
+---
+
+### Step 7.5.4: Feature Gating (CONFIRMED)
+**Goal**: Gate features by build release date  
+**Scope**:
+- Add build metadata with release date
+- Implement feature gating logic: `build_release_date <= feature_updates_until`
+- NEVER use system clock for eligibility
+
+**Acceptance Criteria**:
+- ✅ Build includes release date metadata
+- ✅ Feature gating uses build date (not system clock)
+- ✅ Expired feature updates → base features only (no new features)
+
+**Likely Files**:
+- `src-tauri/build.rs` (modify for build metadata)
+- `src-tauri/src/modules/license/feature_gate.rs` (new)
+
+**Complexity**: S (Small)
+
+**Checkpoint**: App modes work, license import works, feature gating implemented
+
+---
+
 ## Phase 8: Polish & Testing
 
 ### Step 8.1: Error Handling
@@ -531,8 +621,11 @@ This document outlines the step-by-step implementation plan for the ExpensesMana
 4. **Phase 4** (Grid UI) - Depends on Phase 2
 5. **Phase 5** (Transactions) - Depends on Phase 4
 6. **Phase 6** (Period Creation) - Depends on Phase 3 and 4
-7. **Phase 7** (Export) - Can do anytime after Phase 2
-8. **Phase 8** (Polish) - Final phase
+7. **Phase 7** (Export) - Can do anytime after Phase 2; **NON-NEGOTIABLE for MVP**
+8. **Phase 7.5** (Licensing) - Should be early; Read-Only mode + Export is baseline
+9. **Phase 8** (Polish) - Final phase
+
+**Note**: Phase 7 (Export) and Phase 7.5 (Licensing/Read-Only mode) are **non-negotiable** for MVP. Export must always work, and Read-Only mode is the default fallback.
 
 ---
 
@@ -546,6 +639,10 @@ This document outlines the step-by-step implementation plan for the ExpensesMana
 ✅ User can see rollups (received/spent totals) in grid  
 ✅ User can export to CSV  
 ✅ User sees backup guidance  
+✅ **App runs in Read-Only mode by default (no license)**  
+✅ **User can import perpetual license file to unlock Full Mode**  
+✅ **Export is ALWAYS available, even in Read-Only mode**  
+✅ **Feature gating uses build date, not system clock**  
 
 ---
 
@@ -554,3 +651,4 @@ This document outlines the step-by-step implementation plan for the ExpensesMana
 - See **BACKLOG.md** for detailed task breakdown
 - See **PRODUCT_REQUIREMENTS.md** for requirements
 - See **DATA_MODEL.md** for schema details
+- See **LICENSING.md** for authoritative licensing spec

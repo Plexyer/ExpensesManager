@@ -703,6 +703,195 @@ Each task includes:
 
 ---
 
+## Phase 7.5: Licensing & App Modes (CONFIRMED from LICENSING.md)
+
+### TASK-LIC-1: License State Management
+**Goal**: Create Redux slice for license state  
+**Scope**:
+- Create `licenseSlice.ts` with state: mode, licenseType, licenseId, generation, featureUpdatesUntil
+- Add actions for mode switching
+- Persist license state across sessions
+
+**Acceptance Criteria**:
+- ✅ License state exists in Redux
+- ✅ Mode can be switched (full / read-only)
+- ✅ License state persists across app restarts
+
+**Likely Areas/Files**:
+- `src/store/slices/licenseSlice.ts` (new)
+- `src/store/store.ts` (register slice)
+
+**Complexity**: S  
+**Dependencies**: None
+
+---
+
+### TASK-LIC-2: Read-Only Mode UI
+**Goal**: Implement Read-Only mode visual indicators and behavior  
+**Scope**:
+- Read-Only banner at top of app
+- Disable write buttons/actions when in Read-Only
+- Clear messaging about what's disabled
+- **Export ALWAYS works** (non-negotiable)
+
+**Acceptance Criteria**:
+- ✅ Read-Only banner visible when no valid license
+- ✅ Add/edit/delete buttons disabled or hidden
+- ✅ **Export works in Read-Only mode** (NON-NEGOTIABLE)
+- ✅ View/search/filter works normally
+- ✅ Clear "Purchase/Import License" CTA in banner
+
+**Likely Areas/Files**:
+- `src/components/common/ReadOnlyBanner.tsx` (new)
+- `src/components/common/ModeIndicator.tsx` (new)
+- All components with write actions (add conditional disable)
+
+**Complexity**: M  
+**Dependencies**: TASK-LIC-1
+
+---
+
+### TASK-LIC-3: License File Import UI
+**Goal**: Allow user to import perpetual license file  
+**Scope**:
+- License section in Settings page
+- File picker to select license file
+- Display current license status
+- Success/error messages
+
+**Acceptance Criteria**:
+- ✅ Settings has "License" tab/section
+- ✅ User can click "Import License"
+- ✅ File picker opens for .json/.lic files
+- ✅ License status displayed (plan type, expiry, etc.)
+
+**Likely Areas/Files**:
+- `src/components/features/Settings/LicenseSettings.tsx` (new)
+- `src/pages/Settings.tsx` (add license section)
+
+**Complexity**: S  
+**Dependencies**: TASK-LIC-1
+
+---
+
+### TASK-LIC-4: License Signature Verification (Backend)
+**Goal**: Verify license file signature in Rust backend  
+**Scope**:
+- Parse license file JSON
+- Verify Ed25519 signature using embedded public key
+- Return license validity and details
+- No network required (offline verification)
+
+**Acceptance Criteria**:
+- ✅ License file parsed correctly
+- ✅ Signature verified using embedded public key
+- ✅ Invalid signature rejected
+- ✅ Works completely offline
+
+**Likely Areas/Files**:
+- `src-tauri/src/modules/commands/license.rs` (new)
+- `src-tauri/src/modules/security/license_verify.rs` (new)
+- `src-tauri/Cargo.toml` (add ed25519 crate)
+
+**Complexity**: M  
+**Dependencies**: None
+
+---
+
+### TASK-LIC-5: Feature Gating by Build Date
+**Goal**: Gate features by build release date, not system clock  
+**Scope**:
+- Add build metadata with deterministic release date
+- Implement gating logic: `build_release_date <= feature_updates_until`
+- Apply gating to feature-locked components
+
+**Acceptance Criteria**:
+- ✅ Build includes release date metadata
+- ✅ Gating logic does NOT use system clock
+- ✅ Features released after license expiry are disabled
+- ✅ Base features always work
+
+**Likely Areas/Files**:
+- `src-tauri/build.rs` (generate build metadata)
+- `src-tauri/src/modules/license/feature_gate.rs` (new)
+- `src/utils/featureGate.ts` (new)
+
+**Complexity**: S  
+**Dependencies**: TASK-LIC-4
+
+---
+
+### TASK-LIC-6: Mode-Based Export Access (NON-NEGOTIABLE)
+**Goal**: Ensure export is ALWAYS available regardless of mode  
+**Scope**:
+- Export command available in both Full and Read-Only modes
+- Export UI always enabled
+- No conditional gating on export
+
+**Acceptance Criteria**:
+- ✅ **Export works in Full Mode**
+- ✅ **Export works in Read-Only Mode** (NON-NEGOTIABLE)
+- ✅ Export never disabled due to license status
+- ✅ User can always get their data out
+
+**Likely Areas/Files**:
+- `src-tauri/src/modules/commands/export.rs` (verify no mode check)
+- `src/components/features/Settings/ExportSettings.tsx` (verify always enabled)
+
+**Complexity**: S  
+**Dependencies**: TASK-7.1 (CSV Export Backend), TASK-LIC-2
+
+---
+
+### TASK-LIC-7: Offline Mode Toggle (Perpetual Only)
+**Goal**: Allow perpetual license users to disable all network access  
+**Scope**:
+- Toggle in Settings (only visible with perpetual license)
+- When enabled: no server calls for any reason
+- Warning dialog before enabling
+- Indicator when offline mode is active
+
+**Acceptance Criteria**:
+- ✅ Toggle visible only for perpetual license holders
+- ✅ Warning shown before enabling
+- ✅ No network calls when enabled (verified)
+- ✅ "Offline Mode" indicator visible in UI
+
+**Likely Areas/Files**:
+- `src/components/features/Settings/OfflineModeToggle.tsx` (new)
+- `src/services/networkService.ts` (modify to respect offline mode)
+
+**Complexity**: S  
+**Dependencies**: TASK-LIC-1, TASK-LIC-4
+
+---
+
+### TASK-LIC-8: Old Generation License Banner
+**Goal**: Show non-intrusive banner when newer license generation exists  
+**Scope**:
+- On optional license check (when online), detect outdated generation
+- Show dismissible banner
+- Do NOT disrupt Full Mode
+- Only block feature-update downloads
+
+**Acceptance Criteria**:
+- ✅ Banner shown for outdated generation (not error)
+- ✅ **Full Mode NOT disrupted** - user continues working
+- ✅ Banner actions: "Import" / "Dismiss"
+- ✅ Feature-update downloads blocked
+- ✅ Offline use continues normally
+
+**Likely Areas/Files**:
+- `src/components/common/LicenseUpdateBanner.tsx` (new)
+- `src-tauri/src/modules/commands/license.rs` (add check endpoint logic)
+
+**Complexity**: M  
+**Dependencies**: TASK-LIC-4
+
+**Status**: Deferred (requires server infrastructure - post-MVP)
+
+---
+
 ## Next Backlog (Post-MVP)
 
 ### CSV Import
@@ -798,3 +987,5 @@ These features were explicitly identified by the user as future premium features
 - See **PRODUCT_REQUIREMENTS.md** for requirements
 - See **DATA_MODEL.md** for schema details
 - See **QUESTIONS_FOR_USER.md** for all confirmed decisions
+- See **LICENSING.md** for authoritative licensing spec
+- See **LICENSING_SUMMARY.md** for structured licensing summary

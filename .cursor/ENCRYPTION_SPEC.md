@@ -331,12 +331,64 @@ struct FileHeader {
 
 ---
 
+## OS Secure Storage / Keychain (CONFIRMED from LICENSING.md)
+
+### Purpose
+- Store database password for "Remember password on this device" feature
+- Store lease tokens for subscription plans (post-MVP)
+
+### Implementation
+- Use OS-provided secure storage:
+  - **Windows**: Windows Credential Manager (via `keyring` crate or equivalent)
+  - **macOS**: Keychain (post-MVP)
+  - **Linux**: Secret Service / libsecret (post-MVP)
+
+### Password Remember Feature (CONFIRMED)
+- Prompt for password on every database open
+- Offer "Remember password on this device" checkbox
+- If enabled: store password in OS secure storage
+- On next open: retrieve from secure storage, auto-unlock
+- User can clear stored password in Settings
+
+### Lease Token Storage (Post-MVP)
+- Store subscription lease tokens in OS secure storage
+- More secure than file system storage
+- Auto-refresh token when network available
+
+---
+
+## Recovery Secret Handling (CONFIRMED from LICENSING.md)
+
+### Privacy-First Recovery
+- No email/account required for perpetual licenses
+- Recovery Secret issued at purchase time
+- User must save Recovery Secret securely (we don't store it)
+
+### Server-Side Storage
+- **Stored**: `license_id`, `hash(recovery_secret)` (Argon2/bcrypt)
+- **NEVER store plaintext** Recovery Secret
+- Also stores: `feature_updates_until`, other entitlements
+
+### Recovery Flow
+1. User provides `license_id` + `recovery_secret`
+2. Server verifies: `hash(provided_secret) == stored_hash`
+3. If valid: reissue license file with new `generation`
+4. User imports new license file into app
+
+### Security Notes
+- Rate-limit recovery attempts (prevent brute force)
+- Rate-limit reissues per `license_id` (e.g., 1 per X days)
+- Log recovery attempts for fraud detection
+
+---
+
 ## References
 
 - **SQLCipher**: https://www.zetetic.net/sqlcipher/
 - **Argon2**: https://github.com/P-H-C/phc-winner-argon2
 - **Rust Argon2**: https://docs.rs/argon2/
 - **AES-GCM**: https://docs.rs/aes-gcm/
+- **Licensing Spec**: `.cursor/LICENSING.md`
 
 ---
 

@@ -314,8 +314,93 @@ All documented in BACKLOG.md under "Future Features / Premium Features" section.
 
 ---
 
+## Licensing Follow-ups (From LICENSING.md)
+
+These questions arise from the licensing specification and need user input for complete planning.
+
+### LQ1: Payment Provider Choice
+**Question**: Which payment provider should be used for license purchases?
+
+**Options**:
+- Stripe (popular, good developer experience)
+- Paddle (handles VAT/taxes automatically)
+- Gumroad (simple, creator-friendly)
+- Other
+
+**Impact**: Affects server-side implementation for license issuance and webhook handling.
+
+**Status**: ⏳ OPEN
+
+---
+
+### LQ2: Bugfix Updates Forever Mechanics
+**Question**: How should "bugfix updates forever" be distributed for perpetual licenses?
+
+**Context**: The licensing spec states perpetual licenses get bugfix updates forever, but the mechanics need clarification.
+
+**Options**:
+- All updates labeled as "bugfix" are free (honor system)
+- Separate bugfix-only releases (more maintenance)
+- Include bugfixes in feature updates (simpler, but feature updates are gated)
+
+**Impact**: Affects release/versioning strategy and update distribution.
+
+**Status**: ⏳ OPEN
+
+---
+
+### LQ3: Recovery Secret Presentation
+**Question**: How should the Recovery Secret be presented to users at purchase time?
+
+**Context**: Perpetual licenses use Recovery Secret for privacy-first license recovery without accounts.
+
+**Options**:
+- Show once at purchase, user must copy (simpler)
+- Email to user (requires email collection, reduces privacy)
+- Allow user to set their own secret (like a backup password)
+- Generate and allow download as file
+
+**Impact**: Affects purchase flow UX and user experience.
+
+**Status**: ⏳ OPEN
+
+---
+
+### LQ4: Lease Token Offline Window
+**Question**: What is the exact offline window and grace period for subscription plans?
+
+**Context**: Licensing spec mentions "30 days + 1-2 weeks grace" but exact values needed.
+
+**Suggested**:
+- Offline window: 30 days
+- Grace period: 14 days (2 weeks)
+- Total: 44 days without network before Read-Only
+
+**Impact**: Affects lease token `offline_allowed_until` calculation.
+
+**Status**: ⏳ OPEN (suggested values provided)
+
+---
+
+### LQ5: Premium Dependency Confirmation
+**Question**: Can Premium be purchased without any base access?
+
+**Context**: Licensing spec says Premium requires Base access (Perpetual OR Basic Paid). Confirming this is intentional.
+
+**Current Understanding**:
+- Premium requires: (Perpetual Base) OR (active Basic Paid)
+- Premium CANNOT be purchased standalone
+
+**Impact**: Affects Premium purchase flow and entitlement checks.
+
+**Status**: ⏳ OPEN (confirmation requested)
+
+---
+
 ## References
 - **ENCRYPTION_SPEC.md**: Encryption questions
 - **DATA_MODEL.md**: Schema questions
 - **PRODUCT_REQUIREMENTS.md**: Feature questions
 - **BACKLOG.md**: Future features section
+- **LICENSING.md**: Licensing specification
+- **LICENSING_SUMMARY.md**: Licensing decisions summary

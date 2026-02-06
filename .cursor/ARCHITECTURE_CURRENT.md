@@ -318,6 +318,117 @@ pub fn create_monthly_budget(
 4. **No single-period category grid (corrected design)** - Current UI is category list/grid, not a period budget instance grid with Received/Spent columns and line-item modals
 5. **No CSV export** - No export functionality exists
 6. **Template cadence not modeled** - Corrected design requires cadence/period length per template; current schema does not encode it explicitly
+7. **No licensing system** - No license state, no app mode (Full vs Read-Only), no feature gating
+
+---
+
+## Licensing Architecture (CONFIRMED)
+
+See `.cursor/LICENSING.md` for authoritative source.
+
+### License State Management
+
+```
+┌─────────────────────────────────────┐
+│      App Startup                    │
+│  1. Check for local license file    │
+│  2. Validate signature (offline)    │
+│  3. Determine app mode              │
+└──────────────┬──────────────────────┘
+               │
+       ┌───────▼────────┐
+       │ License Valid? │
+       └───────┬────────┘
+          Yes  │  No
+    ┌──────────┴──────────┐
+    ▼                     ▼
+┌────────────┐     ┌──────────────┐
+│ Full Mode  │     │ Read-Only    │
+│ (R+W)      │     │ Mode (R only)│
+└────────────┘     └──────────────┘
+```
+
+### App Mode State
+
+```typescript
+// Frontend state shape (conceptual)
+interface LicenseState {
+  mode: 'full' | 'read-only';
+  licenseType: 'perpetual' | 'subscription' | 'none';
+  licenseId: string | null;
+  generation: number | null;
+  featureUpdatesUntil: Date | null;
+  isPremium: boolean;
+  offlineModeEnabled: boolean; // Perpetual only
+}
+```
+
+### Feature Gating Logic (CONFIRMED)
+
+```rust
+// Rust backend (conceptual)
+fn is_feature_available(
+    feature_release_date: Date,
+    license: &PerpetualLicense
+) -> bool {
+    // Gate by BUILD release date, NOT system clock
+    feature_release_date <= license.feature_updates_until
+}
+```
+
+**Key rule**: NEVER use `today()` / system clock for feature eligibility. Use build metadata's release date instead.
+
+### License Artifacts (CONFIRMED)
+
+#### Perpetual License File
+```json
+{
+  "license_id": "lic_abc123",
+  "generation": 1,
+  "plan_type": "perpetual",
+  "feature_updates_until": "2031-02-06",
+  "issued_at": "2026-02-06",
+  "signature": "Ed25519_signature_here"
+}
+```
+
+#### Lease Token (Subscription - Post-MVP)
+```json
+{
+  "account_id": "acc_xyz789",
+  "subscription_paid_until": "2027-02-06",
+  "offline_allowed_until": "2026-03-08",
+  "issued_at": "2026-02-06",
+  "signature": "Ed25519_signature_here"
+}
+```
+
+### Mode Behavior Matrix
+
+| Mode | View Data | Export | Add/Edit/Delete | Requires |
+|------|-----------|--------|-----------------|----------|
+| **Full** | ✅ | ✅ | ✅ | Valid license |
+| **Read-Only** | ✅ | ✅ | ❌ | Any (default) |
+
+### Offline Mode Toggle (Perpetual Only)
+
+When enabled:
+- No server calls (no update checks, no license status check)
+- Show warning in UI
+- All base features work normally
+
+When disabled:
+- Optional update checks
+- Optional license status checks (for banner about newer generation)
+
+### Old Generation Handling (CONFIRMED)
+
+If server reports newer generation exists:
+- **Do NOT switch to Read-Only**
+- Keep Full Mode
+- Show non-intrusive banner: "A newer license version exists. Import it to continue receiving updates."
+- Block feature-update downloads only
+- Offline use continues normally
 
 ---
 

@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    expensesmanager_lib::run()
+    expenses_manager_lib::run()
 }

@@ -11,8 +11,23 @@
 ### Encrypted Finance Files
 - ✅ Each finance file is encrypted (SQLCipher or app-level)
 - ✅ Master password required to unlock
-- ✅ No password recovery (by design)
+- ✅ No password recovery (by design for database password)
 - ✅ Password hint optional (for user convenience, not security)
+- ✅ "Remember password on this device" via OS secure storage (optional)
+
+### No Lock-In Policy (CONFIRMED from LICENSING.md)
+- ✅ **ALWAYS allow Open Database + Export** - even in Read-Only mode
+- ✅ Lock screens must NEVER trap user data
+- ✅ Read-Only mode is the fallback, not a brick
+- ✅ Free Read-Only Viewer can open any encrypted DB (with password)
+- ✅ Export (CSV/JSON) available in ALL modes
+
+### Licensing Principles (CONFIRMED)
+- ✅ **Ownership-first**: Perpetual plan = own forever, offline, unlimited devices
+- ✅ **Privacy-first**: No email/account required for perpetual licenses
+- ✅ **Offline-first**: Perpetual plan works fully offline forever
+- ✅ **Transparency**: Clear separation of base features vs premium features
+- ✅ **No system clock dependency**: Feature gating by build date, not `today()`
 
 ### MVP-First Development
 - ✅ Focus on MVP features only (see PRODUCT_REQUIREMENTS.md)
@@ -259,8 +274,51 @@
 
 ---
 
+## Licensing Rules (CONFIRMED from LICENSING.md)
+
+### Agent Rules for Licensing
+These rules MUST be followed by all agents working on licensing-related features:
+
+#### No Lock-In (NON-NEGOTIABLE)
+- ✅ **NEVER implement a lock screen that traps user data**
+- ✅ **ALWAYS allow Open Database + Export** in all modes
+- ✅ Read-Only mode is the expiry fallback, not a brick
+- ✅ Free Viewer can open any encrypted DB with password
+
+#### Mode Behavior
+- ✅ Full Mode = valid license → all base features enabled
+- ✅ Read-Only Mode = no valid license → view + export only
+- ✅ NEVER hard-brick app on license expiry
+- ✅ On subscription expiry → Read-Only, NOT locked out
+
+#### Feature Gating
+- ✅ Gate features by `build_release_date <= feature_updates_until`
+- ✅ **NEVER use system clock** (`today()`) for eligibility
+- ✅ Build metadata must include deterministic release date
+
+#### Old Generation Handling
+- ✅ Valid signature with old generation → **keep Full Mode**
+- ✅ Show non-intrusive banner to import newer license
+- ✅ Only block feature-update downloads, not core usage
+- ✅ Offline use continues normally
+
+#### Revocation Policy
+- ✅ On `revoked` status → allow Read-Only + export, show warning
+- ✅ Avoid hard lockouts for perpetual licenses
+- ✅ Only revoke in confirmed abuse cases
+
+### Communication Rules
+- ✅ Clearly explain what each plan includes
+- ✅ Clearly explain what requires internet
+- ✅ Clearly explain what happens on expiry
+- ✅ Clearly explain what "Offline Mode" does
+
+---
+
 ## References
 
 - See **PRODUCT_REQUIREMENTS.md** for MVP scope
 - See **BACKLOG.md** for task breakdown
 - See **ARCHITECTURE_CURRENT.md** for current architecture
+- See **LICENSING.md** for authoritative licensing spec
+- See **LICENSING_SUMMARY.md** for structured licensing summary

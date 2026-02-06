@@ -48,7 +48,96 @@
 5. **Advanced Reports** - Future feature
 6. **Sync Engine** - Future feature
 7. **Multi-User/Profile System** - MVP uses portable files instead
-8. **Cloud Sync** - Future feature
+8. **Cloud Sync** - Premium future feature
+9. **Bank Sync** - Premium future feature
+10. **Receipt Scanning AI/OCR** - Premium future feature
+11. **Payment/Purchase Flow** - MVP can use manual license file import
+12. **Server Infrastructure** - MVP may use local license file only
+
+---
+
+## Licensing Requirements (CONFIRMED)
+
+See `.cursor/LICENSING.md` for authoritative source.
+
+### MVP Licensing Scope
+
+**In Scope for MVP**:
+- Read-Only mode (fallback when no valid license)
+- Export always available (even in Read-Only)
+- Perpetual license file import/validation
+- Full Mode activation with valid license
+- Basic license status display
+
+**Deferred (Post-MVP)**:
+- In-app purchase flow
+- Subscription lease token system (Basic Paid / Premium)
+- Server-side license issuance
+- Recovery secret flow (server-side)
+- Offline Mode toggle UI
+- Premium features (cloud sync, bank sync, receipt AI)
+
+### Licensing User Stories (MVP)
+
+#### LIC-1: Read-Only Mode Access
+**As a** user without a valid license  
+**I want to** open my encrypted database in Read-Only mode  
+**So that** I can always access my data even without purchasing
+
+**Acceptance Criteria**:
+- App opens encrypted DB with correct password
+- Full view/search/filter/print capabilities
+- Export (CSV/JSON) always available
+- All write operations disabled with clear messaging
+- No "trap screens" that block data access
+
+#### LIC-2: Import Perpetual License File
+**As a** user who purchased a perpetual license  
+**I want to** import my license file  
+**So that** I can unlock Full Mode
+
+**Acceptance Criteria**:
+- User can select license file via file picker
+- App validates signature using embedded public key
+- Valid license → Full Mode enabled
+- Invalid/tampered license → error message, remain in Read-Only
+- License file can be imported on unlimited devices
+
+#### LIC-3: Full Mode with Valid License
+**As a** user with valid perpetual license  
+**I want to** use all base features  
+**So that** I can fully manage my budget
+
+**Acceptance Criteria**:
+- All base features enabled (add/edit/delete data)
+- Works fully offline
+- License status shown in Settings
+- Feature update eligibility checked by build date (not system clock)
+
+#### LIC-4: Export Always Available
+**As a** user in any mode  
+**I want to** export my data to CSV  
+**So that** my data is never locked in
+
+**Acceptance Criteria**:
+- Export available in Full Mode
+- Export available in Read-Only Mode
+- Clear, non-blocking export flow
+- **This is a UX non-negotiable**
+
+### Plan Boundaries (CONFIRMED)
+
+| Plan | Base Features | Premium Features | Account Required |
+|------|---------------|------------------|------------------|
+| Free Viewer | Read-Only | ❌ | ❌ |
+| Perpetual Base | Full | ❌ | ❌ |
+| Basic Paid | Full | ❌ | ✅ |
+| Premium | Full | ✅ (cloud/bank/OCR) | ✅ |
+
+### Feature Gating Rule (CONFIRMED)
+- Gate features by `build_release_date <= feature_updates_until`
+- **NEVER use system clock** for eligibility (prevents manipulation)
+- Build metadata must include deterministic release date
 
 ---
 
