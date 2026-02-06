@@ -58,7 +58,7 @@ Each task includes:
 
 ---
 
-### TASK-1.2: Master Password Creation Modal
+### TASK-1.2: Master Password Creation Modal ✅ COMPLETED
 **Goal**: Implement password creation UI  
 **Scope**:
 - Password input field (with show/hide toggle)
@@ -80,6 +80,26 @@ Each task includes:
 
 **Complexity**: S  
 **Dependencies**: TASK-1.1
+
+#### Implementation Notes
+- **Completed on**: 2026-02-06
+- **Summary**:
+  - Added zxcvbn library for password strength calculation
+  - Created PasswordInput component with show/hide toggle
+  - Created PasswordCreationModal with strength indicator, requirements checklist, and hint field
+  - Minimum 12 character requirement with visual checklist
+  - Warning banner about no password recovery
+  - Discard confirmation when canceling with data entered
+  - Updated fileSlice with onboarding steps (select → create-password → complete)
+- **Files changed**:
+  - New: `src/utils/passwordStrength.ts`, `src/utils/passwordValidation.ts`
+  - New: `src/components/common/PasswordInput.tsx`
+  - New: `src/components/features/Onboarding/PasswordCreationModal.tsx`
+  - Modified: `src/store/slices/fileSlice.ts`, `src/components/features/Onboarding/Onboarding.tsx`, `src/pages/HomePage.tsx`
+  - Dependencies: `package.json` (added zxcvbn, @types/zxcvbn)
+- **Verification**:
+  - Run `npm run tauri dev` → click "Create New Finance File" → select location → password modal appears
+  - Test password validation, strength indicator, confirmation matching, hint field
 
 ---
 
@@ -971,6 +991,41 @@ These are not new features but architectural safeguards that MUST be in place to
 
 **Complexity**: S  
 **Dependencies**: TASK-1.6 (Database Encryption)
+
+---
+
+## Adjustments / Bugfixes
+
+### TASK-FIX-1: Password Creation Modal Responsive Height ✅ COMPLETED
+**Goal**: Fix Password Creation Modal overflow at small window heights (720px)  
+**Scope**:
+- Make modal content scrollable when viewport height is constrained
+- Ensure header remains visible at all times
+- Ensure action buttons (Cancel / Create) are always accessible via scroll
+
+**Acceptance Criteria**:
+- ✅ No elements cut off at 720px viewport height
+- ✅ Form body scrolls when content exceeds available height
+- ✅ Buttons accessible (via scroll)
+
+**Likely Areas/Files**:
+- `src/components/features/Onboarding/PasswordCreationModal.tsx`
+
+**Complexity**: S  
+**Dependencies**: TASK-1.2
+
+#### Implementation Notes
+- **Completed on**: 2026-02-06
+- **Summary**:
+  - Added `max-h-[calc(100vh-2rem)]` and `flex flex-col` to modal container for height constraint
+  - Added `overflow-y-auto flex-1 min-h-0` to form element to enable scrolling
+  - Added `flex-shrink-0` to header to keep it always visible
+- **Files changed**:
+  - Modified: `src/components/features/Onboarding/PasswordCreationModal.tsx`
+- **Verification**:
+  - Run `npm run tauri dev` → Create New Finance File → select location → modal appears
+  - Resize window to 720px height → form scrolls, buttons reachable
+  - Resize window to normal size → no unnecessary scrollbar
 
 ---
 

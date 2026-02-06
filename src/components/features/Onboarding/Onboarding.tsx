@@ -1,9 +1,18 @@
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
-import { createNewFile, openExistingFile, clearError } from "../../../store/slices/fileSlice";
+import {
+  createNewFile,
+  openExistingFile,
+  clearError,
+  completeFileCreation,
+  cancelPasswordCreation,
+} from "../../../store/slices/fileSlice";
+import PasswordCreationModal from "./PasswordCreationModal";
 
 const Onboarding = () => {
   const dispatch = useAppDispatch();
-  const { isLoading, error } = useAppSelector((state) => state.file);
+  const { isLoading, error, onboardingStep, filePath } = useAppSelector(
+    (state) => state.file
+  );
 
   const handleCreateNew = () => {
     dispatch(createNewFile());
@@ -16,6 +25,23 @@ const Onboarding = () => {
   const handleClearError = () => {
     dispatch(clearError());
   };
+
+  const handlePasswordSubmit = async (
+    _password: string,
+    hint: string | null
+  ): Promise<void> => {
+    // TODO: In TASK-1.5/1.6, this will call Tauri command to create encrypted file
+    // For now, just complete the file creation flow
+    // Password is passed but not stored - it will be used by encryption in future task
+    // Using _password prefix to indicate intentionally unused (will be used in TASK-1.5)
+    dispatch(completeFileCreation({ hint }));
+  };
+
+  const handlePasswordCancel = () => {
+    dispatch(cancelPasswordCreation());
+  };
+
+  const isPasswordModalOpen = onboardingStep === "create-password";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
@@ -173,6 +199,14 @@ const Onboarding = () => {
           </p>
         </div>
       </div>
+
+      {/* Password Creation Modal */}
+      <PasswordCreationModal
+        isOpen={isPasswordModalOpen}
+        onClose={handlePasswordCancel}
+        onSubmit={handlePasswordSubmit}
+        filePath={filePath || ""}
+      />
     </div>
   );
 };

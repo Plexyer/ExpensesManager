@@ -8,8 +8,9 @@
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 1.1 - File Picker | ✅ DONE | Tauri dialog, Redux store, Onboarding UI |
-| Phase 1.2 - Password Flow | ⏳ TODO | Next task |
-| Phase 1.3 - Encryption | ⏳ TODO | Blocked by 1.2 |
+| Phase 1.2 - Password Creation | ✅ DONE | Password modal with zxcvbn strength, validation |
+| Phase 1.2b - Password Unlock | ⏳ TODO | Next task (TASK-1.3) |
+| Phase 1.3 - Encryption | ⏳ TODO | Blocked by 1.2b |
 
 ---
 

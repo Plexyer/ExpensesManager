@@ -1,20 +1,26 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { selectNewFilePath, selectExistingFilePath } from "../../services/fileService";
 
+export type OnboardingStep = "select" | "create-password" | "unlock-password" | "complete";
+
 interface FileState {
   filePath: string | null;
   fileName: string | null;
+  passwordHint: string | null;
   isFileOpen: boolean;
   isLoading: boolean;
   error: string | null;
+  onboardingStep: OnboardingStep;
 }
 
 const initialState: FileState = {
   filePath: null,
   fileName: null,
+  passwordHint: null,
   isFileOpen: false,
   isLoading: false,
   error: null,
+  onboardingStep: "select",
 };
 
 export const createNewFile = createAsyncThunk(
@@ -59,12 +65,26 @@ const fileSlice = createSlice({
     closeFile: (state) => {
       state.filePath = null;
       state.fileName = null;
+      state.passwordHint = null;
       state.isFileOpen = false;
       state.error = null;
+      state.onboardingStep = "select";
+    },
+    // Called after password is set during file creation
+    completeFileCreation: (state, action: PayloadAction<{ hint: string | null }>) => {
+      state.passwordHint = action.payload.hint;
+      state.isFileOpen = true;
+      state.onboardingStep = "complete";
+    },
+    // Cancel password creation and go back to file selection
+    cancelPasswordCreation: (state) => {
+      state.filePath = null;
+      state.fileName = null;
+      state.onboardingStep = "select";
     },
   },
   extraReducers: (builder) => {
-    // Create new file
+    // Create new file - store path and go to password creation step
     builder
       .addCase(createNewFile.pending, (state) => {
         state.isLoading = true;
@@ -75,7 +95,8 @@ const fileSlice = createSlice({
         if (action.payload) {
           state.filePath = action.payload.path;
           state.fileName = action.payload.name;
-          state.isFileOpen = true;
+          // Don't mark as open yet - need password first
+          state.onboardingStep = "create-password";
         }
         // If null (cancelled), just stop loading - no state change
       })
@@ -106,5 +127,5 @@ const fileSlice = createSlice({
   },
 });
 
-export const { clearError, closeFile } = fileSlice.actions;
+export const { clearError, closeFile, completeFileCreation, cancelPasswordCreation } = fileSlice.actions;
 export default fileSlice.reducer;

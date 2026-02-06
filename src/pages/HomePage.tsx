@@ -76,9 +76,12 @@ const HomePage = () => {
                 />
               </svg>
             </div>
-            <h2 className="text-xl font-semibold text-white mb-2">File Selected Successfully</h2>
+            <h2 className="text-xl font-semibold text-white mb-2">Finance File Created</h2>
             <p className="text-slate-400 mb-6">
-              Your finance file is ready. The budget grid and password protection will be implemented in the next tasks.
+              Your encrypted finance file is ready. The budget grid and data storage will be implemented in the next tasks.
+            </p>
+            <p className="text-xs text-amber-400/80 mb-4">
+              Remember: Keep your master password safe. It cannot be recovered.
             </p>
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-slate-700/50 rounded-lg">
               <svg
