@@ -196,7 +196,7 @@ Each task includes:
 
 ---
 
-### TASK-1.4: Research SQLCipher Rust Integration
+### TASK-1.4: Research SQLCipher Rust Integration ✅ COMPLETED
 **Goal**: Determine how to integrate SQLCipher  
 **Scope**:
 - Research `rusqlite` SQLCipher support
@@ -216,9 +216,24 @@ Each task includes:
 **Complexity**: S (research only)  
 **Dependencies**: None (can run in parallel with TASK-STUB-1)
 
+#### Implementation Notes
+- **Completed on**: 2026-02-06
+- **Summary**:
+  - Researched rusqlite SQLCipher feature flags: `bundled-sqlcipher-vendored-openssl` is recommended
+  - Confirmed `rusqlcipher` crate is outdated (7+ years) - do not use
+  - Documented raw hex key format (`PRAGMA key = "x'hex'"`) to bypass SQLCipher PBKDF2 for Argon2id
+  - Documented fallback approach using `aes-gcm` crate
+  - Documented Windows 11 build requirements (MSVC C++ compiler)
+- **Files changed**:
+  - Created: `.cursor/TASK-1.4_SQLCIPHER_RESEARCH.md` (comprehensive research document)
+  - Modified: `.cursor/ENCRYPTION_SPEC.md` (updated Rust Integration, Key Setting Pattern, Implementation Steps, Fallback Plan, Resolved Questions)
+- **Verification**:
+  - Research document contains all findings with sources
+  - ENCRYPTION_SPEC.md has concrete Cargo.toml configuration ready for TASK-1.5
+
 ---
 
-### TASK-1.5: Implement Key Derivation (Argon2id)
+### TASK-1.5: Implement Key Derivation (Argon2id) ✅ COMPLETED
 **Goal**: Derive encryption key from master password  
 **Scope**:
 - Add `argon2` crate dependency
@@ -237,6 +252,23 @@ Each task includes:
 
 **Complexity**: M  
 **Dependencies**: TASK-1.4
+
+#### Implementation Notes
+- **Completed on**: 2026-02-06
+- **Summary**:
+  - Added `argon2`, `rand`, `hex` crates to Cargo.toml
+  - Created `src-tauri/src/kdf.rs` module with Argon2id key derivation
+  - Implemented `generate_salt()`, `derive_key()`, `key_to_hex()`, `get_kdf_params()`
+  - Uses OWASP-recommended params: 64MB memory, 3 iterations, 4 parallelism, 32-byte output
+  - Added `KdfError` enum with Display/Error traits for proper error handling
+- **Files changed**:
+  - `src-tauri/Cargo.toml` (added argon2, rand, hex dependencies)
+  - `src-tauri/src/kdf.rs` (NEW - KDF module with tests)
+  - `src-tauri/src/lib.rs` (added mod kdf declaration)
+- **Verification**:
+  - `cargo build` succeeds
+  - `cargo test` passes all 8 KDF tests (+ 5 existing stub_file tests)
+  - Tests cover: determinism, uniqueness, empty password validation, hex encoding
 
 ---
 

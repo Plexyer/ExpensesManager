@@ -80,32 +80,84 @@ SQLCipher is an SQLite extension that provides transparent 256-bit AES encryptio
 3. **Database Encryption**: SQLCipher encrypts entire database file
 4. **Key Management**: Keep encryption key in memory only, clear on app close
 
-#### Rust Integration
-- Use `rusqlite` with SQLCipher feature flag (if available)
-- Or use `sqlcipher` crate (if exists)
-- Or compile SQLCipher from source and link statically
+#### Rust Integration (CONFIRMED - from TASK-1.4 Research)
+
+**Recommended Approach**: Use `rusqlite` with `bundled-sqlcipher-vendored-openssl` feature.
+
+```toml
+# Cargo.toml
+[dependencies]
+rusqlite = { version = "0.38", features = ["bundled-sqlcipher-vendored-openssl"] }
+argon2 = "0.5"           # Argon2id key derivation
+hex = "0.4"              # Hex encoding for raw keys
+rand = "0.8"             # Secure random for salt generation
+```
+
+**Why this approach**:
+- ✅ Bundles SQLCipher + OpenSSL from source (no external dependencies)
+- ✅ Eliminates Windows OpenSSL installation issues
+- ✅ Actively maintained (rusqlite 0.38.0)
+- ✅ Compatible with Tauri 2
+- ⚠️ First build takes +5-15 minutes (cached thereafter)
+- ⚠️ Binary size increases ~5-10 MB (acceptable for desktop)
+
+**Alternative crates NOT recommended**:
+- `rusqlcipher` crate exists but is **outdated (7+ years)** - do not use
+- Non-bundled `sqlcipher` feature requires manual SQLCipher installation
+
+**Build Requirements (Windows 11)**:
+- Rust toolchain (rustup)
+- MSVC C++ compiler (Visual Studio Build Tools)
 
 #### Key Derivation Function (KDF)
+
+**Important**: SQLCipher uses PBKDF2 by default, but we bypass it using the raw hex key format to use Argon2id instead.
+
 ```rust
-// Pseudocode
-fn derive_key(password: &str, salt: &[u8]) -> Vec<u8> {
-    // Argon2id parameters
-    let config = Argon2::new(
-        Algorithm::Argon2id,
-        Version::V0x13,
-        Params::new(
-            65536,  // memory_cost (64 MB)
-            3,      // time_cost (3 iterations)
-            4,      // parallelism (4 threads)
-            32,     // output_length (32 bytes = 256 bits)
-        )?,
-    );
+use argon2::{Argon2, Algorithm, Version, Params};
+
+fn derive_key(password: &str, salt: &[u8]) -> Result<Vec<u8>, argon2::Error> {
+    let params = Params::new(
+        65536,  // memory_cost (64 MB)
+        3,      // time_cost (3 iterations)
+        4,      // parallelism (4 threads)
+        Some(32), // output_length (32 bytes = 256 bits)
+    )?;
     
-    let mut key = [0u8; 32];
-    config.hash_password_into(password.as_bytes(), salt, &mut key)?;
-    key.to_vec()
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    
+    let mut key = vec![0u8; 32];
+    argon2.hash_password_into(password.as_bytes(), salt, &mut key)?;
+    Ok(key)
 }
 ```
+
+#### SQLCipher Key Setting Pattern (CONFIRMED - from TASK-1.4 Research)
+
+**Critical**: Use raw hex key format (`x'hex'`) to bypass SQLCipher's internal PBKDF2 and use our Argon2id-derived key directly.
+
+```rust
+use rusqlite::Connection;
+
+fn open_encrypted_db(path: &str, derived_key: &[u8]) -> rusqlite::Result<Connection> {
+    let conn = Connection::open(path)?;
+    
+    // Convert 32-byte key to hex and set as raw key (bypasses SQLCipher PBKDF2)
+    let key_hex = hex::encode(derived_key);
+    conn.execute(&format!("PRAGMA key = \"x'{}'\"", key_hex), [])?;
+    
+    // Verify key works (will error if wrong password)
+    conn.execute("SELECT count(*) FROM sqlite_master", [])?;
+    
+    Ok(conn)
+}
+```
+
+**Key Points**:
+- The `x'...'` syntax tells SQLCipher to use the bytes directly as the encryption key
+- No PBKDF2 is performed by SQLCipher when using this format
+- Key must be exactly 32 bytes (256 bits) for AES-256
+- The `SELECT count(*) FROM sqlite_master` query verifies decryption succeeded
 
 #### File Structure
 ```
@@ -176,23 +228,58 @@ fn decrypt_database(encrypted: &[u8], key: &[u8]) -> Vec<u8> {
 - Less application code complexity
 - Well-tested and secure
 
-### Implementation Steps (CONFIRMED)
-1. **Use rusqlite with SQLCipher feature flag** - Target Windows 11 only for MVP
-2. **Key Derivation**: Implement Argon2id KDF exclusively (use `argon2` crate)
-3. **File Format**: Design header format (magic number, salt, KDF params)
-4. **Integration**: Modify `DbState` to handle encrypted connections
-5. **Testing**: Test encryption/decryption, wrong password handling
+### Implementation Steps (CONFIRMED - from TASK-1.4 Research)
+
+| Step | Task | Status |
+|------|------|--------|
+| 1 | Add dependencies to `src-tauri/Cargo.toml` | TASK-1.5 |
+| 2 | Implement Argon2id key derivation | TASK-1.5 |
+| 3 | Design file header format (magic, salt, KDF params) | TASK-1.6 |
+| 4 | Integrate SQLCipher with `DbState` | TASK-1.6 |
+| 5 | Test encryption/decryption, wrong password | TASK-1.6 |
+
+**Cargo.toml Configuration (Ready to Apply)**:
+```toml
+[dependencies]
+rusqlite = { version = "0.38", features = ["bundled-sqlcipher-vendored-openssl"] }
+argon2 = "0.5"
+hex = "0.4"
+rand = "0.8"
+```
+
+**Implementation Order**:
+1. **TASK-1.5**: Add dependencies, implement `derive_key()` function, add unit tests
+2. **TASK-1.6**: Implement `open_encrypted_db()`, file header, replace stub format
 
 ### Platform Support (CONFIRMED)
 - **MVP**: Windows 11 only
 - **Post-MVP**: MacOS and Linux support can be added later
 
-### Fallback Plan
+### Fallback Plan (CONFIRMED - from TASK-1.4 Research)
+
 If SQLCipher integration encounters issues on Windows 11:
-1. Use app-level encryption (AES-256-GCM)
-2. Keep decrypted database in memory
-3. Encrypt on save, decrypt on load
-4. Document performance implications
+
+**Alternative Dependencies**:
+```toml
+[dependencies]
+rusqlite = { version = "0.38", features = ["bundled"] }  # Standard SQLite (no SQLCipher)
+aes-gcm = "0.10"         # AES-256-GCM encryption (security audited by NCC Group)
+argon2 = "0.5"
+hex = "0.4"
+rand = "0.8"
+```
+
+**App-Level Encryption Pattern**:
+1. Keep decrypted SQLite database in memory (or temp file)
+2. On save: encrypt entire database with AES-256-GCM, write to disk
+3. On load: read from disk, decrypt, load into memory
+4. Delete temp files securely on app close
+
+**Trade-offs**:
+- ⚠️ Higher memory usage (entire DB in memory)
+- ⚠️ More complex implementation
+- ✅ Full control over encryption
+- ✅ No external library compilation issues
 
 ---
 
@@ -413,9 +500,15 @@ struct FileHeader {
 
 ## Resolved Questions (CONFIRMED)
 
-1. **SQLCipher Rust bindings**: Use rusqlite with SQLCipher feature flag (CONFIRMED)
+1. **SQLCipher Rust bindings**: Use `rusqlite` with `bundled-sqlcipher-vendored-openssl` feature (CONFIRMED - TASK-1.4)
 2. **Password Hashing**: Use Argon2id exclusively - no SHA256 backward compatibility (CONFIRMED)
 3. **Target Platform**: Windows 11 only for MVP (CONFIRMED)
 4. **Cross-platform**: MacOS/Linux support deferred to post-MVP (CONFIRMED)
+5. **Bypassing SQLCipher KDF**: Use `PRAGMA key = "x'hex'"` raw key format (CONFIRMED - TASK-1.4)
+6. **Alternative crates**: `rusqlcipher` is outdated (7+ years) - do not use (CONFIRMED - TASK-1.4)
+7. **Fallback approach**: `aes-gcm` crate for app-level encryption if needed (CONFIRMED - TASK-1.4)
+8. **Build requirements**: Rust + MSVC C++ compiler on Windows (CONFIRMED - TASK-1.4)
 
-**Status**: CONFIRMED - Ready for implementation
+**Research Document**: See `.cursor/TASK-1.4_SQLCIPHER_RESEARCH.md` for full details.
+
+**Status**: CONFIRMED - Ready for implementation (TASK-1.5, TASK-1.6)

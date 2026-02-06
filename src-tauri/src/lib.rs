@@ -1,5 +1,6 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
+mod kdf;
 mod stub_file;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
