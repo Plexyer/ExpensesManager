@@ -351,7 +351,7 @@ Each task includes:
 
 ---
 
-### TASK-2.2: Create Envelopes Table Migration
+### TASK-2.2: Create Envelopes Table Migration ✅ COMPLETED
 **Goal**: Add per-budget-instance category rows (references global unique categories)  
 **Scope**:
 - Create migration file
@@ -360,15 +360,30 @@ Each task includes:
 - Run migration
 
 **Acceptance Criteria**:
-- ✅ `envelopes` table exists
-- ✅ Foreign keys correct
-- ✅ Indexes created
+- ✅ `budget_instance_categories` table exists (renamed from `envelopes` per DATA_MODEL.md)
+- ✅ Foreign keys correct (ON DELETE CASCADE to period_budget_instances and global_categories)
+- ✅ Indexes created (3 indexes: idx_bic_budget_instance_id, idx_bic_global_category_id, idx_bic_instance_sort)
 
 **Likely Areas/Files**:
-- `src-tauri/migrations/YYYY_MM_create_envelopes.sql` (new)
+- `src-tauri/src/migrations.rs` (migration v2)
 
 **Complexity**: S  
 **Dependencies**: TASK-2.1
+
+#### Implementation Notes
+- **Completed on**: 2026-02-06
+- **Summary**:
+  - Added migration v2 with `budget_instance_categories` table (links budget instances to global categories)
+  - Table columns: budget_instance_category_id, budget_instance_id, global_category_id, default_amount, default_currency, sort_order, created_at
+  - Added 3 performance indexes for common query patterns
+  - Updated CURRENT_SCHEMA_VERSION from 1 to 2
+  - Unique constraint on (budget_instance_id, global_category_id) prevents duplicates
+- **Files changed**:
+  - `src-tauri/src/migrations.rs` (added migration v2, 6 new tests)
+- **Verification**:
+  - All 34 Rust tests pass (6 new migration v2 tests)
+  - `cargo build` succeeds
+  - Migration is idempotent and upgrades v1 databases to v2
 
 ---
 
