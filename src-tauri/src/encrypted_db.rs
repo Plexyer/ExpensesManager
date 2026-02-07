@@ -1398,6 +1398,401 @@ fn update_template_category_amount_internal(
     Ok(())
 }
 
+// ============================================================================
+// Period Budget Instance Commands
+// ============================================================================
+
+/// A period budget instance (one grid view per period).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PeriodBudgetInstance {
+    pub budget_instance_id: i64,
+    pub cadence: String,
+    pub start_date: String,
+    pub end_date: Option<String>,
+    pub template_id: Option<i64>,
+    pub template_name: Option<String>,
+    pub income_arrival_date: Option<String>,
+    pub created_at: String,
+}
+
+/// Arguments for creating a period from a template.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreatePeriodFromTemplateArgs {
+    pub template_id: i64,
+    pub start_date: String,
+    /// Optional end_date — required for 'custom' cadence, computed otherwise.
+    pub end_date: Option<String>,
+    /// Optional income arrival date for the period.
+    pub income_arrival_date: Option<String>,
+}
+
+/// Result of creating a period from a template.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreatePeriodResult {
+    pub period: PeriodBudgetInstance,
+    /// Number of category envelopes copied from the template.
+    pub categories_created: usize,
+    /// Number of template-default received line items auto-created.
+    pub default_line_items_created: usize,
+}
+
+/// Computes end_date from start_date + cadence using SQLite date functions.
+/// Returns None for 'custom' cadence (user must supply end_date).
+fn compute_end_date(
+    conn: &Connection,
+    start_date: &str,
+    cadence: &str,
+) -> Result<Option<String>, EncryptedDbError> {
+    let modifier = match cadence {
+        "monthly" => "+1 month",
+        "biweekly" => "+14 days",
+        "weekly" => "+7 days",
+        "daily" => "+1 day",
+        "yearly" => "+1 year",
+        "custom" => return Ok(None),
+        _ => {
+            return Err(EncryptedDbError::DatabaseError(format!(
+                "Unknown cadence: {}",
+                cadence
+            )))
+        }
+    };
+
+    // For daily cadence, end_date equals start_date (single day period)
+    if cadence == "daily" {
+        return Ok(Some(start_date.to_string()));
+    }
+
+    // Compute: start_date + cadence - 1 day (inclusive end)
+    let sql = format!("SELECT date(?, '{}', '-1 day')", modifier);
+    let end_date: String = conn
+        .query_row(&sql, [start_date], |row| row.get(0))
+        .map_err(|e| {
+            EncryptedDbError::DatabaseError(format!(
+                "Failed to compute end_date for start={}, cadence={}: {}",
+                start_date, cadence, e
+            ))
+        })?;
+
+    Ok(Some(end_date))
+}
+
+/// Creates a new period budget instance from a template.
+///
+/// This command:
+/// 1. Validates the template exists and reads its cadence/currency
+/// 2. Computes end_date from cadence (unless custom)
+/// 3. Creates the period_budget_instances row
+/// 4. Copies all template_categories into budget_instance_categories
+/// 5. Auto-creates 'received' line items for categories with allocated_amount > 0
+///    (with is_template_default=1, per DATA_MODEL.md)
+#[tauri::command]
+pub fn create_period_from_template(
+    args: CreatePeriodFromTemplateArgs,
+    db_state: State<DbState>,
+) -> Result<CreatePeriodResult, String> {
+    create_period_from_template_internal(&args, &db_state).map_err(|e| e.to_string())
+}
+
+fn create_period_from_template_internal(
+    args: &CreatePeriodFromTemplateArgs,
+    db_state: &State<DbState>,
+) -> Result<CreatePeriodResult, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    create_period_from_template_with_conn(args, conn)
+}
+
+/// Core logic for creating a period from a template (uses a raw Connection).
+/// Separated to allow direct testing without State<DbState>.
+fn create_period_from_template_with_conn(
+    args: &CreatePeriodFromTemplateArgs,
+    conn: &Connection,
+) -> Result<CreatePeriodResult, EncryptedDbError> {
+    // 1. Validate template exists and fetch its data
+    let (cadence, default_currency): (String, String) = conn
+        .query_row(
+            "SELECT cadence, default_currency FROM budget_templates WHERE template_id = ?",
+            [args.template_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => EncryptedDbError::DatabaseError(format!(
+                "Template {} not found.",
+                args.template_id
+            )),
+            other => EncryptedDbError::from(other),
+        })?;
+
+    // 2. Compute end_date (user-provided for custom, calculated otherwise)
+    let end_date = match &args.end_date {
+        Some(ed) => Some(ed.clone()),
+        None => compute_end_date(conn, &args.start_date, &cadence)?,
+    };
+
+    // 3. Use a transaction for atomicity
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| EncryptedDbError::DatabaseError(e.to_string()))?;
+
+    // 4. Insert period_budget_instances row
+    tx.execute(
+        r#"
+        INSERT INTO period_budget_instances (cadence, start_date, end_date, template_id, income_arrival_date)
+        VALUES (?, ?, ?, ?, ?)
+        "#,
+        rusqlite::params![
+            &cadence,
+            &args.start_date,
+            &end_date,
+            args.template_id,
+            &args.income_arrival_date,
+        ],
+    )?;
+    let budget_instance_id = tx.last_insert_rowid();
+
+    // 5. Fetch template categories (scoped to drop statement before commit)
+    let template_cats: Vec<(i64, f64, i64)> = {
+        let mut tc_stmt = tx.prepare(
+            r#"
+            SELECT
+                tc.global_category_id,
+                tc.allocated_amount,
+                tc.sort_order
+            FROM template_categories tc
+            WHERE tc.template_id = ?
+            ORDER BY tc.sort_order, tc.template_category_id
+            "#,
+        )?;
+
+        let result = tc_stmt
+            .query_map([args.template_id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        result
+    };
+
+    // 6. Copy template categories → budget_instance_categories
+    let mut categories_created: usize = 0;
+    let mut default_line_items_created: usize = 0;
+
+    for (global_category_id, allocated_amount, sort_order) in &template_cats {
+        tx.execute(
+            r#"
+            INSERT INTO budget_instance_categories
+                (budget_instance_id, global_category_id, default_amount, default_currency, sort_order)
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+            rusqlite::params![
+                budget_instance_id,
+                global_category_id,
+                allocated_amount,
+                &default_currency,
+                sort_order,
+            ],
+        )?;
+        let bic_id = tx.last_insert_rowid();
+        categories_created += 1;
+
+        // 7. Auto-create template-default received line item if allocated_amount > 0
+        if *allocated_amount > 0.0 {
+            tx.execute(
+                r#"
+                INSERT INTO category_line_items
+                    (budget_instance_category_id, kind, occurred_at, description, amount, currency, is_template_default)
+                VALUES (?, 'received', ?, 'Template default', ?, ?, 1)
+                "#,
+                rusqlite::params![
+                    bic_id,
+                    format!("{}T00:00:00", &args.start_date),
+                    allocated_amount,
+                    &default_currency,
+                ],
+            )?;
+            default_line_items_created += 1;
+        }
+    }
+
+    tx.commit()
+        .map_err(|e| EncryptedDbError::DatabaseError(e.to_string()))?;
+
+    // 8. Fetch the created period (with template name)
+    let period = fetch_period_by_id(conn, budget_instance_id)?;
+
+    Ok(CreatePeriodResult {
+        period,
+        categories_created,
+        default_line_items_created,
+    })
+}
+
+/// Lists all period budget instances, ordered by start_date DESC.
+#[tauri::command]
+pub fn list_periods(db_state: State<DbState>) -> Result<Vec<PeriodBudgetInstance>, String> {
+    list_periods_internal(&db_state).map_err(|e| e.to_string())
+}
+
+fn list_periods_internal(
+    db_state: &State<DbState>,
+) -> Result<Vec<PeriodBudgetInstance>, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT
+            pbi.budget_instance_id,
+            pbi.cadence,
+            pbi.start_date,
+            pbi.end_date,
+            pbi.template_id,
+            bt.name AS template_name,
+            pbi.income_arrival_date,
+            pbi.created_at
+        FROM period_budget_instances pbi
+        LEFT JOIN budget_templates bt ON bt.template_id = pbi.template_id
+        ORDER BY pbi.start_date DESC, pbi.budget_instance_id DESC
+        "#,
+    )?;
+
+    let periods = stmt
+        .query_map([], |row| {
+            Ok(PeriodBudgetInstance {
+                budget_instance_id: row.get(0)?,
+                cadence: row.get(1)?,
+                start_date: row.get(2)?,
+                end_date: row.get(3)?,
+                template_id: row.get(4)?,
+                template_name: row.get(5)?,
+                income_arrival_date: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(periods)
+}
+
+/// Gets a single period budget instance by ID.
+#[tauri::command]
+pub fn get_period(
+    budget_instance_id: i64,
+    db_state: State<DbState>,
+) -> Result<PeriodBudgetInstance, String> {
+    get_period_internal(budget_instance_id, &db_state).map_err(|e| e.to_string())
+}
+
+fn get_period_internal(
+    budget_instance_id: i64,
+    db_state: &State<DbState>,
+) -> Result<PeriodBudgetInstance, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    fetch_period_by_id(conn, budget_instance_id)
+}
+
+/// Internal helper: fetch a single period by ID with joined template name.
+fn fetch_period_by_id(
+    conn: &Connection,
+    budget_instance_id: i64,
+) -> Result<PeriodBudgetInstance, EncryptedDbError> {
+    conn.query_row(
+        r#"
+        SELECT
+            pbi.budget_instance_id,
+            pbi.cadence,
+            pbi.start_date,
+            pbi.end_date,
+            pbi.template_id,
+            bt.name AS template_name,
+            pbi.income_arrival_date,
+            pbi.created_at
+        FROM period_budget_instances pbi
+        LEFT JOIN budget_templates bt ON bt.template_id = pbi.template_id
+        WHERE pbi.budget_instance_id = ?
+        "#,
+        [budget_instance_id],
+        |row| {
+            Ok(PeriodBudgetInstance {
+                budget_instance_id: row.get(0)?,
+                cadence: row.get(1)?,
+                start_date: row.get(2)?,
+                end_date: row.get(3)?,
+                template_id: row.get(4)?,
+                template_name: row.get(5)?,
+                income_arrival_date: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        },
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => EncryptedDbError::DatabaseError(format!(
+            "Period {} not found.",
+            budget_instance_id
+        )),
+        other => EncryptedDbError::from(other),
+    })
+}
+
+/// Deletes a period budget instance by ID.
+/// CASCADE removes associated budget_instance_categories and category_line_items.
+#[tauri::command]
+pub fn delete_period(
+    budget_instance_id: i64,
+    db_state: State<DbState>,
+) -> Result<(), String> {
+    delete_period_internal(budget_instance_id, &db_state).map_err(|e| e.to_string())
+}
+
+fn delete_period_internal(
+    budget_instance_id: i64,
+    db_state: &State<DbState>,
+) -> Result<(), EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let rows_deleted = conn.execute(
+        "DELETE FROM period_budget_instances WHERE budget_instance_id = ?",
+        [budget_instance_id],
+    )?;
+
+    if rows_deleted == 0 {
+        return Err(EncryptedDbError::DatabaseError(format!(
+            "Period {} not found.",
+            budget_instance_id
+        )));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2428,5 +2823,525 @@ mod tests {
         assert_eq!(cat_count, 3, "All 3 categories should persist across multiple saves");
 
         println!("[PASS] Multiple write-backs correctly accumulate data");
+    }
+
+    // ========================================================================
+    // Period Budget Instance Tests (TASK-3.2)
+    // ========================================================================
+
+    /// Helper to set up a test database with a template and categories for period tests.
+    /// Returns (conn, template_id, global_cat_ids).
+    fn setup_period_test_db() -> (Connection, i64, Vec<i64>) {
+        let conn = setup_grid_test_db();
+
+        // Insert global categories
+        conn.execute(
+            "INSERT INTO global_categories (name) VALUES ('Rent')",
+            [],
+        )
+        .unwrap();
+        let cat1 = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO global_categories (name) VALUES ('Groceries')",
+            [],
+        )
+        .unwrap();
+        let cat2 = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO global_categories (name) VALUES ('Transport')",
+            [],
+        )
+        .unwrap();
+        let cat3 = conn.last_insert_rowid();
+
+        // Insert template
+        conn.execute(
+            "INSERT INTO budget_templates (name, cadence, default_currency) VALUES ('Monthly Budget', 'monthly', 'CHF')",
+            [],
+        )
+        .unwrap();
+        let template_id = conn.last_insert_rowid();
+
+        // Insert template categories with amounts
+        conn.execute(
+            "INSERT INTO template_categories (template_id, global_category_id, allocated_amount, category_type, sort_order) VALUES (?, ?, 1500.00, 'expense', 1)",
+            rusqlite::params![template_id, cat1],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO template_categories (template_id, global_category_id, allocated_amount, category_type, sort_order) VALUES (?, ?, 500.00, 'expense', 2)",
+            rusqlite::params![template_id, cat2],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO template_categories (template_id, global_category_id, allocated_amount, category_type, sort_order) VALUES (?, ?, 0.00, 'expense', 3)",
+            rusqlite::params![template_id, cat3],
+        )
+        .unwrap();
+
+        (conn, template_id, vec![cat1, cat2, cat3])
+    }
+
+    #[test]
+    fn test_create_period_from_template_basic() {
+        let (conn, template_id, _cats) = setup_period_test_db();
+
+        let args = CreatePeriodFromTemplateArgs {
+            template_id,
+            start_date: "2026-03-01".to_string(),
+            end_date: None,
+            income_arrival_date: None,
+        };
+
+        let result = create_period_from_template_with_conn(&args, &conn).unwrap();
+
+        // Verify period was created
+        assert!(result.period.budget_instance_id > 0);
+        assert_eq!(result.period.cadence, "monthly");
+        assert_eq!(result.period.start_date, "2026-03-01");
+        // Monthly: start + 1 month - 1 day = 2026-03-31
+        assert_eq!(result.period.end_date, Some("2026-03-31".to_string()));
+        assert_eq!(result.period.template_id, Some(template_id));
+        assert_eq!(result.period.template_name, Some("Monthly Budget".to_string()));
+        assert!(result.period.income_arrival_date.is_none());
+
+        // Verify period exists in DB
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM period_budget_instances WHERE budget_instance_id = ?",
+                [result.period.budget_instance_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_create_period_copies_all_categories() {
+        let (conn, template_id, cats) = setup_period_test_db();
+
+        let args = CreatePeriodFromTemplateArgs {
+            template_id,
+            start_date: "2026-03-01".to_string(),
+            end_date: None,
+            income_arrival_date: None,
+        };
+
+        let result = create_period_from_template_with_conn(&args, &conn).unwrap();
+
+        // All 3 template categories should be copied
+        assert_eq!(result.categories_created, 3);
+
+        // Verify budget_instance_categories rows
+        let bic_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM budget_instance_categories WHERE budget_instance_id = ?",
+                [result.period.budget_instance_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(bic_count, 3);
+
+        // Verify amounts and global_category_ids match template
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT bic.global_category_id, bic.default_amount, bic.default_currency, bic.sort_order
+                FROM budget_instance_categories bic
+                WHERE bic.budget_instance_id = ?
+                ORDER BY bic.sort_order
+                "#,
+            )
+            .unwrap();
+
+        let rows: Vec<(i64, f64, String, i64)> = stmt
+            .query_map([result.period.budget_instance_id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert_eq!(rows.len(), 3);
+        // Rent: 1500 CHF, sort 1
+        assert_eq!(rows[0].0, cats[0]);
+        assert!((rows[0].1 - 1500.0).abs() < 0.01);
+        assert_eq!(rows[0].2, "CHF");
+        assert_eq!(rows[0].3, 1);
+        // Groceries: 500 CHF, sort 2
+        assert_eq!(rows[1].0, cats[1]);
+        assert!((rows[1].1 - 500.0).abs() < 0.01);
+        // Transport: 0 CHF, sort 3
+        assert_eq!(rows[2].0, cats[2]);
+        assert!((rows[2].1 - 0.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_create_period_creates_template_default_line_items() {
+        let (conn, template_id, _cats) = setup_period_test_db();
+
+        let args = CreatePeriodFromTemplateArgs {
+            template_id,
+            start_date: "2026-03-01".to_string(),
+            end_date: None,
+            income_arrival_date: None,
+        };
+
+        let result = create_period_from_template_with_conn(&args, &conn).unwrap();
+
+        // Only 2 categories have allocated_amount > 0 (Rent=1500, Groceries=500)
+        // Transport has 0 → no line item
+        assert_eq!(result.default_line_items_created, 2);
+
+        // Verify line items in DB
+        let li_count: i64 = conn
+            .query_row(
+                r#"
+                SELECT COUNT(*) FROM category_line_items li
+                JOIN budget_instance_categories bic ON bic.budget_instance_category_id = li.budget_instance_category_id
+                WHERE bic.budget_instance_id = ?
+                "#,
+                [result.period.budget_instance_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(li_count, 2);
+
+        // Verify template defaults have correct properties
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT li.kind, li.occurred_at, li.description, li.amount, li.currency, li.is_template_default
+                FROM category_line_items li
+                JOIN budget_instance_categories bic ON bic.budget_instance_category_id = li.budget_instance_category_id
+                WHERE bic.budget_instance_id = ?
+                ORDER BY li.amount DESC
+                "#,
+            )
+            .unwrap();
+
+        let items: Vec<(String, String, String, f64, String, i64)> = stmt
+            .query_map([result.period.budget_instance_id], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            })
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert_eq!(items.len(), 2);
+
+        // Rent: 1500 CHF
+        assert_eq!(items[0].0, "received");
+        assert_eq!(items[0].1, "2026-03-01T00:00:00");
+        assert_eq!(items[0].2, "Template default");
+        assert!((items[0].3 - 1500.0).abs() < 0.01);
+        assert_eq!(items[0].4, "CHF");
+        assert_eq!(items[0].5, 1); // is_template_default = true
+
+        // Groceries: 500 CHF
+        assert_eq!(items[1].0, "received");
+        assert!((items[1].3 - 500.0).abs() < 0.01);
+        assert_eq!(items[1].5, 1);
+    }
+
+    #[test]
+    fn test_create_period_empty_template() {
+        let conn = setup_grid_test_db();
+
+        // Create a template with NO categories
+        conn.execute(
+            "INSERT INTO budget_templates (name, cadence, default_currency) VALUES ('Empty Template', 'weekly', 'EUR')",
+            [],
+        )
+        .unwrap();
+        let template_id = conn.last_insert_rowid();
+
+        let args = CreatePeriodFromTemplateArgs {
+            template_id,
+            start_date: "2026-03-01".to_string(),
+            end_date: None,
+            income_arrival_date: None,
+        };
+
+        let result = create_period_from_template_with_conn(&args, &conn).unwrap();
+
+        assert_eq!(result.categories_created, 0);
+        assert_eq!(result.default_line_items_created, 0);
+        assert_eq!(result.period.cadence, "weekly");
+        // Weekly: start + 7 days - 1 day = 2026-03-07
+        assert_eq!(result.period.end_date, Some("2026-03-07".to_string()));
+    }
+
+    #[test]
+    fn test_create_period_template_not_found() {
+        let conn = setup_grid_test_db();
+
+        let args = CreatePeriodFromTemplateArgs {
+            template_id: 999,
+            start_date: "2026-03-01".to_string(),
+            end_date: None,
+            income_arrival_date: None,
+        };
+
+        let result = create_period_from_template_with_conn(&args, &conn);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("Template 999 not found"),
+            "Error should mention template not found, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_create_period_end_date_computation() {
+        let conn = setup_grid_test_db();
+
+        // Create templates with various cadences
+        let cadences = vec![
+            ("monthly", "2026-03-01", "2026-03-31"),
+            ("monthly", "2026-02-01", "2026-02-28"), // February (non-leap year)
+            ("weekly", "2026-03-01", "2026-03-07"),
+            ("biweekly", "2026-03-01", "2026-03-14"),
+            ("yearly", "2026-01-01", "2026-12-31"),
+            ("daily", "2026-03-15", "2026-03-15"), // daily = single day
+        ];
+
+        for (cadence, start, expected_end) in &cadences {
+            conn.execute(
+                "INSERT INTO budget_templates (name, cadence, default_currency) VALUES (?, ?, 'CHF')",
+                rusqlite::params![format!("Test {}", cadence), cadence],
+            )
+            .unwrap();
+            let template_id = conn.last_insert_rowid();
+
+            let args = CreatePeriodFromTemplateArgs {
+                template_id,
+                start_date: start.to_string(),
+                end_date: None,
+                income_arrival_date: None,
+            };
+
+            let result = create_period_from_template_with_conn(&args, &conn).unwrap();
+            assert_eq!(
+                result.period.end_date,
+                Some(expected_end.to_string()),
+                "Cadence '{}' starting '{}' should end '{}'",
+                cadence,
+                start,
+                expected_end
+            );
+        }
+    }
+
+    #[test]
+    fn test_create_period_custom_cadence_with_user_end_date() {
+        let conn = setup_grid_test_db();
+
+        conn.execute(
+            "INSERT INTO budget_templates (name, cadence, default_currency) VALUES ('Custom Template', 'custom', 'CHF')",
+            [],
+        )
+        .unwrap();
+        let template_id = conn.last_insert_rowid();
+
+        let args = CreatePeriodFromTemplateArgs {
+            template_id,
+            start_date: "2026-03-01".to_string(),
+            end_date: Some("2026-04-15".to_string()),
+            income_arrival_date: Some("2026-03-05".to_string()),
+        };
+
+        let result = create_period_from_template_with_conn(&args, &conn).unwrap();
+        assert_eq!(result.period.end_date, Some("2026-04-15".to_string()));
+        assert_eq!(
+            result.period.income_arrival_date,
+            Some("2026-03-05".to_string())
+        );
+    }
+
+    #[test]
+    fn test_list_periods_ordering() {
+        let (conn, template_id, _cats) = setup_period_test_db();
+
+        // Create 3 periods with different start dates
+        for start_date in &["2026-01-01", "2026-03-01", "2026-02-01"] {
+            let args = CreatePeriodFromTemplateArgs {
+                template_id,
+                start_date: start_date.to_string(),
+                end_date: None,
+                income_arrival_date: None,
+            };
+            create_period_from_template_with_conn(&args, &conn).unwrap();
+        }
+
+        // List periods (query directly since we can't use State)
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT pbi.start_date
+                FROM period_budget_instances pbi
+                ORDER BY pbi.start_date DESC
+                "#,
+            )
+            .unwrap();
+
+        let dates: Vec<String> = stmt
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert_eq!(dates.len(), 3);
+        // Should be sorted DESC: March, February, January
+        assert_eq!(dates[0], "2026-03-01");
+        assert_eq!(dates[1], "2026-02-01");
+        assert_eq!(dates[2], "2026-01-01");
+    }
+
+    #[test]
+    fn test_delete_period_cascades() {
+        let (conn, template_id, _cats) = setup_period_test_db();
+
+        // Enable foreign keys for CASCADE
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+
+        let args = CreatePeriodFromTemplateArgs {
+            template_id,
+            start_date: "2026-03-01".to_string(),
+            end_date: None,
+            income_arrival_date: None,
+        };
+
+        let result = create_period_from_template_with_conn(&args, &conn).unwrap();
+        let period_id = result.period.budget_instance_id;
+
+        // Verify data exists before delete
+        let bic_count_before: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM budget_instance_categories WHERE budget_instance_id = ?",
+                [period_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(bic_count_before, 3);
+
+        let li_count_before: i64 = conn
+            .query_row(
+                r#"
+                SELECT COUNT(*) FROM category_line_items li
+                JOIN budget_instance_categories bic ON bic.budget_instance_category_id = li.budget_instance_category_id
+                WHERE bic.budget_instance_id = ?
+                "#,
+                [period_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(li_count_before, 2);
+
+        // Delete the period
+        conn.execute(
+            "DELETE FROM period_budget_instances WHERE budget_instance_id = ?",
+            [period_id],
+        )
+        .unwrap();
+
+        // Verify cascade deleted categories
+        let bic_count_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM budget_instance_categories WHERE budget_instance_id = ?",
+                [period_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(bic_count_after, 0, "Categories should be cascade-deleted");
+
+        // Verify cascade deleted line items
+        let li_count_after: i64 = conn
+            .query_row("SELECT COUNT(*) FROM category_line_items", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(li_count_after, 0, "Line items should be cascade-deleted");
+    }
+
+    #[test]
+    fn test_create_period_grid_data_integration() {
+        let (conn, template_id, _cats) = setup_period_test_db();
+
+        let args = CreatePeriodFromTemplateArgs {
+            template_id,
+            start_date: "2026-03-01".to_string(),
+            end_date: None,
+            income_arrival_date: None,
+        };
+
+        let result = create_period_from_template_with_conn(&args, &conn).unwrap();
+        let budget_instance_id = result.period.budget_instance_id;
+
+        // Verify get_grid_data query works on the period we just created
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT
+                    bic.budget_instance_category_id,
+                    bic.global_category_id,
+                    gc.name AS category_name,
+                    bic.default_amount,
+                    bic.default_currency,
+                    bic.sort_order,
+                    COALESCE(SUM(CASE WHEN li.kind = 'received' THEN li.amount ELSE 0 END), 0) AS received_total,
+                    COALESCE(SUM(CASE WHEN li.kind = 'spent' THEN li.amount ELSE 0 END), 0) AS spent_total
+                FROM budget_instance_categories bic
+                JOIN global_categories gc ON gc.global_category_id = bic.global_category_id
+                LEFT JOIN category_line_items li
+                    ON li.budget_instance_category_id = bic.budget_instance_category_id
+                    AND li.deleted_at IS NULL
+                WHERE bic.budget_instance_id = ?
+                GROUP BY bic.budget_instance_category_id
+                ORDER BY bic.sort_order, bic.budget_instance_category_id
+                "#,
+            )
+            .unwrap();
+
+        let rows: Vec<(String, f64, f64, f64)> = stmt
+            .query_map([budget_instance_id], |row| {
+                Ok((
+                    row.get::<_, String>(2)?,   // category_name
+                    row.get::<_, f64>(3)?,      // default_amount
+                    row.get::<_, f64>(6)?,      // received_total
+                    row.get::<_, f64>(7)?,      // spent_total
+                ))
+            })
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert_eq!(rows.len(), 3);
+
+        // Rent: default=1500, received=1500 (template default), spent=0
+        assert_eq!(rows[0].0, "Rent");
+        assert!((rows[0].1 - 1500.0).abs() < 0.01);
+        assert!((rows[0].2 - 1500.0).abs() < 0.01);
+        assert!((rows[0].3 - 0.0).abs() < 0.01);
+
+        // Groceries: default=500, received=500 (template default), spent=0
+        assert_eq!(rows[1].0, "Groceries");
+        assert!((rows[1].1 - 500.0).abs() < 0.01);
+        assert!((rows[1].2 - 500.0).abs() < 0.01);
+
+        // Transport: default=0, received=0 (no template default for 0 amount), spent=0
+        assert_eq!(rows[2].0, "Transport");
+        assert!((rows[2].1 - 0.0).abs() < 0.01);
+        assert!((rows[2].2 - 0.0).abs() < 0.01);
     }
 }

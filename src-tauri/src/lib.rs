@@ -36,6 +36,11 @@ pub fn run() {
             encrypted_db::add_category_to_template,
             encrypted_db::remove_category_from_template,
             encrypted_db::update_template_category_amount,
+            // Period budget instance commands
+            encrypted_db::create_period_from_template,
+            encrypted_db::list_periods,
+            encrypted_db::get_period,
+            encrypted_db::delete_period,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

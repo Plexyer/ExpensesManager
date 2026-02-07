@@ -590,7 +590,7 @@ Each task includes:
 
 ---
 
-### TASK-3.2: Implement Template → Period Application
+### TASK-3.2: Implement Template → Period Application ✅ COMPLETED
 **Goal**: Create period with envelopes from template  
 **Scope**:
 - Create `create_period_from_template` command
@@ -609,6 +609,23 @@ Each task includes:
 
 **Complexity**: M  
 **Dependencies**: TASK-2.2, TASK-3.1
+
+#### Implementation Notes
+- **Completed on**: 2026-02-07
+- **Summary**:
+  - Added `create_period_from_template` Rust command: creates period_budget_instance, copies template_categories → budget_instance_categories, auto-creates 'received' line items with is_template_default=1 for categories with allocated_amount > 0
+  - End date computed from cadence using SQLite date functions (no new dependencies)
+  - Added `list_periods`, `get_period`, `delete_period` commands for full period CRUD
+  - Created TypeScript types (`period.types.ts`) and service layer (`periodService.ts`)
+- **Files changed**:
+  - `src-tauri/src/encrypted_db.rs` — new structs (PeriodBudgetInstance, CreatePeriodFromTemplateArgs, CreatePeriodResult), 4 new commands + internal fns, compute_end_date helper, fetch_period_by_id helper, 10 new tests
+  - `src-tauri/src/lib.rs` — registered 4 new commands
+  - `src/types/period.types.ts` (NEW)
+  - `src/services/periodService.ts` (NEW)
+- **Tests/verification**:
+  - 60 Rust tests pass (10 new period tests: create basic, copy categories, template default line items, empty template, template not found, end date computation for all cadences, custom cadence, list ordering, cascade delete, grid data integration)
+  - `cargo build` succeeds with no errors
+  - TypeScript compiles with no errors
 
 ---
 
