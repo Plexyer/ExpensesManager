@@ -138,7 +138,18 @@ export const openEncryptedDb = async (
 };
 
 /**
+ * Saves the current database to disk without closing the connection.
+ * Writes the modified temp DB back to the original `.financedb` file.
+ *
+ * @throws Error if no database is open or save fails
+ */
+export const saveDb = async (): Promise<void> => {
+  await invoke("save_db");
+};
+
+/**
  * Closes the current database connection.
+ * Automatically writes changes back to disk before closing.
  *
  * @throws Error if no database is open or close fails
  */

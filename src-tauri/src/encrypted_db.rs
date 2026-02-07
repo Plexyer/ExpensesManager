@@ -19,20 +19,42 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::State;
 use thiserror::Error;
 
-/// Global database state - wraps optional connection in Mutex for thread safety.
+/// Metadata about the currently open file, needed for write-back on close/save.
+///
+/// When a `.financedb` file is opened, the encrypted SQLite portion is extracted
+/// to a temp file. All mutations happen on the temp file. This struct tracks
+/// everything needed to write the temp DB back to the original file.
+pub struct OpenFileInfo {
+    /// Path to the original `.financedb` file on disk
+    pub original_path: String,
+    /// File header (salt, KDF params, hint) for re-serialization on write-back
+    pub header: FileHeader,
+    /// Path to the temp SQLCipher database file (where SQLite operates)
+    pub temp_db_path: PathBuf,
+    /// Temp directory ownership — cleaned up when file_info is dropped
+    pub _temp_dir: tempfile::TempDir,
+}
+
+/// Global database state - wraps optional connection and file metadata in Mutexes.
+///
+/// `conn` holds the active SQLite connection to the temp database.
+/// `file_info` holds metadata needed to write changes back to the original file.
+/// Both are set together on open/create and cleared together on close.
 pub struct DbState {
     pub conn: Mutex<Option<Connection>>,
+    pub file_info: Mutex<Option<OpenFileInfo>>,
 }
 
 impl DbState {
     pub fn new() -> Self {
         DbState {
             conn: Mutex::new(None),
+            file_info: Mutex::new(None),
         }
     }
 }
@@ -349,7 +371,11 @@ fn open_encrypted_db_internal(
     })
 }
 
-/// Helper function to extract database from file and store connection in state.
+/// Helper function to extract database from file, store connection and file info in state.
+///
+/// After this call, all DB operations happen on the temp file. The original file
+/// path and header are stored in `DbState.file_info` so that `close_db` or `save_db`
+/// can write the modified temp DB back to the original `.financedb` file.
 fn open_and_store_connection(
     path: &str,
     key_hex: &str,
@@ -359,7 +385,7 @@ fn open_and_store_connection(
     let mut file = File::open(path)
         .map_err(|e| EncryptedDbError::FileReadError(e.to_string()))?;
     
-    // Read header to get its size
+    // Read header to get its size (also stored for write-back)
     let header = FileHeader::read_from(&mut file)?;
     let header_size = header.size();
 
@@ -393,10 +419,18 @@ fn open_and_store_connection(
         .map_err(|_| EncryptedDbError::LockError)?;
     *conn_guard = Some(conn);
 
-    // Note: temp_dir will be dropped after this function returns,
-    // but the SQLite connection keeps the file handle open.
-    // For now this is acceptable; future work could use a more persistent temp location.
-    std::mem::forget(temp_dir); // Prevent cleanup while connection is open
+    // Store file info for write-back on close/save
+    // (replaces the old std::mem::forget(temp_dir) approach)
+    let mut file_info_guard = db_state
+        .file_info
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+    *file_info_guard = Some(OpenFileInfo {
+        original_path: path.to_string(),
+        header,
+        temp_db_path,
+        _temp_dir: temp_dir,
+    });
 
     Ok(())
 }
@@ -492,21 +526,127 @@ fn diagnose_db_file_internal(path: &str) -> Result<String, EncryptedDbError> {
     Ok(report)
 }
 
-/// Closes the current database connection.
+/// Writes the temp database back to the original `.financedb` file.
+///
+/// Uses a write-to-temp-then-rename strategy to minimize data loss risk.
+/// The temp file is created next to the original, written + fsynced, then
+/// renamed to replace the original atomically (best-effort on Windows).
+fn write_back_to_file(file_info: &OpenFileInfo) -> Result<(), EncryptedDbError> {
+    // Read current temp DB bytes (SQLite has flushed since we use auto-commit)
+    let db_bytes = fs::read(&file_info.temp_db_path)
+        .map_err(|e| EncryptedDbError::FileReadError(
+            format!("Failed to read temp DB for write-back: {}", e)
+        ))?;
+
+    // Write to a staging file next to the original, then atomic rename
+    let staging_path = format!("{}.saving", &file_info.original_path);
+
+    {
+        let mut output_file = File::create(&staging_path)
+            .map_err(|e| EncryptedDbError::FileWriteError(
+                format!("Failed to create staging file: {}", e)
+            ))?;
+        file_info.header.write_to(&mut output_file)?;
+        output_file
+            .write_all(&db_bytes)
+            .map_err(|e| EncryptedDbError::FileWriteError(e.to_string()))?;
+        output_file
+            .sync_all()
+            .map_err(|e| EncryptedDbError::FileWriteError(e.to_string()))?;
+    }
+
+    // Rename staging file to original (atomic on same volume)
+    fs::rename(&staging_path, &file_info.original_path)
+        .map_err(|e| {
+            // Clean up staging file on rename failure
+            let _ = fs::remove_file(&staging_path);
+            EncryptedDbError::FileWriteError(
+                format!("Failed to finalize save (rename): {}", e)
+            )
+        })?;
+
+    Ok(())
+}
+
+/// Saves the current database to disk without closing the connection.
+///
+/// Writes the modified temp DB bytes back to the original `.financedb` file.
+/// The connection remains open for further operations.
+#[tauri::command]
+pub fn save_db(db_state: State<DbState>) -> Result<(), String> {
+    save_db_internal(&db_state).map_err(|e| e.to_string())
+}
+
+fn save_db_internal(db_state: &State<DbState>) -> Result<(), EncryptedDbError> {
+    // Verify a DB is open
+    {
+        let conn_guard = db_state
+            .conn
+            .lock()
+            .map_err(|_| EncryptedDbError::LockError)?;
+        if conn_guard.is_none() {
+            return Err(EncryptedDbError::NotOpen);
+        }
+    }
+
+    // Write back to original file
+    let file_info_guard = db_state
+        .file_info
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let file_info = file_info_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    write_back_to_file(file_info)
+}
+
+/// Closes the current database connection, writing changes back to disk first.
+///
+/// Flow:
+/// 1. Write back temp DB to the original `.financedb` file (while connection is still valid)
+/// 2. Drop the connection (releases file handles on the temp DB)
+/// 3. Drop file_info (cleans up the temp directory)
+///
+/// If write-back fails, the connection is NOT dropped, so the user can retry.
 #[tauri::command]
 pub fn close_db(db_state: State<DbState>) -> Result<(), String> {
     close_db_internal(&db_state).map_err(|e| e.to_string())
 }
 
 fn close_db_internal(db_state: &State<DbState>) -> Result<(), EncryptedDbError> {
-    let mut conn_guard = db_state
-        .conn
-        .lock()
-        .map_err(|_| EncryptedDbError::LockError)?;
+    // Step 1: Write back to original file FIRST (while temp file is still valid).
+    // If this fails, we leave the connection open so the user can retry or save manually.
+    {
+        let file_info_guard = db_state
+            .file_info
+            .lock()
+            .map_err(|_| EncryptedDbError::LockError)?;
 
-    // Idempotent: succeed even if no DB is open
-    // This allows calling close_db multiple times safely
-    *conn_guard = None;
+        if let Some(file_info) = file_info_guard.as_ref() {
+            write_back_to_file(file_info)?;
+        }
+    }
+
+    // Step 2: Drop connection (releases file handle on temp DB)
+    {
+        let mut conn_guard = db_state
+            .conn
+            .lock()
+            .map_err(|_| EncryptedDbError::LockError)?;
+        *conn_guard = None;
+    }
+
+    // Step 3: Clean up file_info and temp directory
+    {
+        let mut file_info_guard = db_state
+            .file_info
+            .lock()
+            .map_err(|_| EncryptedDbError::LockError)?;
+        *file_info_guard = None;
+    }
+
     Ok(())
 }
 
@@ -2077,5 +2217,216 @@ mod tests {
         ).unwrap();
 
         assert_eq!(category_name, "Groceries", "Category name should come from global_categories");
+    }
+
+    // ========================================================================
+    // Write-Back / Persistence Tests (TASK-3.1.1)
+    // ========================================================================
+
+    /// Test that write_back_to_file correctly writes modified DB back to the original file.
+    /// This is the core fix for TASK-3.1.1: data not persisting after app restart.
+    #[test]
+    fn test_writeback_persists_mutations() {
+        let password = "testPassword123!";
+        let final_file = NamedTempFile::new().unwrap();
+        let final_path = final_file.path().to_path_buf();
+        let final_path_str = final_path.to_string_lossy().to_string();
+
+        // ======== SESSION 1: Create DB, insert data, write back ========
+
+        // Generate salt and derive key
+        let salt = kdf::generate_salt();
+        let (memory_cost, time_cost, parallelism) = kdf::get_kdf_params();
+        let key = kdf::derive_key(password, &salt).unwrap();
+        let key_hex = kdf::key_to_hex(&key);
+
+        // Create header
+        let header = FileHeader::new(salt, memory_cost, time_cost, parallelism, None).unwrap();
+
+        // Create initial .financedb file
+        let temp_dir_create = tempfile::tempdir().unwrap();
+        let temp_db_path_create = temp_dir_create.path().join("temp.db");
+        let temp_conn = create_sqlcipher_db(&temp_db_path_create, &key_hex).unwrap();
+        drop(temp_conn);
+        let db_bytes = fs::read(&temp_db_path_create).unwrap();
+        {
+            let mut output_file = File::create(&final_path).unwrap();
+            header.write_to(&mut output_file).unwrap();
+            output_file.write_all(&db_bytes).unwrap();
+            output_file.sync_all().unwrap();
+        }
+
+        // Simulate open_and_store_connection: extract to temp, open
+        let temp_dir_session = tempfile::tempdir().unwrap();
+        let temp_db_path_session = temp_dir_session.path().join("opened.db");
+        {
+            let mut file = File::open(&final_path).unwrap();
+            let read_header = FileHeader::read_from(&mut file).unwrap();
+            file.seek(SeekFrom::Start(read_header.size() as u64)).unwrap();
+            let mut extracted = Vec::new();
+            file.read_to_end(&mut extracted).unwrap();
+            fs::write(&temp_db_path_session, &extracted).unwrap();
+        }
+
+        // Open and mutate (add templates + categories, the exact TASK-3.1.1 scenario)
+        let conn = open_sqlcipher_db(&temp_db_path_session, &key_hex).unwrap();
+        conn.execute("INSERT INTO global_categories (name) VALUES ('Rent')", []).unwrap();
+        conn.execute("INSERT INTO global_categories (name) VALUES ('Groceries')", []).unwrap();
+        conn.execute(
+            "INSERT INTO budget_templates (name, cadence, default_currency) VALUES ('Monthly', 'monthly', 'CHF')",
+            [],
+        ).unwrap();
+        let template_id: i64 = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO template_categories (template_id, global_category_id, allocated_amount, category_type, sort_order) VALUES (?, 1, 1500.00, 'expense', 1)",
+            [template_id],
+        ).unwrap();
+
+        // Drop connection (simulates close_db dropping the conn)
+        drop(conn);
+
+        // ======== WRITE BACK (this is the fix!) ========
+        let file_info = OpenFileInfo {
+            original_path: final_path_str.clone(),
+            header: header.clone(),
+            temp_db_path: temp_db_path_session.clone(),
+            _temp_dir: temp_dir_session,
+        };
+        write_back_to_file(&file_info).unwrap();
+        drop(file_info);
+
+        // ======== SESSION 2: Reopen and verify data survived ========
+        let temp_dir_reopen = tempfile::tempdir().unwrap();
+        let temp_db_path_reopen = temp_dir_reopen.path().join("reopened.db");
+        {
+            let mut file = File::open(&final_path).unwrap();
+            let read_header = FileHeader::read_from(&mut file).unwrap();
+            file.seek(SeekFrom::Start(read_header.size() as u64)).unwrap();
+            let mut extracted = Vec::new();
+            file.read_to_end(&mut extracted).unwrap();
+            fs::write(&temp_db_path_reopen, &extracted).unwrap();
+        }
+
+        let conn2 = open_sqlcipher_db(&temp_db_path_reopen, &key_hex).unwrap();
+        migrations::run_pending(&conn2).unwrap();
+
+        // Verify global categories persisted
+        let cat_count: i64 = conn2
+            .query_row("SELECT COUNT(*) FROM global_categories", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(cat_count, 2, "Both global categories should persist after write-back");
+
+        let cat_name: String = conn2
+            .query_row("SELECT name FROM global_categories WHERE global_category_id = 1", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(cat_name, "Rent", "First category name should match");
+
+        // Verify template persisted
+        let tmpl_count: i64 = conn2
+            .query_row("SELECT COUNT(*) FROM budget_templates", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(tmpl_count, 1, "Template should persist after write-back");
+
+        // Verify template-category link persisted
+        let tc_count: i64 = conn2
+            .query_row("SELECT COUNT(*) FROM template_categories", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(tc_count, 1, "Template-category link should persist after write-back");
+
+        let alloc: f64 = conn2
+            .query_row(
+                "SELECT allocated_amount FROM template_categories WHERE template_category_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!((alloc - 1500.0).abs() < 0.01, "Allocated amount should persist");
+
+        println!("[PASS] write_back_to_file correctly persists mutations across sessions");
+    }
+
+    /// Test that multiple write-backs (saves) work correctly.
+    /// Simulates: create → mutate → save → mutate more → save → reopen → verify all data.
+    #[test]
+    fn test_multiple_saves_accumulate_data() {
+        let password = "multiSaveTest!";
+        let final_file = NamedTempFile::new().unwrap();
+        let final_path = final_file.path().to_path_buf();
+        let final_path_str = final_path.to_string_lossy().to_string();
+
+        // Generate salt and derive key
+        let salt = kdf::generate_salt();
+        let (memory_cost, time_cost, parallelism) = kdf::get_kdf_params();
+        let key = kdf::derive_key(password, &salt).unwrap();
+        let key_hex = kdf::key_to_hex(&key);
+        let header = FileHeader::new(salt, memory_cost, time_cost, parallelism, None).unwrap();
+
+        // Create initial .financedb file
+        let temp_dir_create = tempfile::tempdir().unwrap();
+        let temp_db_path_create = temp_dir_create.path().join("temp.db");
+        let temp_conn = create_sqlcipher_db(&temp_db_path_create, &key_hex).unwrap();
+        drop(temp_conn);
+        let db_bytes = fs::read(&temp_db_path_create).unwrap();
+        {
+            let mut f = File::create(&final_path).unwrap();
+            header.write_to(&mut f).unwrap();
+            f.write_all(&db_bytes).unwrap();
+            f.sync_all().unwrap();
+        }
+
+        // Extract to temp (simulates open)
+        let temp_dir_session = tempfile::tempdir().unwrap();
+        let temp_db_path_session = temp_dir_session.path().join("opened.db");
+        {
+            let mut file = File::open(&final_path).unwrap();
+            let rh = FileHeader::read_from(&mut file).unwrap();
+            file.seek(SeekFrom::Start(rh.size() as u64)).unwrap();
+            let mut extracted = Vec::new();
+            file.read_to_end(&mut extracted).unwrap();
+            fs::write(&temp_db_path_session, &extracted).unwrap();
+        }
+
+        let conn = open_sqlcipher_db(&temp_db_path_session, &key_hex).unwrap();
+
+        // First mutation + save
+        conn.execute("INSERT INTO global_categories (name) VALUES ('Food')", []).unwrap();
+
+        let file_info = OpenFileInfo {
+            original_path: final_path_str.clone(),
+            header: header.clone(),
+            temp_db_path: temp_db_path_session.clone(),
+            _temp_dir: temp_dir_session,
+        };
+        write_back_to_file(&file_info).unwrap();
+
+        // Second mutation + save (connection still alive)
+        conn.execute("INSERT INTO global_categories (name) VALUES ('Transport')", []).unwrap();
+        conn.execute("INSERT INTO global_categories (name) VALUES ('Entertainment')", []).unwrap();
+        write_back_to_file(&file_info).unwrap();
+
+        // Drop connection and file_info
+        drop(conn);
+        drop(file_info);
+
+        // Reopen and verify ALL data survived
+        let temp_dir_reopen = tempfile::tempdir().unwrap();
+        let temp_db_path_reopen = temp_dir_reopen.path().join("reopened.db");
+        {
+            let mut file = File::open(&final_path).unwrap();
+            let rh = FileHeader::read_from(&mut file).unwrap();
+            file.seek(SeekFrom::Start(rh.size() as u64)).unwrap();
+            let mut extracted = Vec::new();
+            file.read_to_end(&mut extracted).unwrap();
+            fs::write(&temp_db_path_reopen, &extracted).unwrap();
+        }
+
+        let conn2 = open_sqlcipher_db(&temp_db_path_reopen, &key_hex).unwrap();
+
+        let cat_count: i64 = conn2
+            .query_row("SELECT COUNT(*) FROM global_categories", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(cat_count, 3, "All 3 categories should persist across multiple saves");
+
+        println!("[PASS] Multiple write-backs correctly accumulate data");
     }
 }

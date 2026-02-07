@@ -536,7 +536,7 @@ Each task includes:
 
 ---
 
-### TASK-3.1.1: BUG - Templates/Categories Not Persisted After App Restart
+### TASK-3.1.1: BUG - Templates/Categories Not Persisted After App Restart ✅ COMPLETED
 **Goal**: Investigate and fix why templates and global categories are not persisted after closing and reopening the app  
 **Scope**:
 - Debug database persistence for templates and global categories
@@ -573,6 +573,20 @@ Each task includes:
 3. Verify the database file size increases after creating templates
 4. Test with SQLite browser to inspect the encrypted file
 5. Compare key derivation on create vs reopen
+
+**Implementation Notes**:
+- Completed on: 2026-02-07
+- Summary:
+  - **Root cause**: All DB operations happened on a temp file extracted from the `.financedb` composite file. `close_db` dropped the connection without writing the modified temp DB back to the original file. `std::mem::forget(temp_dir)` leaked the temp dir, and the original file was never updated.
+  - **Fix**: Added `OpenFileInfo` struct to `DbState` to track the original file path, header, and temp paths. Replaced `std::mem::forget(temp_dir)` with proper ownership. `close_db` now calls `write_back_to_file()` which re-serializes header + modified DB bytes back to the original `.financedb` file using atomic write-to-staging-then-rename. Added `save_db` command for explicit mid-session saves.
+  - Added TypeScript `saveDb()` wrapper in `fileService.ts`.
+- Files changed:
+  - `src-tauri/src/encrypted_db.rs` — `OpenFileInfo`, `DbState.file_info`, `write_back_to_file()`, updated `open_and_store_connection`, updated `close_db_internal`, new `save_db`/`save_db_internal`, 2 new tests
+  - `src-tauri/src/lib.rs` — Registered `save_db` command
+  - `src/services/fileService.ts` — Added `saveDb()` wrapper
+- Tests/verification:
+  - 50 Rust tests pass (2 new: `test_writeback_persists_mutations`, `test_multiple_saves_accumulate_data`)
+  - New tests verify the exact TASK-3.1.1 scenario: create DB → insert templates/categories → write back → reopen → verify data survived
 
 ---
 
