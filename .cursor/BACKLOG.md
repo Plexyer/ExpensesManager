@@ -631,7 +631,7 @@ Each task includes:
 
 ## Phase 4: UI - Excel-Like Grid
 
-### TASK-4.1: Design Grid Component
+### TASK-4.1: Design Grid Component ✅ COMPLETED
 **Goal**: Plan grid component architecture  
 **Scope**:
 - Choose grid library (AG Grid or custom)
@@ -649,6 +649,17 @@ Each task includes:
 
 **Complexity**: S (planning)  
 **Dependencies**: None
+
+**Implementation Notes**:
+- Completed on: 2026-02-07
+- Summary:
+  - Chose **custom HTML table + CSS sticky** (no new dependencies needed; migration path to TanStack Table documented)
+  - Designed 8-component hierarchy under `src/components/features/BudgetGrid/`
+  - Documented cell rendering (color coding, currency formatting, date ranges), keyboard navigation, frozen headers/columns, state management (Redux for data, local for UI), loading/empty states, accessibility (ARIA roles), and performance strategy
+- Files changed:
+  - `.cursor/GRID_ARCHITECTURE.md` (created — full design document)
+  - `.cursor/BACKLOG.md` (this task marked completed)
+- Verification: Manual review of design document against acceptance criteria and UX_INTERACTIONS.md / UI_FLOWS.md requirements
 
 ---
 
