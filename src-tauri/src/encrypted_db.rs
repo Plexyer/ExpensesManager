@@ -57,6 +57,22 @@ impl DbState {
             file_info: Mutex::new(None),
         }
     }
+
+    /// Saves the database to disk if one is currently open.
+    /// Returns Ok(()) if no database is open (no-op).
+    /// Used by the app exit handler to prevent data loss on window close.
+    pub fn save_if_open(&self) -> Result<(), String> {
+        let file_info_guard = self
+            .file_info
+            .lock()
+            .map_err(|_| "Failed to lock file_info mutex".to_string())?;
+
+        if let Some(file_info) = file_info_guard.as_ref() {
+            write_back_to_file(file_info).map_err(|e| e.to_string())?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for DbState {
@@ -108,6 +124,10 @@ pub struct GridCategoryRow {
     pub spent_total: f64,
     /// Calculated: received_total - spent_total
     pub remaining: f64,
+    /// Earliest date among received line items (derived), e.g. "2026-02-01"
+    pub first_received_date: Option<String>,
+    /// Latest date among received line items (derived), e.g. "2026-02-15"
+    pub last_received_date: Option<String>,
 }
 
 /// Response for get_grid_data: list of category rows with rollups for one budget instance.
@@ -711,7 +731,9 @@ fn get_grid_data_internal(
             bic.default_currency,
             bic.sort_order,
             COALESCE(SUM(CASE WHEN li.kind = 'received' THEN li.amount ELSE 0 END), 0) AS received_total,
-            COALESCE(SUM(CASE WHEN li.kind = 'spent' THEN li.amount ELSE 0 END), 0) AS spent_total
+            COALESCE(SUM(CASE WHEN li.kind = 'spent' THEN li.amount ELSE 0 END), 0) AS spent_total,
+            MIN(CASE WHEN li.kind = 'received' THEN DATE(li.occurred_at) END) AS first_received_date,
+            MAX(CASE WHEN li.kind = 'received' THEN DATE(li.occurred_at) END) AS last_received_date
         FROM budget_instance_categories bic
         JOIN global_categories gc ON gc.global_category_id = bic.global_category_id
         LEFT JOIN category_line_items li
@@ -739,6 +761,8 @@ fn get_grid_data_internal(
                 received_total,
                 spent_total,
                 remaining,
+                first_received_date: row.get(8)?,
+                last_received_date: row.get(9)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -1068,19 +1092,9 @@ pub fn get_template(
     get_template_internal(template_id, &db_state).map_err(|e| e.to_string())
 }
 
-fn get_template_internal(
-    template_id: i64,
-    db_state: &State<DbState>,
-) -> Result<Template, EncryptedDbError> {
-    let conn_guard = db_state
-        .conn
-        .lock()
-        .map_err(|_| EncryptedDbError::LockError)?;
-
-    let conn = conn_guard
-        .as_ref()
-        .ok_or(EncryptedDbError::NotOpen)?;
-
+/// Fetches a template by ID using an existing connection. Used by get_template_internal
+/// and update_template_internal to avoid re-acquiring the conn lock (which would deadlock).
+fn get_template_with_conn(conn: &Connection, template_id: i64) -> Result<Template, EncryptedDbError> {
     let template = conn.query_row(
         "SELECT template_id, name, description, cadence, default_currency, created_at, updated_at FROM budget_templates WHERE template_id = ?",
         [template_id],
@@ -1102,8 +1116,23 @@ fn get_template_internal(
             EncryptedDbError::from(e)
         }
     })?;
-
     Ok(template)
+}
+
+fn get_template_internal(
+    template_id: i64,
+    db_state: &State<DbState>,
+) -> Result<Template, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    get_template_with_conn(conn, template_id)
 }
 
 /// Updates an existing template.
@@ -1152,8 +1181,10 @@ fn update_template_internal(
         )));
     }
 
-    // Fetch the updated template
-    get_template_internal(template_id, db_state)
+    // Fetch the updated template using the connection we already hold.
+    // Do not call get_template_internal here — it would try to lock db_state.conn again
+    // and deadlock (Mutex is not reentrant).
+    get_template_with_conn(conn, template_id)
 }
 
 /// Deletes a template by ID.
@@ -2612,6 +2643,103 @@ mod tests {
         ).unwrap();
 
         assert_eq!(category_name, "Groceries", "Category name should come from global_categories");
+    }
+
+    #[test]
+    fn test_grid_data_received_dates_none_when_no_received() {
+        let conn = setup_grid_test_db();
+        let (budget_instance_id, bic_id, _global_cat_id) = insert_grid_test_data(&conn);
+
+        // Insert only spent line items (no received)
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'spent', '2026-02-02T10:30:00', 50.00, 'CHF')",
+            [bic_id],
+        ).unwrap();
+
+        let (first_date, last_date): (Option<String>, Option<String>) = conn.query_row(
+            r#"
+            SELECT
+                MIN(CASE WHEN li.kind = 'received' THEN DATE(li.occurred_at) END),
+                MAX(CASE WHEN li.kind = 'received' THEN DATE(li.occurred_at) END)
+            FROM budget_instance_categories bic
+            LEFT JOIN category_line_items li
+                ON li.budget_instance_category_id = bic.budget_instance_category_id
+                AND li.deleted_at IS NULL
+            WHERE bic.budget_instance_id = ?
+            GROUP BY bic.budget_instance_category_id
+            "#,
+            [budget_instance_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap();
+
+        assert!(first_date.is_none(), "first_received_date should be None when no received items");
+        assert!(last_date.is_none(), "last_received_date should be None when no received items");
+    }
+
+    #[test]
+    fn test_grid_data_received_dates_single() {
+        let conn = setup_grid_test_db();
+        let (budget_instance_id, bic_id, _global_cat_id) = insert_grid_test_data(&conn);
+
+        // Insert one received line item
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'received', '2026-02-10T09:00:00', 1000.00, 'CHF')",
+            [bic_id],
+        ).unwrap();
+
+        let (first_date, last_date): (Option<String>, Option<String>) = conn.query_row(
+            r#"
+            SELECT
+                MIN(CASE WHEN li.kind = 'received' THEN DATE(li.occurred_at) END),
+                MAX(CASE WHEN li.kind = 'received' THEN DATE(li.occurred_at) END)
+            FROM budget_instance_categories bic
+            LEFT JOIN category_line_items li
+                ON li.budget_instance_category_id = bic.budget_instance_category_id
+                AND li.deleted_at IS NULL
+            WHERE bic.budget_instance_id = ?
+            GROUP BY bic.budget_instance_category_id
+            "#,
+            [budget_instance_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap();
+
+        assert_eq!(first_date.as_deref(), Some("2026-02-10"), "first_received_date should be the single date");
+        assert_eq!(last_date.as_deref(), Some("2026-02-10"), "last_received_date should equal first when single item");
+    }
+
+    #[test]
+    fn test_grid_data_received_dates_range() {
+        let conn = setup_grid_test_db();
+        let (budget_instance_id, bic_id, _global_cat_id) = insert_grid_test_data(&conn);
+
+        // Insert multiple received line items on different dates
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'received', '2026-02-01T00:00:00', 500.00, 'CHF')",
+            [bic_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'received', '2026-02-15T12:00:00', 500.00, 'CHF')",
+            [bic_id],
+        ).unwrap();
+
+        let (first_date, last_date): (Option<String>, Option<String>) = conn.query_row(
+            r#"
+            SELECT
+                MIN(CASE WHEN li.kind = 'received' THEN DATE(li.occurred_at) END),
+                MAX(CASE WHEN li.kind = 'received' THEN DATE(li.occurred_at) END)
+            FROM budget_instance_categories bic
+            LEFT JOIN category_line_items li
+                ON li.budget_instance_category_id = bic.budget_instance_category_id
+                AND li.deleted_at IS NULL
+            WHERE bic.budget_instance_id = ?
+            GROUP BY bic.budget_instance_category_id
+            "#,
+            [budget_instance_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap();
+
+        assert_eq!(first_date.as_deref(), Some("2026-02-01"), "first_received_date should be earliest");
+        assert_eq!(last_date.as_deref(), Some("2026-02-15"), "last_received_date should be latest");
     }
 
     // ========================================================================

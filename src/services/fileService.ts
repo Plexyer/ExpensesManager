@@ -198,6 +198,10 @@ export interface GridCategoryRow {
   spent_total: number;
   /** Calculated: received_total - spent_total */
   remaining: number;
+  /** Earliest date among received line items (derived), e.g. "2026-02-01" */
+  first_received_date: string | null;
+  /** Latest date among received line items (derived), e.g. "2026-02-15" */
+  last_received_date: string | null;
 }
 
 /**

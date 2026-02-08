@@ -24,6 +24,7 @@
 | NQ3 | ✅ RESOLVED | ISO datetime, default time 00:00:00 if not provided |
 | STUB-Q1 | ✅ RESOLVED | Plaintext password acceptable for MVP stub files |
 | STUB-Q2 | ✅ RESOLVED | Use `.financedb` extension for stub files |
+| UXQ1 | ⏳ OPEN | Save Period button: stay on period or navigate back? |
 
 ---
 
@@ -428,6 +429,23 @@ These questions arise from the licensing specification and need user input for c
 **Answer**: Per user request, keep `.financedb` extension so UX doesn't need to change later.
 
 **✅ DECISION**: Use `.financedb` extension for stub files (same as future encrypted format).
+
+---
+
+## UX / Navigation
+
+### UXQ1: Save Period Button — Stay or Navigate Back?
+**Question**: After the user clicks "Save Period" and the save completes successfully, should the user:
+- **(A)** Stay on the current period's table view (continue editing), or
+- **(B)** Be automatically navigated back to the "All Periods" selection view?
+
+**Context**: The "Save Period" button (top-right of the period detail toolbar) calls `saveDb()` to persist data. Currently the user stays on the period table after saving. The user is unsure which UX is correct.
+
+**Impact**: Affects the `PeriodDetailToolbar.tsx` save handler and potentially the `PeriodGrid.tsx` view state.
+
+**Related**: BUG-007 in `Bugs.md` is blocked on this question being answered.
+
+**Status**: ⏳ OPEN
 
 ---
 

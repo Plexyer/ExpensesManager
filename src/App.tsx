@@ -1,4 +1,5 @@
 import { Routes, Route } from "react-router-dom";
+import DashboardPage from "./pages/DashboardPage";
 import HomePage from "./pages/HomePage";
 import SettingsPage from "./pages/SettingsPage";
 import TemplatesPage from "./pages/TemplatesPage";
@@ -6,7 +7,8 @@ import TemplatesPage from "./pages/TemplatesPage";
 const App = () => {
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
+      <Route path="/" element={<DashboardPage />} />
+      <Route path="/periods" element={<HomePage />} />
       <Route path="/templates" element={<TemplatesPage />} />
       <Route path="/settings" element={<SettingsPage />} />
     </Routes>

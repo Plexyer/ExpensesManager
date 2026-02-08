@@ -3,6 +3,7 @@ import { useAppSelector, useAppDispatch } from "../../store/hooks";
 import { closeFile } from "../../store/slices/fileSlice";
 import { resetCategories } from "../../store/slices/categorySlice";
 import { resetTemplates } from "../../store/slices/templateSlice";
+import { clearBudgetState } from "../../store/slices/budgetSlice";
 import { closeDb } from "../../services/fileService";
 
 interface NavLinkProps {
@@ -52,10 +53,12 @@ const AppHeader = () => {
     dispatch(closeFile());
     dispatch(resetCategories());
     dispatch(resetTemplates());
+    dispatch(clearBudgetState());
   };
 
   const navItems = [
-    { to: "/", label: "Home" },
+    { to: "/", label: "Dashboard" },
+    { to: "/periods", label: "Periods" },
     { to: "/templates", label: "Templates" },
     { to: "/settings", label: "Settings" },
   ];

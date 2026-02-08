@@ -6,6 +6,7 @@ mod kdf;
 mod migrations;
 
 use encrypted_db::DbState;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -42,6 +43,17 @@ pub fn run() {
             encrypted_db::get_period,
             encrypted_db::delete_period,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                // BUG-004: Save any open database before the app exits.
+                // This prevents data loss when the user closes the window
+                // without clicking "Close File".
+                let db_state = app_handle.state::<DbState>();
+                if let Err(e) = db_state.save_if_open() {
+                    eprintln!("[BUG-004] Failed to save database on app exit: {}", e);
+                }
+            }
+        });
 }

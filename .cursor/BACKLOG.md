@@ -663,7 +663,7 @@ Each task includes:
 
 ---
 
-### TASK-4.2: Implement Grid Data Loading
+### TASK-4.2: Implement Grid Data Loading ✅ COMPLETED
 **Goal**: Load and display one budget instance category grid data  
 **Scope**:
 - Create `get_grid_data` command (if not done in TASK-2.5)
@@ -682,6 +682,24 @@ Each task includes:
 
 **Complexity**: L  
 **Dependencies**: TASK-2.5, TASK-4.1
+
+**Implementation Notes**:
+- Completed on: 2026-02-07
+- Summary:
+  - Extended `GridCategoryRow` (Rust + TypeScript) with `first_received_date` / `last_received_date` derived via `MIN/MAX(DATE())` in the SQL query
+  - Created Redux `budgetSlice` with `fetchPeriods` and `fetchGridData` async thunks, auto-selects most recent period
+  - Built 8 grid components (PeriodGrid, PeriodGridTable, PeriodGridHeader, PeriodGridBody, PeriodGridRow, PeriodGridCell, PeriodGridSkeleton, PeriodGridEmpty) + types.ts
+  - Replaced HomePage placeholder with PeriodGrid; added period selector dropdown
+  - Added `clearBudgetState` to close-file handler in AppHeader
+- Files changed:
+  - `src-tauri/src/encrypted_db.rs` (struct + SQL query updated, 3 new tests)
+  - `src/services/fileService.ts` (GridCategoryRow interface updated)
+  - `src/store/slices/budgetSlice.ts` (new)
+  - `src/store/store.ts` (registered budgetReducer)
+  - `src/components/features/BudgetGrid/` (8 new components + types.ts)
+  - `src/pages/HomePage.tsx` (replaced placeholder with PeriodGrid)
+  - `src/components/common/AppHeader.tsx` (added clearBudgetState on close)
+- Verification: Rust tests pass (63/63), TypeScript compiles cleanly, no linter errors
 
 ---
 
@@ -747,6 +765,29 @@ Each task includes:
 
 **Complexity**: S  
 **Dependencies**: TASK-4.3, TASK-5.1
+
+---
+
+### TASK-4.6: Implement Period Filtering
+**Goal**: Allow users to filter the period list on the Home page  
+**Scope**:
+- Add filter controls above the period cards (e.g., by template, by date range, by cadence)
+- Persist filter state in local component state or URL params
+- Show "No matching periods" when filters exclude all results
+- Ensure "Create Period" button remains visible regardless of filters
+
+**Acceptance Criteria**:
+- ✅ User can filter periods by template name
+- ✅ User can filter periods by cadence type
+- ✅ Filter resets when switching files
+- ✅ Empty filter results show a helpful message
+
+**Likely Areas/Files**:
+- `src/components/features/BudgetGrid/PeriodList.tsx` (modify — add filter UI)
+- `src/components/features/BudgetGrid/PeriodGrid.tsx` (modify — manage filter state)
+
+**Complexity**: M  
+**Dependencies**: TASK-4.2
 
 ---
 
@@ -1356,6 +1397,71 @@ These are not new features but architectural safeguards that MUST be in place to
   - Run `npm run tauri dev` → Create file → Close file → Create new file → Works
   - Close file → Reopen same file → Works
   - All 21 Rust tests pass
+
+---
+
+## Phase 9: Dashboard & Navigation
+
+### TASK-9.1: Dashboard Page — Placeholder + Tab Rename ✅ COMPLETED
+**Goal**: Add a placeholder Dashboard page as the default landing page after opening a `.financedb` file, and rename the current "Home" tab to "Periods".
+**Scope**:
+- Create a new `DashboardPage.tsx` with placeholder content (e.g., "Dashboard — Financial summaries coming soon")
+- Add a "Dashboard" tab as the first/leftmost tab in `AppHeader.tsx`
+- Rename the existing "Home" tab to "Periods"
+- Set the Dashboard route as the default route after file open
+- Update routing in `App.tsx` so `/` points to Dashboard and Periods gets its own route (e.g., `/periods`)
+
+**Acceptance Criteria**:
+- ✅ After opening a file, user lands on the Dashboard page
+- ✅ Navigation shows: Dashboard | Periods | Templates | Settings
+- ✅ "Periods" tab shows the same content as the current "Home" tab
+- ✅ Dashboard page shows a placeholder message
+
+**Likely Areas/Files**:
+- `src/pages/DashboardPage.tsx` (new)
+- `src/pages/HomePage.tsx` → rename to `PeriodsPage.tsx` (or keep and update route)
+- `src/components/common/AppHeader.tsx` (rename tab, add Dashboard tab)
+- `src/App.tsx` (update routes)
+
+**Complexity**: S
+**Dependencies**: None
+
+**Related**: BUG-006 in `Bugs.md` tracks the bug aspect (app opens on wrong page).
+
+#### Implementation Notes
+- **Completed on**: 2026-02-08
+- **Summary**:
+  - Created `DashboardPage.tsx` placeholder page with dashboard icon and "coming soon" message, matching SettingsPage pattern
+  - Updated `App.tsx`: `/` → DashboardPage, `/periods` → HomePage (periods content)
+  - Updated `AppHeader.tsx`: navigation tabs are now Dashboard, Periods, Templates, Settings
+  - `HomePage.tsx` kept as-is (serves Periods content at `/periods`); no file rename needed
+- **Files changed**:
+  - `src/pages/DashboardPage.tsx` (new)
+  - `src/App.tsx` (routing update)
+  - `src/components/common/AppHeader.tsx` (tab labels and routes)
+- **Verification**:
+  - TypeScript compiles with zero errors, no linter warnings
+  - Open a file → Dashboard placeholder shown. Tab navigation correct.
+
+---
+
+### TASK-9.2: Dashboard Page — Financial Summaries (Future)
+**Goal**: Implement actual financial summaries on the Dashboard page
+**Scope**:
+- Summary of total budget across all periods
+- Current period overview (remaining budget, spending rate)
+- Quick-access cards to recent periods
+- Charts/graphs (spending trends, category breakdowns)
+
+**Acceptance Criteria**:
+- ⏳ Dashboard shows meaningful financial summaries
+- ⏳ Data loads from all open periods
+- ⏳ Performance target: <500ms for dashboard load
+
+**Complexity**: L
+**Dependencies**: TASK-9.1, TASK-4.2
+
+**Status**: ⏳ Deferred — implement TASK-9.1 placeholder first
 
 ---
 

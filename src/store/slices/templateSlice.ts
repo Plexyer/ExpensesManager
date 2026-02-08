@@ -169,12 +169,16 @@ const templateSlice = createSlice({
       state.error = null;
     },
     selectTemplate: (state, action: PayloadAction<Template | null>) => {
-      state.selectedTemplate = action.payload;
+      const next = action.payload;
+      const sameSelection = state.selectedTemplate?.template_id === next?.template_id;
+      state.selectedTemplate = next;
       // Keep old categories visible during loading (prevents flickering)
       // They will be replaced when fetchTemplateCategories.fulfilled runs
       state.error = null; // Clear any stale errors
-      // Set loading to true so UI shows loading indicator overlay
-      state.isCategoriesLoading = action.payload !== null;
+      // Only set loading when selection actually changed; re-selecting the same template
+      // would otherwise set loading true but the useEffect (same selectedTemplate ref) won't
+      // re-run, so the fetch never fires and loading never clears.
+      state.isCategoriesLoading = next !== null && !sameSelection;
     },
   },
   extraReducers: (builder) => {
