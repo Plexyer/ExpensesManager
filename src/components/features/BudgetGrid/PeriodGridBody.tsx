@@ -1,9 +1,11 @@
 import PeriodGridRow from "./PeriodGridRow";
-import { COLUMN_CONFIG, LAST_FROZEN_COL_INDEX } from "./types";
+import { COLUMN_CONFIG, LAST_FROZEN_COL_INDEX, computeStickyLeft } from "./types";
+import type { ColumnWidths } from "./types";
 import type { GridCategoryRow } from "../../../services/fileService";
 
 interface PeriodGridBodyProps {
   rows: GridCategoryRow[];
+  columnWidths: ColumnWidths;
 }
 
 /** Format a number as currency. */
@@ -23,7 +25,7 @@ const getRemainingColorClasses = (remaining: number): string => {
   return "bg-amber-500/10 text-amber-300";
 };
 
-const PeriodGridBody = ({ rows }: PeriodGridBodyProps) => {
+const PeriodGridBody = ({ rows, columnWidths }: PeriodGridBodyProps) => {
   // Compute totals for the summary row
   const totals = rows.reduce(
     (acc, row) => ({
@@ -43,6 +45,7 @@ const PeriodGridBody = ({ rows }: PeriodGridBodyProps) => {
         <PeriodGridRow
           key={row.budget_instance_category_id}
           row={row}
+          columnWidths={columnWidths}
         />
       ))}
 
@@ -58,9 +61,15 @@ const PeriodGridBody = ({ rows }: PeriodGridBodyProps) => {
 
             const isFrozen = col.frozen;
             const isLastFrozen = colIndex === LAST_FROZEN_COL_INDEX;
+            const isLastColumn = colIndex === COLUMN_CONFIG.length - 1;
+            const width = columnWidths[col.id];
+            const stickyLeft = isFrozen
+              ? computeStickyLeft(colIndex, columnWidths)
+              : 0;
             const stickyClasses = isFrozen
               ? `sticky z-10 bg-slate-800 ${isLastFrozen ? "shadow-[2px_0_4px_rgba(0,0,0,0.15)]" : ""}`
               : "";
+            const separatorClass = isLastColumn ? "" : "border-r border-slate-600/40";
 
             switch (col.id) {
               case "category":
@@ -84,18 +93,15 @@ const PeriodGridBody = ({ rows }: PeriodGridBodyProps) => {
             return (
               <td
                 key={col.id}
-                className={`px-4 py-2.5 text-sm whitespace-nowrap ${
+                className={`px-4 py-2.5 text-sm break-words ${separatorClass} ${
                   col.align === "right" ? "text-right" : "text-left"
                 } ${colorClasses} ${stickyClasses}`}
-                style={
-                  isFrozen
-                    ? {
-                        left: col.stickyLeft,
-                        minWidth: col.frozenWidth ?? undefined,
-                        width: col.frozenWidth ?? undefined,
-                      }
-                    : undefined
-                }
+                style={{
+                  width,
+                  minWidth: width,
+                  maxWidth: width,
+                  ...(isFrozen ? { left: stickyLeft } : {}),
+                }}
               >
                 {content}
               </td>

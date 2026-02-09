@@ -1824,6 +1824,77 @@ fn delete_period_internal(
     Ok(())
 }
 
+// ============================================================================
+// UI Settings Commands
+// ============================================================================
+
+/// Gets a UI setting value by key. Returns `null` if the key does not exist.
+#[tauri::command]
+pub fn get_ui_setting(
+    key: String,
+    db_state: State<DbState>,
+) -> Result<Option<String>, String> {
+    get_ui_setting_internal(&key, &db_state).map_err(|e| e.to_string())
+}
+
+fn get_ui_setting_internal(
+    key: &str,
+    db_state: &State<DbState>,
+) -> Result<Option<String>, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let result = conn.query_row(
+        "SELECT value FROM ui_settings WHERE key = ?",
+        [key],
+        |row| row.get::<_, String>(0),
+    );
+
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(EncryptedDbError::from(e)),
+    }
+}
+
+/// Sets a UI setting value by key (upsert). Creates the key if it doesn't exist.
+#[tauri::command]
+pub fn set_ui_setting(
+    key: String,
+    value: String,
+    db_state: State<DbState>,
+) -> Result<(), String> {
+    set_ui_setting_internal(&key, &value, &db_state).map_err(|e| e.to_string())
+}
+
+fn set_ui_setting_internal(
+    key: &str,
+    value: &str,
+    db_state: &State<DbState>,
+) -> Result<(), EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO ui_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))",
+        rusqlite::params![key, value],
+    )?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,14 +1,36 @@
-import { useAppSelector } from "../store/hooks";
+import { useAppSelector, useAppDispatch } from "../store/hooks";
+import { setSnapMode, saveSnapMode } from "../store/slices/budgetSlice";
+import type { SnapMode } from "../components/features/BudgetGrid/types";
 import AppHeader from "../components/common/AppHeader";
 import Onboarding from "../components/features/Onboarding/Onboarding";
 
+const SNAP_MODE_OPTIONS: { value: SnapMode; label: string; description: string }[] = [
+  {
+    value: "magnetic",
+    label: "Magnetic snap",
+    description: "Slight pull toward optimal width — you can drag past it smoothly.",
+  },
+  {
+    value: "detent",
+    label: "Hard detent snap",
+    description: "Column locks at optimal width — drag further to break free.",
+  },
+];
+
 const SettingsPage = () => {
+  const dispatch = useAppDispatch();
   const { isFileOpen } = useAppSelector((state) => state.file);
+  const snapMode = useAppSelector((state) => state.budget.snapMode);
 
   // Show onboarding if no file is open
   if (!isFileOpen) {
     return <Onboarding />;
   }
+
+  const handleSnapModeChange = (mode: SnapMode) => {
+    dispatch(setSnapMode(mode));
+    dispatch(saveSnapMode(mode));
+  };
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col">
@@ -16,35 +38,75 @@ const SettingsPage = () => {
 
       {/* Main Content */}
       <main className="flex-1 p-6">
-        <div className="max-w-2xl mx-auto">
-          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-8 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-slate-700/50 border border-slate-600 flex items-center justify-center mx-auto mb-4">
-              <svg
-                className="w-8 h-8 text-slate-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-              </svg>
-            </div>
-            <h2 className="text-xl font-semibold text-white mb-2">Settings</h2>
-            <p className="text-slate-400">
-              Settings page placeholder. Export, backup, and licensing features will be added here in future tasks.
+        <div className="max-w-2xl mx-auto space-y-6">
+          {/* Page Title */}
+          <h1 className="text-2xl font-semibold text-white">Settings</h1>
+
+          {/* Grid Settings Section */}
+          <section
+            aria-labelledby="grid-settings-heading"
+            className="bg-slate-800/50 border border-slate-700 rounded-xl p-6"
+          >
+            <h2
+              id="grid-settings-heading"
+              className="text-lg font-medium text-white mb-4"
+            >
+              Grid
+            </h2>
+
+            {/* Snap Mode Setting */}
+            <fieldset>
+              <legend className="text-sm font-medium text-slate-300 mb-3">
+                Column resize snap behavior
+              </legend>
+              <div className="space-y-3">
+                {SNAP_MODE_OPTIONS.map((option) => {
+                  const isSelected = snapMode === option.value;
+                  return (
+                    <label
+                      key={option.value}
+                      className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                        isSelected
+                          ? "border-blue-500/50 bg-blue-500/10"
+                          : "border-slate-600/50 hover:border-slate-500/50 hover:bg-slate-700/30"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="snap-mode"
+                        value={option.value}
+                        checked={isSelected}
+                        onChange={() => handleSnapModeChange(option.value)}
+                        className="mt-0.5 w-4 h-4 text-blue-500 bg-slate-700 border-slate-500 focus:ring-blue-500 focus:ring-offset-0 focus:ring-2"
+                        aria-describedby={`snap-mode-${option.value}-desc`}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium text-white">
+                          {option.label}
+                        </span>
+                        <p
+                          id={`snap-mode-${option.value}-desc`}
+                          className="text-xs text-slate-400 mt-0.5"
+                        >
+                          {option.description}
+                        </p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+          </section>
+
+          {/* Placeholder for future settings sections */}
+          <section className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
+            <h2 className="text-lg font-medium text-white mb-2">
+              More settings
+            </h2>
+            <p className="text-sm text-slate-400">
+              Export, backup, and licensing features will be added here in future tasks.
             </p>
-          </div>
+          </section>
         </div>
       </main>
     </div>

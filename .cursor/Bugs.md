@@ -95,8 +95,9 @@ The table is narrow and centered, leaving unused space on both sides. No horizon
 
 ## BUG-003: Cell Text Wrapping & Column Resizing
 
-**Status:** OPEN
+**Status:** RESOLVED
 **Reported:** 2026-02-08
+**Priority:** Medium
 **Area:** Budget Grid / Table (`BudgetGrid/`)
 
 ### Description
@@ -115,6 +116,33 @@ Since users will create custom columns that may contain longer text, cells need 
 ### Current Behavior
 
 Text in cells does not wrap — it is either truncated or overflows. Columns have a fixed width and cannot be resized by the user.
+
+### Fix Notes
+
+- **Completed:** 2026-02-09
+- **Summary:**
+  - Replaced `whitespace-nowrap` with `break-words` on all grid cells (data cells and summary row) to enable text wrapping with dynamic row height growth.
+  - Implemented drag-to-resize on column headers: a 4px-wide invisible handle on the right edge of each `<th>` changes the cursor to `col-resize` on hover and supports click-and-drag to adjust width (clamped to a 60px minimum).
+  - Column widths are stored in Redux state (survives tab switches) and persisted to a new `ui_settings` database table (survives app restarts). Widths load from the database on file open and save on every resize mouseup.
+  - Added keyboard accessibility on resize handles: left/right arrow keys adjust width by 10px steps. Handles have `role="separator"`, `aria-orientation="vertical"`, and `aria-label`.
+  - Replaced static `frozenWidth`/`stickyLeft` with dynamic `computeStickyLeft()` that recalculates offsets from actual column widths, so frozen column positioning stays correct after resize.
+  - Added DB migration v4 (`ui_settings` table) and two new Tauri commands (`get_ui_setting`, `set_ui_setting`) for generic key-value UI preference persistence.
+- **Root cause:** All cells used `whitespace-nowrap` preventing text wrapping. Column widths were static constants in `COLUMN_CONFIG` with no resize infrastructure, no drag handles, and no persistence mechanism.
+- **Files changed:**
+  - `src-tauri/src/migrations.rs` — added migration v4 (ui_settings table), bumped CURRENT_SCHEMA_VERSION to 4
+  - `src-tauri/src/encrypted_db.rs` — added `get_ui_setting` and `set_ui_setting` Tauri commands
+  - `src-tauri/src/lib.rs` — registered new commands
+  - `src/services/settingsService.ts` — new frontend service wrapping get/set UI setting commands
+  - `src/components/features/BudgetGrid/types.ts` — replaced `frozen`/`stickyLeft`/`frozenWidth` with `defaultWidth`, added `MIN_COLUMN_WIDTH`, `ColumnWidths` type, `getDefaultColumnWidths()`, `computeStickyLeft()` helper
+  - `src/store/slices/budgetSlice.ts` — added `columnWidths` state, `setColumnWidth` reducer, `loadColumnWidths`/`saveColumnWidths` async thunks
+  - `src/components/features/BudgetGrid/PeriodGrid.tsx` — dispatches `loadColumnWidths()` on mount
+  - `src/components/features/BudgetGrid/PeriodGridTable.tsx` — reads `columnWidths` from Redux, passes resize handlers to header and body
+  - `src/components/features/BudgetGrid/PeriodGridHeader.tsx` — added resize handle `<div>` per column with mouse drag + keyboard resize support
+  - `src/components/features/BudgetGrid/PeriodGridCell.tsx` — replaced `whitespace-nowrap` with `break-words`, accepts `columnWidths` prop, applies dynamic `width`/`minWidth`/`maxWidth` + computed `stickyLeft`
+  - `src/components/features/BudgetGrid/PeriodGridRow.tsx` — passes `columnWidths` to each cell
+  - `src/components/features/BudgetGrid/PeriodGridBody.tsx` — replaced `whitespace-nowrap` with `break-words` in summary row, accepts `columnWidths`, applies dynamic widths + computed `stickyLeft`
+- **Verification:**
+  - Open a file with periods. Select a period → table loads. Category names wrap to multiple lines if longer than column width. Row height adjusts dynamically. Hover the right edge of any column header → cursor becomes `col-resize`. Drag right → column widens. Drag left → column shrinks (stops at 60px). Release → width persists. Switch tabs → come back → widths preserved. Close and reopen the app/file → widths loaded from database. Frozen columns stay pinned during horizontal scroll after resize. Summary row columns align with header. Tab to resize handle → press arrow keys → width adjusts. TypeScript compiles with zero errors, no linter warnings.
 
 ---
 
@@ -166,7 +194,7 @@ If the user enters data and closes the app (e.g., clicks the window X button) wi
 
 ## BUG-005: Re-selecting Same Period After "All Periods" Shows No Table
 
-**Status:** OPEN
+**Status:** RESOLVED
 **Reported:** 2026-02-08
 **Priority:** High
 **Area:** Period Selection / Grid (`BudgetGrid/PeriodGrid.tsx`, `budgetSlice.ts`)
@@ -192,6 +220,19 @@ Re-selecting the same period should show the budget table immediately, identical
 ### Probable Root Cause
 
 When `setCurrentBudgetInstanceId` dispatches the same value that's already in Redux, it does not trigger a state change, so the `useEffect` that calls `fetchGridData` does not re-fire. The `showPeriodSelector` flips to `false` (showing the detail view) but `gridDataStatus` may still be in a stale state from a previous load.
+
+### Fix Notes
+
+- **Completed:** 2026-02-09
+- **Summary:**
+  - Modified `handleSelectPeriod` in `PeriodGrid.tsx` to detect when the user re-selects the same period that is already active in Redux.
+  - When `budgetInstanceId === currentBudgetInstanceId` (same period), the handler now explicitly dispatches `fetchGridData(budgetInstanceId)` because the `useEffect` watching `currentBudgetInstanceId` won't re-fire (the value didn't change).
+  - For different-period selections, the existing `useEffect` path continues to handle the fetch as before — no double-fetch occurs.
+- **Root cause:** The `useEffect` in `PeriodGrid.tsx` that dispatches `fetchGridData` depends on `currentBudgetInstanceId`. When the same value is dispatched via `setCurrentBudgetInstanceId`, Redux does not produce a new state reference for that field, so the `useEffect` never fires. Meanwhile, the reducer still clears `gridData` to `null` and resets `gridDataStatus` to `"idle"`, but no rendering branch in the detail view handles `"idle"` — resulting in a blank screen.
+- **Files changed:**
+  - `src/components/features/BudgetGrid/PeriodGrid.tsx` — added same-period detection and explicit `fetchGridData` dispatch in `handleSelectPeriod`
+- **Verification:**
+  - Open a file with periods. Period auto-selects and table shows. Click "All Periods" → selector view. Click the same period → table now loads correctly. Click "All Periods" again → select a different period → table loads. Create a new period → auto-navigates to table. TypeScript compiles with zero errors, no linter warnings.
 
 ---
 
@@ -270,7 +311,7 @@ To be determined after UXQ1 in `QUESTIONS_FOR_USER.md` is answered.
 
 ## BUG-008: Period View State Lost When Switching Tabs
 
-**Status:** OPEN
+**Status:** RESOLVED
 **Reported:** 2026-02-08
 **Priority:** High
 **Area:** Navigation / State Persistence (`PeriodGrid.tsx`, `App.tsx`)
@@ -297,6 +338,86 @@ The `PeriodGrid` component uses `useState` for `showPeriodSelector` and `periodV
 - Lifted to Redux (persisted across route changes), or
 - Persisted via a ref/context that survives remounting.
 
+### Fix Notes
+
+- **Completed:** 2026-02-09
+- **Summary:**
+  - Lifted `showPeriodSelector` and `periodViewMode` from React local state (`useState`) in `PeriodGrid.tsx` to Redux state in `budgetSlice.ts`.
+  - Added `PeriodViewMode` exported type, two new state fields (`showPeriodSelector: boolean`, `periodViewMode: PeriodViewMode`), and two new reducers (`setShowPeriodSelector`, `setPeriodViewMode`) to the budget slice.
+  - Updated `PeriodGrid.tsx` to read both values from `useAppSelector` and set them via `dispatch(...)` instead of direct `useState` setters.
+  - `isCreateModalOpen` remains as local `useState` (modals are transient UI that should not persist across route changes).
+  - `clearBudgetState` (file close) already returns `initialState`, so both new fields reset automatically.
+- **Root cause:** `showPeriodSelector` and `periodViewMode` were stored in `useState`, which is destroyed when React Router unmounts the component on tab navigation. Redux state persists across route changes.
+- **Files changed:**
+  - `src/store/slices/budgetSlice.ts` — added `PeriodViewMode` type, `showPeriodSelector` and `periodViewMode` to state/initialState, two new reducers, updated exports
+  - `src/components/features/BudgetGrid/PeriodGrid.tsx` — removed local `useState` for both values, imported new actions and type from budgetSlice, replaced all setter calls with dispatches
+- **Verification:**
+  - Open a file with periods. Click "All Periods" → switch to Templates → switch back to Periods → still on "All Periods" selector. Toggle to list view → switch to Settings → switch back → still in list view. Select a period → switch tabs → switch back → same period table shown. Close file → reopen → defaults restored. TypeScript compiles with zero errors, no linter warnings.
+
+---
+
+## BUG-009: Add Category Button Disabled After All Existing Categories Assigned
+
+**Status:** RESOLVED
+**Reported:** 2026-02-09
+**Priority:** High
+**Area:** Templates Page (`TemplatesPage.tsx`)
+
+### Description
+
+After adding one category to a template, the "Add Category" button becomes unresponsive (disabled) if all existing global categories have been assigned to the template. This prevents the user from opening the add-category form, which contains an inline "Create new category" option that would allow creating and adding new categories.
+
+### Steps to Reproduce
+
+1. Open a `.financedb` file.
+2. Go to the **Templates** tab.
+3. Create a template (e.g., "Monthly Budget").
+4. Create one global category (e.g., "Food") and add it to the template with an amount.
+5. The category is added successfully and the form closes.
+6. Click **"Add Category"** again.
+7. **Result:** The button does nothing — it is disabled (greyed out or unresponsive).
+
+### Expected Behavior
+
+The "Add Category" button should always be clickable when a template is selected, regardless of how many global categories have already been assigned. The add-category form contains an inline "Create new category" flow that allows the user to create new global categories on the spot — the button must remain accessible so the user can reach that flow.
+
+### Current Behavior
+
+The button is disabled when `availableCategories.length === 0 && categories.length > 0`. Once all existing global categories are assigned to the template, `availableCategories` becomes empty, and the button is disabled. The user cannot open the form and therefore cannot use the inline "Create new category" option.
+
+### Root Cause
+
+In `src/pages/TemplatesPage.tsx`:
+
+- **Line 207-209:** `availableCategories` filters out categories already in the template:
+  ```
+  const availableCategories = categories.filter(
+    (cat) => !templateCategories.some((tc) => tc.global_category_id === cat.global_category_id)
+  );
+  ```
+- **Line 516:** The button's `disabled` prop:
+  ```
+  disabled={availableCategories.length === 0 && categories.length > 0}
+  ```
+  This condition disables the button when all global categories are already assigned, but it fails to account for the inline "Create new category" form (lines 565-611) inside the add-category panel.
+
+### Possible Fix
+
+Remove or relax the `disabled` condition on the "Add Category" button (line 516). The button should always be enabled when a template is selected, since the form provides an inline path to create new global categories. Alternatively, only disable the "Add to Template" submit button (line 617) when no category is selected, which is already implemented.
+
+### Fix Notes
+
+- **Completed:** 2026-02-09
+- **Summary:**
+  - Removed the `disabled` prop (`disabled={availableCategories.length === 0 && categories.length > 0}`) from the "Add Category" button in `TemplatesPage.tsx`.
+  - The button is now always clickable when a template is selected, allowing the user to open the add-category form and access the inline "Create new category" flow regardless of how many global categories are already assigned.
+  - The "Add to Template" submit button inside the form retains its own guard (`disabled={selectedCategoryId === "" || !categoryAmount}`), which is sufficient to prevent invalid submissions.
+- **Root cause:** The `disabled` condition on the "Add Category" button did not account for the inline "Create new category" form inside the add-category panel, blocking users from creating new global categories when all existing ones were assigned.
+- **Files changed:**
+  - `src/pages/TemplatesPage.tsx` — removed `disabled` prop from "Add Category" button
+- **Verification:**
+  - Open a file, go to Templates, create a template with one category. Click "Add Category" again — form opens. Use "+ Create new category" to create and add a second category. TypeScript compiles with zero errors, no linter warnings.
+
 ---
 
 ## Summary Table
@@ -305,9 +426,10 @@ The `PeriodGrid` component uses `useState` for `showPeriodSelector` and `periodV
 |----------|----------------------------------------------|--------|----------|
 | BUG-001  | Period Selection UX Overhaul                 | RESOLVED | High     |
 | BUG-002  | Table Width & Sticky Columns                 | RESOLVED | High     |
-| BUG-003  | Cell Text Wrapping & Column Resizing         | OPEN   | Medium   |
+| BUG-003  | Cell Text Wrapping & Column Resizing         | RESOLVED | Medium   |
 | BUG-004  | Data Not Persisted on App Close              | RESOLVED | Critical |
-| BUG-005  | Re-selecting Same Period Shows No Table       | OPEN   | High     |
+| BUG-005  | Re-selecting Same Period Shows No Table       | RESOLVED | High     |
 | BUG-006  | App Opens on Wrong Page — Dashboard Missing  | RESOLVED | Medium   |
 | BUG-007  | Save Period Post-Save Navigation              | BLOCKED (UXQ1) | Low |
-| BUG-008  | Period View State Lost on Tab Switch          | OPEN   | High     |
+| BUG-008  | Period View State Lost on Tab Switch          | RESOLVED | High     |
+| BUG-009  | Add Category Button Disabled After All Existing Categories Assigned | RESOLVED | High |

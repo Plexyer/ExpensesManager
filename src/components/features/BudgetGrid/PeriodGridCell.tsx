@@ -1,11 +1,12 @@
-import type { GridColumnConfig, GridColumnId } from "./types";
-import { LAST_FROZEN_COL_INDEX } from "./types";
+import type { GridColumnConfig, GridColumnId, ColumnWidths } from "./types";
+import { COLUMN_CONFIG, LAST_FROZEN_COL_INDEX, computeStickyLeft } from "./types";
 import type { GridCategoryRow } from "../../../services/fileService";
 
 interface PeriodGridCellProps {
   columnConfig: GridColumnConfig;
   colIndex: number;
   row: GridCategoryRow;
+  columnWidths: ColumnWidths;
 }
 
 /** Format a number as currency using the row's default_currency. */
@@ -61,12 +62,17 @@ const PeriodGridCell = ({
   columnConfig,
   colIndex,
   row,
+  columnWidths,
 }: PeriodGridCellProps) => {
   const value = getCellDisplayValue(row, columnConfig.id);
   const isRemaining = columnConfig.id === "remaining";
   const isRightAligned = columnConfig.align === "right";
   const isFrozen = columnConfig.frozen;
   const isLastFrozen = colIndex === LAST_FROZEN_COL_INDEX;
+  const width = columnWidths[columnConfig.id];
+  const stickyLeft = isFrozen
+    ? computeStickyLeft(colIndex, columnWidths)
+    : 0;
 
   const colorClasses = isRemaining
     ? getRemainingColorClasses(row.remaining)
@@ -76,22 +82,22 @@ const PeriodGridCell = ({
     ? `sticky z-10 bg-slate-800 ${isLastFrozen ? "shadow-[2px_0_4px_rgba(0,0,0,0.15)]" : ""}`
     : "";
 
+  const isLastColumn = colIndex === COLUMN_CONFIG.length - 1;
+  const separatorClass = isLastColumn ? "" : "border-r border-slate-600/40";
+
   return (
     <td
       role="gridcell"
-      className={`px-4 py-2.5 text-sm whitespace-nowrap border-b border-slate-700/50 ${
+      className={`px-4 py-2.5 text-sm break-words border-b border-slate-700/50 ${separatorClass} ${
         isRightAligned ? "text-right" : "text-left"
       } ${colorClasses} ${stickyClasses}`}
       title={value}
-      style={
-        isFrozen
-          ? {
-              left: columnConfig.stickyLeft,
-              minWidth: columnConfig.frozenWidth ?? undefined,
-              width: columnConfig.frozenWidth ?? undefined,
-            }
-          : undefined
-      }
+      style={{
+        width,
+        minWidth: width,
+        maxWidth: width,
+        ...(isFrozen ? { left: stickyLeft } : {}),
+      }}
     >
       {value}
     </td>

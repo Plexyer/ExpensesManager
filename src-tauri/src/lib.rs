@@ -42,6 +42,9 @@ pub fn run() {
             encrypted_db::list_periods,
             encrypted_db::get_period,
             encrypted_db::delete_period,
+            // UI settings commands
+            encrypted_db::get_ui_setting,
+            encrypted_db::set_ui_setting,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

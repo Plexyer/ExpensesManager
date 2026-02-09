@@ -1465,6 +1465,203 @@ These are not new features but architectural safeguards that MUST be in place to
 
 ---
 
+## Phase 10: Templates Enhancement
+
+### TASK-10.1: Category Types
+**Goal**: Introduce a user-managed "Category Type" entity that classifies categories (e.g., "Savings", "Fixed Expense", "Yearly Expense"). Each category type has a unique name and an associated color.  
+**Scope**:
+- Create a new `category_types` database table to store user-defined category types with name and color
+- Migrate the existing `template_categories.category_type` plain-text column to reference the new `category_types` table via a nullable FK
+- Implement full CRUD (create, read, update, delete) Tauri commands for category types
+- Update `add_category_to_template` and `get_template_categories` to work with the new FK-based category type
+- Build a Category Type management UI (create/edit/delete) accessible from the Templates page
+- Add a category type selector dropdown when adding or editing a category within a template
+- Display a color indicator (dot or badge) alongside each category name in the template category list, using the assigned category type's color
+
+**Acceptance Criteria**:
+- [ ] User can create a new category type with a unique name and a color
+- [ ] User can edit an existing category type's name and color
+- [ ] User can delete a category type (categories using it fall back to "untyped")
+- [ ] When adding a category to a template, user can optionally assign a category type
+- [ ] Category type color is displayed next to category names in the template view
+- [ ] DB migration is backward-compatible (existing data preserved, `category_type_id` is nullable)
+
+**Database Schema** (new migration):
+```sql
+CREATE TABLE IF NOT EXISTS category_types (
+    category_type_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    color TEXT NOT NULL DEFAULT '#6B7280',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
+- `template_categories.category_type` column evolves from plain text to `category_type_id INTEGER REFERENCES category_types(category_type_id) ON DELETE SET NULL`
+
+**Likely Areas/Files**:
+- `src-tauri/src/migrations.rs` (new migration for `category_types` table + FK change)
+- `src-tauri/src/encrypted_db.rs` (CRUD commands, updated queries)
+- `src/types/template.types.ts` (updated types)
+- `src/services/templateService.ts` or new `src/services/categoryTypeService.ts`
+- `src/pages/TemplatesPage.tsx` (category type selector, color indicator display)
+- `src/store/slices/templateSlice.ts` or new `categoryTypeSlice.ts`
+
+**Complexity**: M  
+**Dependencies**: TASK-3.1 (Template UI), TASK-10.2 (for full color picker UX; can use plain hex input initially)
+
+---
+
+### TASK-10.2: Reusable Color Picker Component
+**Goal**: Build a shared, reusable color picker component with two tiers: a quick-access preset palette and an advanced "More Colors" modal featuring a circular color wheel with four color input modes (HEX, RGB, HSB, CMYK) so the user has full control over exact color selection.  
+**Scope**:
+- Install `@uiw/react-color-wheel` (v2.7.3+), `@uiw/react-color-shade-slider`, and `@uiw/color-convert` as dependencies
+- Build a `ColorPicker` component with a preset palette of ~12-16 curated color swatches displayed as clickable circles/squares
+- Add a "More Colors" button below the preset palette
+- Build an `AdvancedColorPickerModal` that opens when "More Colors" is clicked, containing:
+  - A circular color wheel (`@uiw/react-color-wheel`) for visual hue + saturation selection via drag
+  - An inner saturation/brightness area within or beside the wheel for shade selection
+  - A live color preview swatch (current color vs. previous color side by side)
+  - A **HEX input row**: `#` label + 6-character hex text field (e.g., `A4D019`)
+  - An **RGB input row**: three labeled numeric fields — R (0-255), G (0-255), B (0-255)
+  - An **HSB input row**: three labeled fields — H (0-360 degrees + `%`-style display), S (0-100%), B (0-100%)
+  - A **CMYK input row**: four labeled fields — C (0-100%), M (0-100%), Y (0-100%), K (0-100%)
+  - "Apply" and "Cancel" buttons
+- All inputs (wheel, HEX, RGB, HSB, CMYK) stay **fully in sync**: changing any one input updates all others in real time
+- Color conversion utilities needed: HEX <-> RGB <-> HSB (HSV) <-> CMYK. `@uiw/color-convert` provides HEX/RGB/HSV conversions; CMYK conversion will be implemented as a small utility (RGB to CMYK and CMYK to RGB are straightforward formulas)
+- The component is framework-agnostic in its API: accepts `value: string` (hex) and `onChange: (hex: string) => void`
+- Accessible: keyboard navigation on swatches, proper ARIA labels on inputs, tab order through all input fields
+
+**Reference UI Layout** (based on attached reference image):
+```
++----------------------------------+
+|  Color Picker               [X]  |
+|                                  |
+|     [ Circular Color Wheel ]     |
+|     [  Inner shade circle  ]     |
+|                                  |
+|  [prev] [current]   # | A4D019  |
+|                                  |
+|  O H  73%   O R  164   O C  41% |
+|  O S  87%   O G  208   O M   0% |
+|  O B  81%   O B   25   O Y 100% |
+|              	          O K   0% |
+|                                  |
+|       [ Apply ]  [ Cancel ]      |
++----------------------------------+
+```
+- The HSB, RGB, and CMYK columns are displayed side by side beneath the wheel
+- HEX input sits on its own row between the preview swatch and the numeric columns
+
+**Preset Palette Colors** (suggested defaults):
+```
+#EF4444 (Red)      #F97316 (Orange)   #EAB308 (Yellow)   #22C55E (Green)
+#14B8A6 (Teal)     #3B82F6 (Blue)     #6366F1 (Indigo)   #8B5CF6 (Violet)
+#EC4899 (Pink)     #F43F5E (Rose)     #6B7280 (Gray)     #1E293B (Slate)
+#A855F7 (Purple)   #0EA5E9 (Sky)      #10B981 (Emerald)  #78716C (Stone)
+```
+
+**Acceptance Criteria**:
+- [ ] Preset palette renders ~12-16 color swatches; clicking one selects it
+- [ ] "More Colors" button opens the advanced color picker modal
+- [ ] Circular color wheel allows hue + saturation selection via drag
+- [ ] Inner shade/brightness area allows value/lightness adjustment
+- [ ] HEX input field accepts and validates hex values (3 or 6 digits, with or without `#`)
+- [ ] RGB input fields accept numeric values: R (0-255), G (0-255), B (0-255)
+- [ ] HSB input fields accept: H (0-360), S (0-100%), B (0-100%)
+- [ ] CMYK input fields accept: C (0-100%), M (0-100%), Y (0-100%), K (0-100%)
+- [ ] All four input modes stay in sync: changing any one (wheel, HEX, RGB, HSB, or CMYK) updates all others in real time
+- [ ] Live color preview swatch shows the currently selected color alongside the previous color
+- [ ] "Apply" confirms the color; "Cancel" discards changes and reverts to the previous color
+- [ ] Component is reusable: used by TASK-10.1 (Category Types) and can be used elsewhere later
+
+**Color Conversion Notes**:
+- HEX <-> RGB: provided by `@uiw/color-convert` (`hexToRgba`, `rgbaToHex`)
+- RGB <-> HSV/HSB: provided by `@uiw/color-convert` (`rgbaToHsva`, `hsvaToRgba`)
+- HEX <-> HSV: provided by `@uiw/color-convert` (`hexToHsva`, `hsvaToHex`)
+- RGB -> CMYK: `C = (1 - R/255 - K) / (1 - K)`, `M = (1 - G/255 - K) / (1 - K)`, `Y = (1 - B/255 - K) / (1 - K)`, `K = 1 - max(R/255, G/255, B/255)`. Special case: if R=G=B=0 then C=M=Y=0, K=1
+- CMYK -> RGB: `R = 255 * (1 - C) * (1 - K)`, `G = 255 * (1 - M) * (1 - K)`, `B = 255 * (1 - Y) * (1 - K)`
+- These CMYK formulas are simple enough to implement as a utility — no additional library needed
+
+**Library**:
+- `@uiw/react-color-wheel` — circular color wheel component (MIT, 50K+ weekly downloads, TypeScript)
+- `@uiw/react-color-shade-slider` — shade/brightness slider
+- `@uiw/color-convert` — color format conversion utilities (HEX, RGB, HSV/HSB)
+- No extra library needed for CMYK — conversion is a small custom utility
+
+**Likely Areas/Files**:
+- `src/components/common/ColorPicker/ColorPicker.tsx` (main component with preset palette + "More Colors" button)
+- `src/components/common/ColorPicker/AdvancedColorPickerModal.tsx` (modal with wheel + all input modes)
+- `src/components/common/ColorPicker/ColorSwatch.tsx` (individual color swatch button)
+- `src/components/common/ColorPicker/colorConvert.ts` (CMYK <-> RGB conversion utility)
+- `src/components/common/ColorPicker/index.ts` (barrel export)
+- `package.json` (new dependencies)
+
+**Complexity**: M  
+**Dependencies**: None (standalone component)
+
+---
+
+### TASK-10.3: Category Sorting and Custom Ordering
+**Goal**: Allow users to sort categories within a template using built-in sort options or user-created custom orderings via drag-and-drop. Custom sortings are named, persisted, and shareable across templates with unsaved-changes protection.  
+**Scope**:
+- **Built-in sorts**: Alphabetical A-Z, Alphabetical Z-A, By Category Type, By Allocated Amount (high to low), By Allocated Amount (low to high)
+- **Custom sortings**: User can drag and drop categories into a desired order and save it under a unique name
+- **Naming constraint**: Custom sorting names must be unique (no duplicates allowed); the UI validates this on save
+- **Cross-template behavior**: A custom sorting can be applied to any template. If a template is missing categories from the sorting, the present categories retain their relative order and shift up to fill gaps. Categories not present in the custom sorting appear at the bottom in their default order.
+- **Unsaved changes protection**: When a user applies a named custom sorting and rearranges categories via drag-and-drop, changes are NOT auto-saved. If the user attempts to navigate away (switch tabs, select a different template, or close the page), they are prompted with three options:
+  1. **Save** — overwrite the current custom sorting with the new order
+  2. **Cancel** — discard changes and revert to the saved order
+  3. **Save as Copy** — save the new order as a new custom sorting (e.g., "My Sorting - copy") while keeping the original intact
+
+**Database Schema** (new migration):
+```sql
+CREATE TABLE IF NOT EXISTS custom_sortings (
+    sorting_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS custom_sorting_entries (
+    entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sorting_id INTEGER NOT NULL,
+    global_category_id INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    FOREIGN KEY (sorting_id) REFERENCES custom_sortings(sorting_id) ON DELETE CASCADE,
+    FOREIGN KEY (global_category_id) REFERENCES global_categories(global_category_id) ON DELETE CASCADE,
+    UNIQUE(sorting_id, global_category_id)
+);
+```
+- Add `active_sorting_id INTEGER REFERENCES custom_sortings(sorting_id) ON DELETE SET NULL` to `budget_templates` or a new join table to track which sorting is applied per template
+- Add `active_sorting_type TEXT NOT NULL DEFAULT 'default'` to `budget_templates` to distinguish between built-in and custom sort modes
+
+**Acceptance Criteria**:
+- [ ] Sort controls are visible above the category list in the template detail view
+- [ ] User can select a built-in sort (alphabetical, by type, by amount) and categories reorder immediately
+- [ ] User can switch to a custom sorting from a dropdown of saved custom sortings
+- [ ] User can drag and drop categories to reorder them when in custom sort mode
+- [ ] User can save a new custom sorting with a unique name
+- [ ] Duplicate sorting names are rejected with a validation error
+- [ ] Applying a custom sorting to a different template correctly handles missing/extra categories
+- [ ] Navigating away with unsaved changes triggers a prompt with Save / Cancel / Save as Copy options
+- [ ] Saving a custom sorting persists the order to the database
+- [ ] Deleting a custom sorting removes it from all templates that reference it (templates fall back to default order)
+
+**Likely Areas/Files**:
+- `src-tauri/src/migrations.rs` (new migration for `custom_sortings` + `custom_sorting_entries` tables)
+- `src-tauri/src/encrypted_db.rs` (CRUD commands for custom sortings, apply/load sorting logic)
+- `src/types/sorting.types.ts` (new TypeScript types)
+- `src/services/sortingService.ts` (new service layer)
+- `src/store/slices/sortingSlice.ts` (new Redux slice for sorting state + unsaved changes tracking)
+- `src/pages/TemplatesPage.tsx` (sort controls, drag-and-drop integration, unsaved changes prompt)
+- `src/components/common/UnsavedChangesPrompt.tsx` (reusable prompt modal for navigation blocking)
+- `package.json` (add `@dnd-kit/core` + `@dnd-kit/sortable` for drag-and-drop)
+
+**Complexity**: L  
+**Dependencies**: TASK-3.1 (Template UI), TASK-10.1 (for "sort by category type" built-in option)
+
+---
+
 ## Next Backlog (Post-MVP)
 
 ### CSV Import

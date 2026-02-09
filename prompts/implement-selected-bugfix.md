@@ -2,7 +2,19 @@ ROLE
 You are the implementation agent for my local-first budgeting app repo.
 
 AUTHORIZATION
-I explicitly allow you to implement the “SELECTED BUG” from the most recent `plan-bugs-next` output in this chat/context.
+I explicitly allow you to implement the "SELECTED BUG" from the most recent `plan-bugs-next` output in this chat/context.
+
+GITHUB REPOSITORY
+- Owner: `Plexyer`
+- Repo: `ExpensesManager`
+- Bug issues are labeled `bug` on GitHub.
+- You MUST use the GitHub MCP tools to read issues and document your work.
+
+TRACKING POLICY (IMPORTANT)
+- All bug tracking is done EXCLUSIVELY via GitHub issues.
+- Do NOT update `.cursor/Bugs.md` or `.cursor/BACKLOG.md`. These local files are deprecated for tracking purposes.
+- After fixing a bug, document your work ONLY by adding a comment to the GitHub issue and closing it.
+- The single source of truth for bugs is the GitHub issue tracker.
 
 STRICT DEPENDENCY RULE (IMPORTANT)
 - You MUST NOT add any new dependencies (npm, cargo, system libs, etc.) without asking me first.
@@ -20,49 +32,35 @@ MANDATORY: USE THE `.cursor/` SYSTEM
 Before making changes, you MUST consult and follow these (if they exist):
 1) `.cursor/RULES.md` (highest priority)
 2) `.cursor/MVP_PLAN.md`
-3) `.cursor/bugs.md` (primary source for this prompt)
-4) `.cursor/BACKLOG.md` (context only)
-5) Relevant `.cursor/commands/` runbooks
-6) Relevant `.cursor/skills/` playbooks
-7) `.cursor/agents.md` + relevant `.cursor/agents/*` subagents
+3) Relevant `.cursor/commands/` runbooks
+4) Relevant `.cursor/skills/` playbooks
+5) `.cursor/agents.md` + relevant `.cursor/agents/*` subagents
 
-BUG TRACKER CONVENTION (MUST FOLLOW)
-- Bug header format: `## BUG-XYZ: <Title>`
-- Status line: `**Status:** OPEN | IN PROGRESS | RESOLVED`
-- Summary Table at bottom includes Status + Priority.
-
-BUG IMPLEMENTATION POLICY (REQUIRED)
+BUG IMPLEMENTATION POLICY (REQUIRED — USES GITHUB)
 Before implementing:
-1) Open `.cursor/bugs.md`.
-2) Locate the selected bug by exact header match:
-   - ID must match exactly (e.g., BUG-004)
-   - Title must match exactly (text after colon in the header)
-3) Confirm `**Status:**` is not `RESOLVED`.
-4) If you cannot find an exact match, STOP and ask.
+1) Use the GitHub MCP to read the selected bug issue by its number (e.g., `#11`).
+2) Confirm the issue is still open (not already closed/resolved).
+3) If the issue is closed or cannot be found, STOP and ask.
 
 During implementation:
-- Optionally set `**Status:** IN PROGRESS` for that bug (minimal edit: only that one line).
+- Optionally add a comment to the GitHub issue noting work has started.
 
-After implementation:
-- Only if ALL acceptance criteria are met, set `**Status:** RESOLVED` for that bug.
-- Also update the Summary Table row for that bug:
-  - Set Status to `RESOLVED`
-  - Do NOT change Priority unless explicitly instructed.
-- Under the bug section, append a short subsection (minimal additional text):
-  - `### Fix Notes` (add if missing)
-    - Completed: YYYY-MM-DD
-    - Summary: 1–3 bullets
-    - Root cause: 1 bullet (if confidently known)
-    - Files changed: list
-    - Verification: 1–2 bullets
-- Do NOT reformat the entire file; minimal edits only.
+After implementation (ONLY if ALL acceptance criteria are met):
+1) Add a detailed comment to the GitHub issue containing:
+   - **Fix Notes**
+     - Completed: YYYY-MM-DD
+     - Summary: 1–3 bullets describing the fix
+     - Root cause: 1 bullet (if confidently known)
+     - Files changed: list of files modified
+     - Verification: 1–2 bullets on how to verify
+2) Close the GitHub issue as completed using the GitHub MCP.
 
 If blocked / incomplete:
-- Do NOT mark RESOLVED.
-- Keep `OPEN` or set `IN PROGRESS`, and add a short note under the bug:
-  - `### Blockers`
-  - What’s done
-  - What’s missing (NEEDED_FROM_USER)
+- Do NOT close the issue.
+- Add a comment to the GitHub issue with:
+  - **Status: Blocked / In Progress**
+  - What's done (1–2 bullets)
+  - What's missing (NEEDED_FROM_USER)
 - Then STOP and ask.
 
 SUBAGENT POLICY
@@ -71,12 +69,12 @@ SUBAGENT POLICY
 
 WORKFLOW (follow in order)
 1) RESTATE THE BUG
-- Bug ID + Title (verbatim)
-- Priority + Status (from bugs.md)
+- GitHub Issue number + Title (verbatim)
+- Priority + Status (from the issue)
 - Acceptance criteria (from the plan)
 
-2) PRE-CHECK IN BUGS FILE
-- Confirm the bug exists and is not RESOLVED.
+2) PRE-CHECK ON GITHUB
+- Use the GitHub MCP to read the issue and confirm it is still open.
 
 3) CONTEXT CHECK (repo + cursor docs)
 - Identify exact integration points (UI components/state, Tauri commands, Rust modules, DB layer, window close hooks).
@@ -96,14 +94,14 @@ WORKFLOW (follow in order)
 7) SELF-REVIEW
 - Scope check, security check (no secrets/logging sensitive data), MVP constraints, no extra features.
 
-8) UPDATE `.cursor/bugs.md` (REQUIRED)
-- Set status appropriately (IN PROGRESS optional, RESOLVED only if complete).
-- Update Summary Table row status.
-- Add “Fix Notes” or “Blockers” as required.
+8) UPDATE GITHUB ISSUE (REQUIRED)
+- Add a comment with "Fix Notes" to the GitHub issue.
+- Close the issue as completed (ONLY if all acceptance criteria are met).
+- If blocked, add a comment explaining and keep the issue open.
 
 REQUIRED OUTPUT FORMAT
 A) BUG RESTATEMENT
-- Bug ID:
+- GitHub Issue: #XX
 - Title:
 - Priority:
 - Status (before):
@@ -124,13 +122,13 @@ E) HOW TO VERIFY (manual)
 - Step-by-step checklist (include original repro + edge cases).
 
 F) TESTS
-- Tests added/updated (or “none” + why)
+- Tests added/updated (or "none" + why)
 - Future test suggestion (1–3 bullets) if none
 
-G) BUGS FILE UPDATES
-- Bug status after: OPEN / IN PROGRESS / RESOLVED
-- Summary Table updated: yes/no
-- Fix Notes / Blockers added: yes/no (which)
+G) GITHUB ISSUE UPDATES
+- Comment added to issue: yes/no
+- Issue closed as completed: yes/no
+- If not closed, reason:
 
 H) NOTES / FOLLOW-UPS
 - Follow-up bugs/backlog items (titles only)
@@ -138,4 +136,4 @@ H) NOTES / FOLLOW-UPS
 - NEEDED_FROM_USER (only if you had to stop)
 
 STOP
-Stop after implementation and bugs.md update. Do not automatically start the next bug.
+Stop after implementation and GitHub issue update. Do not automatically start the next bug.

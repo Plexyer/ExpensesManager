@@ -513,7 +513,6 @@ const TemplatesPage = () => {
                           onClick={() => setShowAddCategory(true)}
                           className="px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
                           type="button"
-                          disabled={availableCategories.length === 0 && categories.length > 0}
                         >
                           Add Category
                         </button>

@@ -17,7 +17,7 @@ use rusqlite::Connection;
 use thiserror::Error;
 
 /// Current schema version. Increment when adding new migrations.
-pub const CURRENT_SCHEMA_VERSION: u32 = 3;
+pub const CURRENT_SCHEMA_VERSION: u32 = 4;
 
 /// Errors that can occur during migrations.
 #[derive(Debug, Error)]
@@ -102,6 +102,7 @@ fn apply_migration(conn: &Connection, version: u32) -> Result<(), MigrationError
         1 => apply_migration_v1(conn),
         2 => apply_migration_v2(conn),
         3 => apply_migration_v3(conn),
+        4 => apply_migration_v4(conn),
         _ => Err(MigrationError::UnknownVersion(version)),
     }
 }
@@ -355,6 +356,42 @@ CREATE INDEX IF NOT EXISTS idx_line_items_bic_kind_deleted
 CREATE INDEX IF NOT EXISTS idx_line_items_bic_occurred_active 
     ON category_line_items(budget_instance_category_id, occurred_at) 
     WHERE deleted_at IS NULL;
+"#;
+
+/// Migration v4: Create ui_settings table.
+///
+/// A simple key-value store for persisting user interface preferences
+/// (e.g., column widths) across app restarts. Values are stored as
+/// JSON strings to support complex data structures.
+fn apply_migration_v4(conn: &Connection) -> Result<(), MigrationError> {
+    let tx = conn.unchecked_transaction()?;
+
+    tx.execute_batch(MIGRATION_V4_SQL)?;
+
+    tx.execute(
+        "INSERT OR REPLACE INTO _meta (key, value) VALUES ('schema_version', '4')",
+        [],
+    )?;
+
+    tx.commit()?;
+
+    Ok(())
+}
+
+/// SQL for migration v4: UI settings key-value table.
+const MIGRATION_V4_SQL: &str = r#"
+-- ============================================================================
+-- Migration v4: UI Settings Table
+-- ============================================================================
+-- A simple key-value store for persisting user interface preferences
+-- (e.g., grid column widths) across app restarts.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS ui_settings (
+    key   TEXT PRIMARY KEY NOT NULL,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 "#;
 
 #[cfg(test)]

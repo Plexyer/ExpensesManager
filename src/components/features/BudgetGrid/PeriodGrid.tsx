@@ -4,15 +4,18 @@ import {
   fetchPeriods,
   fetchGridData,
   setCurrentBudgetInstanceId,
+  setShowPeriodSelector,
+  setPeriodViewMode,
+  loadColumnWidths,
+  loadSnapMode,
 } from "../../../store/slices/budgetSlice";
+import type { PeriodViewMode } from "../../../store/slices/budgetSlice";
 import PeriodList from "./PeriodList";
 import PeriodDetailToolbar from "./PeriodDetailToolbar";
 import PeriodGridTable from "./PeriodGridTable";
 import PeriodGridSkeleton from "./PeriodGridSkeleton";
 import PeriodGridEmpty from "./PeriodGridEmpty";
 import CreatePeriodModal from "./CreatePeriodModal";
-
-type PeriodViewMode = "grid" | "list";
 
 const PeriodGrid = () => {
   const dispatch = useAppDispatch();
@@ -23,18 +26,18 @@ const PeriodGrid = () => {
     gridData,
     gridDataStatus,
     gridDataError,
+    showPeriodSelector,
+    periodViewMode,
   } = useAppSelector((state) => state.budget);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  /** Whether the period selection view is shown (true) vs the detail/table view (false). */
-  const [showPeriodSelector, setShowPeriodSelector] = useState(false);
-  /** View mode for the period selection list (grid cards vs list rows). */
-  const [periodViewMode, setPeriodViewMode] = useState<PeriodViewMode>("grid");
 
-  // Load periods on mount
+  // Load periods, column widths, and snap mode on mount
   useEffect(() => {
     if (periodsStatus === "idle") {
       dispatch(fetchPeriods());
+      dispatch(loadColumnWidths());
+      dispatch(loadSnapMode());
     }
   }, [dispatch, periodsStatus]);
 
@@ -47,8 +50,15 @@ const PeriodGrid = () => {
 
   /** Handle period card/row selection — navigate to the table view. */
   const handleSelectPeriod = (budgetInstanceId: number) => {
+    const isSamePeriod = budgetInstanceId === currentBudgetInstanceId;
     dispatch(setCurrentBudgetInstanceId(budgetInstanceId));
-    setShowPeriodSelector(false);
+    // When re-selecting the same period, the useEffect watching
+    // currentBudgetInstanceId won't fire (value unchanged), so we
+    // explicitly fetch grid data to avoid a blank detail view.
+    if (isSamePeriod) {
+      dispatch(fetchGridData(budgetInstanceId));
+    }
+    dispatch(setShowPeriodSelector(false));
   };
 
   /** Handle opening the create period modal. */
@@ -60,13 +70,13 @@ const PeriodGrid = () => {
   const handleCloseCreateModal = (created?: boolean) => {
     setIsCreateModalOpen(false);
     if (created) {
-      setShowPeriodSelector(false);
+      dispatch(setShowPeriodSelector(false));
     }
   };
 
   /** Handle navigating back to the period selection view. */
   const handleBackToSelection = () => {
-    setShowPeriodSelector(true);
+    dispatch(setShowPeriodSelector(true));
   };
 
   /** Handle retry on grid data error. */
@@ -110,7 +120,7 @@ const PeriodGrid = () => {
           periods={periods}
           currentBudgetInstanceId={currentBudgetInstanceId}
           viewMode={periodViewMode}
-          onViewModeChange={setPeriodViewMode}
+          onViewModeChange={(mode: PeriodViewMode) => dispatch(setPeriodViewMode(mode))}
           onSelectPeriod={handleSelectPeriod}
           onCreatePeriod={handleOpenCreateModal}
         />

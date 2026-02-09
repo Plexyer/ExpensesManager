@@ -3,6 +3,26 @@ import { getGridData } from "../../services/fileService";
 import type { GetGridDataResult } from "../../services/fileService";
 import { listPeriods, createPeriodFromTemplate } from "../../services/periodService";
 import type { PeriodBudgetInstance, CreatePeriodFromTemplateArgs, CreatePeriodResult } from "../../types/period.types";
+import { getUiSetting, setUiSetting } from "../../services/settingsService";
+import type { ColumnWidths, GridColumnId, OptimalWidths, SnapMode } from "../../components/features/BudgetGrid/types";
+import { getDefaultColumnWidths, MIN_COLUMN_WIDTH, COLUMN_CONFIG } from "../../components/features/BudgetGrid/types";
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/** Key used to persist column widths in the ui_settings table. */
+const COLUMN_WIDTHS_SETTING_KEY = "grid_column_widths";
+
+/** Key used to persist snap mode in the ui_settings table. */
+const SNAP_MODE_SETTING_KEY = "grid_snap_mode";
+
+// ============================================================================
+// Types
+// ============================================================================
+
+/** Display mode for the period selection list (grid cards vs list rows). */
+export type PeriodViewMode = "grid" | "list";
 
 // ============================================================================
 // State
@@ -25,6 +45,16 @@ interface BudgetState {
   gridDataError: string | null;
   /** Whether period creation is in progress */
   isCreatingPeriod: boolean;
+  /** Whether the period selection view is shown (true) vs the detail/table view (false). Persisted in Redux so it survives tab switches. */
+  showPeriodSelector: boolean;
+  /** View mode for the period selection list. Persisted in Redux so it survives tab switches. */
+  periodViewMode: PeriodViewMode;
+  /** Current column widths for the budget grid. Persisted in Redux (survives tab switches) and in the database (survives app restarts). */
+  columnWidths: ColumnWidths;
+  /** Optimal (content-fit) widths for each resizable column, computed from data. */
+  optimalWidths: OptimalWidths;
+  /** Snap mode for column resize. Persisted in ui_settings. */
+  snapMode: SnapMode;
 }
 
 const initialState: BudgetState = {
@@ -36,6 +66,11 @@ const initialState: BudgetState = {
   gridDataStatus: "idle",
   gridDataError: null,
   isCreatingPeriod: false,
+  showPeriodSelector: false,
+  periodViewMode: "grid",
+  columnWidths: getDefaultColumnWidths(),
+  optimalWidths: {},
+  snapMode: "magnetic",
 };
 
 // ============================================================================
@@ -84,6 +119,79 @@ export const createPeriod = createAsyncThunk(
   }
 );
 
+/** IDs of resizable (non-frozen) columns — only these are persisted to the DB. */
+const RESIZABLE_COLUMN_IDS = COLUMN_CONFIG.filter((c) => !c.frozen).map((c) => c.id);
+
+/** Loads column widths from the database. Falls back to defaults if not found. Only loads resizable columns. */
+export const loadColumnWidths = createAsyncThunk(
+  "budget/loadColumnWidths",
+  async (_, { rejectWithValue }) => {
+    try {
+      const json = await getUiSetting(COLUMN_WIDTHS_SETTING_KEY);
+      if (!json) return getDefaultColumnWidths();
+
+      const parsed = JSON.parse(json) as Partial<ColumnWidths>;
+      const defaults = getDefaultColumnWidths();
+
+      // Merge saved widths with defaults — only apply persisted widths to resizable columns
+      const merged: ColumnWidths = { ...defaults };
+      for (const key of RESIZABLE_COLUMN_IDS) {
+        if (typeof parsed[key] === "number" && parsed[key] >= MIN_COLUMN_WIDTH) {
+          merged[key] = parsed[key];
+        }
+      }
+
+      return merged;
+    } catch {
+      return rejectWithValue("Failed to load column widths");
+    }
+  }
+);
+
+/** Persists only resizable column widths to the database. */
+export const saveColumnWidths = createAsyncThunk(
+  "budget/saveColumnWidths",
+  async (widths: ColumnWidths, { rejectWithValue }) => {
+    try {
+      // Only persist resizable column widths (frozen columns are auto-computed)
+      const resizableWidths: Partial<ColumnWidths> = {};
+      for (const id of RESIZABLE_COLUMN_IDS) {
+        resizableWidths[id] = widths[id];
+      }
+      await setUiSetting(COLUMN_WIDTHS_SETTING_KEY, JSON.stringify(resizableWidths));
+    } catch {
+      return rejectWithValue("Failed to save column widths");
+    }
+  }
+);
+
+/** Loads snap mode setting from the database. Defaults to "magnetic". */
+export const loadSnapMode = createAsyncThunk(
+  "budget/loadSnapMode",
+  async (_, { rejectWithValue }) => {
+    try {
+      const value = await getUiSetting(SNAP_MODE_SETTING_KEY);
+      if (value === "magnetic" || value === "detent") return value;
+      return "magnetic" as SnapMode;
+    } catch {
+      return rejectWithValue("Failed to load snap mode");
+    }
+  }
+);
+
+/** Persists the snap mode setting to the database. */
+export const saveSnapMode = createAsyncThunk(
+  "budget/saveSnapMode",
+  async (mode: SnapMode, { rejectWithValue }) => {
+    try {
+      await setUiSetting(SNAP_MODE_SETTING_KEY, mode);
+      return mode;
+    } catch {
+      return rejectWithValue("Failed to save snap mode");
+    }
+  }
+);
+
 // ============================================================================
 // Slice
 // ============================================================================
@@ -105,6 +213,39 @@ const budgetSlice = createSlice({
     /** Clears periods error (e.g. after dismissing an error message). */
     clearPeriodsError: (state) => {
       state.periodsError = null;
+    },
+    /** Sets whether the period selector view is shown. */
+    setShowPeriodSelector: (state, action: PayloadAction<boolean>) => {
+      state.showPeriodSelector = action.payload;
+    },
+    /** Sets the period list display mode (grid cards vs list rows). */
+    setPeriodViewMode: (state, action: PayloadAction<PeriodViewMode>) => {
+      state.periodViewMode = action.payload;
+    },
+    /** Sets the width of a single column (used during drag resize). */
+    setColumnWidth: (
+      state,
+      action: PayloadAction<{ columnId: GridColumnId; width: number }>
+    ) => {
+      const { columnId, width } = action.payload;
+      state.columnWidths[columnId] = Math.max(width, MIN_COLUMN_WIDTH);
+    },
+    /** Batch-set multiple column widths at once (used during paired resize). */
+    setColumnWidths: (
+      state,
+      action: PayloadAction<Partial<Record<GridColumnId, number>>>
+    ) => {
+      for (const [id, width] of Object.entries(action.payload) as [GridColumnId, number][]) {
+        state.columnWidths[id] = Math.max(width, MIN_COLUMN_WIDTH);
+      }
+    },
+    /** Sets the computed optimal widths for columns (from measureText). */
+    setOptimalWidths: (state, action: PayloadAction<OptimalWidths>) => {
+      state.optimalWidths = action.payload;
+    },
+    /** Sets the snap mode (magnetic or detent). */
+    setSnapMode: (state, action: PayloadAction<SnapMode>) => {
+      state.snapMode = action.payload;
     },
   },
   extraReducers: (builder) => {
@@ -159,8 +300,38 @@ const budgetSlice = createSlice({
         state.isCreatingPeriod = false;
         state.periodsError = action.payload as string;
       });
+
+    // loadColumnWidths
+    builder
+      .addCase(loadColumnWidths.fulfilled, (state, action: PayloadAction<ColumnWidths>) => {
+        state.columnWidths = action.payload;
+      });
+
+    // loadSnapMode
+    builder
+      .addCase(loadSnapMode.fulfilled, (state, action: PayloadAction<SnapMode>) => {
+        state.snapMode = action.payload;
+      });
+
+    // saveSnapMode
+    builder
+      .addCase(saveSnapMode.fulfilled, (state, action: PayloadAction<SnapMode>) => {
+        state.snapMode = action.payload;
+      });
+
+    // saveColumnWidths — fire-and-forget, no state changes needed
   },
 });
 
-export const { setCurrentBudgetInstanceId, clearBudgetState, clearPeriodsError } = budgetSlice.actions;
+export const {
+  setCurrentBudgetInstanceId,
+  clearBudgetState,
+  clearPeriodsError,
+  setShowPeriodSelector,
+  setPeriodViewMode,
+  setColumnWidth,
+  setColumnWidths,
+  setOptimalWidths,
+  setSnapMode,
+} = budgetSlice.actions;
 export default budgetSlice.reducer;
