@@ -7,6 +7,8 @@ interface PeriodGridCellProps {
   colIndex: number;
   row: GridCategoryRow;
   columnWidths: ColumnWidths;
+  isSelected: boolean;
+  onSelect: () => void;
 }
 
 /** Format a number as currency using the row's default_currency. */
@@ -63,6 +65,8 @@ const PeriodGridCell = ({
   colIndex,
   row,
   columnWidths,
+  isSelected,
+  onSelect,
 }: PeriodGridCellProps) => {
   const value = getCellDisplayValue(row, columnConfig.id);
   const isRemaining = columnConfig.id === "remaining";
@@ -85,13 +89,24 @@ const PeriodGridCell = ({
   const isLastColumn = colIndex === COLUMN_CONFIG.length - 1;
   const separatorClass = isLastColumn ? "" : "border-r border-slate-600/40";
 
+  const selectedClasses = isSelected
+    ? "ring-2 ring-inset ring-blue-500 bg-blue-500/10"
+    : "";
+
+  const handleClick = () => {
+    onSelect();
+  };
+
   return (
     <td
       role="gridcell"
-      className={`px-4 py-2.5 text-sm break-words border-b border-slate-700/50 ${separatorClass} ${
+      tabIndex={isSelected ? 0 : -1}
+      aria-selected={isSelected}
+      className={`px-4 py-2.5 text-sm break-words border-b border-slate-700/50 cursor-pointer select-none outline-none ${separatorClass} ${
         isRightAligned ? "text-right" : "text-left"
-      } ${colorClasses} ${stickyClasses}`}
+      } ${colorClasses} ${stickyClasses} ${selectedClasses}`}
       title={value}
+      onClick={handleClick}
       style={{
         width,
         minWidth: width,

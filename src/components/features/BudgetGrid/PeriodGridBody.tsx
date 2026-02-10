@@ -1,11 +1,13 @@
 import PeriodGridRow from "./PeriodGridRow";
 import { COLUMN_CONFIG, LAST_FROZEN_COL_INDEX, computeStickyLeft } from "./types";
-import type { ColumnWidths } from "./types";
+import type { ColumnWidths, SelectedCell, GridColumnId } from "./types";
 import type { GridCategoryRow } from "../../../services/fileService";
 
 interface PeriodGridBodyProps {
   rows: GridCategoryRow[];
   columnWidths: ColumnWidths;
+  selectedCell: SelectedCell | null;
+  onCellSelect: (rowIndex: number, columnId: GridColumnId) => void;
 }
 
 /** Format a number as currency. */
@@ -25,7 +27,7 @@ const getRemainingColorClasses = (remaining: number): string => {
   return "bg-amber-500/10 text-amber-300";
 };
 
-const PeriodGridBody = ({ rows, columnWidths }: PeriodGridBodyProps) => {
+const PeriodGridBody = ({ rows, columnWidths, selectedCell, onCellSelect }: PeriodGridBodyProps) => {
   // Compute totals for the summary row
   const totals = rows.reduce(
     (acc, row) => ({
@@ -41,11 +43,16 @@ const PeriodGridBody = ({ rows, columnWidths }: PeriodGridBodyProps) => {
 
   return (
     <tbody>
-      {rows.map((row) => (
+      {rows.map((row, rowIndex) => (
         <PeriodGridRow
           key={row.budget_instance_category_id}
           row={row}
+          rowIndex={rowIndex}
           columnWidths={columnWidths}
+          selectedColumnId={
+            selectedCell?.rowIndex === rowIndex ? selectedCell.columnId : null
+          }
+          onCellSelect={onCellSelect}
         />
       ))}
 

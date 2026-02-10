@@ -5,6 +5,8 @@ import {
   setColumnWidths,
   saveColumnWidths,
   setOptimalWidths,
+  setSelectedCell,
+  clearSelectedCell,
 } from "../../../store/slices/budgetSlice";
 import PeriodGridHeader from "./PeriodGridHeader";
 import PeriodGridBody from "./PeriodGridBody";
@@ -13,6 +15,7 @@ import type { GridColumnId, ColumnWidths, OptimalWidths } from "./types";
 import {
   MIN_COLUMN_WIDTH,
   COLUMN_CONFIG,
+  GRID_COLUMNS,
   GRID_FONT,
   CELL_PADDING,
   MEASURE_BUFFER,
@@ -172,6 +175,10 @@ const PeriodGridTable = ({ rows }: PeriodGridTableProps) => {
   const columnWidths = useAppSelector((state) => state.budget.columnWidths);
   const snapMode = useAppSelector((state) => state.budget.snapMode);
   const optimalWidths = useAppSelector((state) => state.budget.optimalWidths);
+  const selectedCell = useAppSelector((state) => state.budget.selectedCell);
+
+  /** Ref to the table wrapper for keyboard event handling. */
+  const tableWrapperRef = useRef<HTMLDivElement>(null);
 
   /** Track whether we've already auto-sized for the current data set. */
   const autoSizedRef = useRef(false);
@@ -236,8 +243,97 @@ const PeriodGridTable = ({ rows }: PeriodGridTableProps) => {
     [dispatch]
   );
 
+  /** Handle clicking a cell to select it (TASK-4.3). */
+  const handleCellSelect = useCallback(
+    (rowIndex: number, columnId: GridColumnId) => {
+      dispatch(setSelectedCell({ rowIndex, columnId }));
+    },
+    [dispatch]
+  );
+
+  /** Handle keyboard navigation on the grid (TASK-4.3). */
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!selectedCell) return;
+
+      const { rowIndex, columnId } = selectedCell;
+      const colIndex = GRID_COLUMNS.indexOf(columnId);
+      const rowCount = rows.length;
+      const colCount = GRID_COLUMNS.length;
+
+      let nextRow = rowIndex;
+      let nextCol = colIndex;
+
+      switch (e.key) {
+        case "ArrowUp":
+          nextRow = Math.max(0, rowIndex - 1);
+          break;
+        case "ArrowDown":
+          nextRow = Math.min(rowCount - 1, rowIndex + 1);
+          break;
+        case "ArrowLeft":
+          nextCol = Math.max(0, colIndex - 1);
+          break;
+        case "ArrowRight":
+          nextCol = Math.min(colCount - 1, colIndex + 1);
+          break;
+        case "Home":
+          nextCol = 0;
+          if (e.ctrlKey) nextRow = 0;
+          break;
+        case "End":
+          nextCol = colCount - 1;
+          if (e.ctrlKey) nextRow = rowCount - 1;
+          break;
+        case "Tab":
+          if (e.shiftKey) {
+            nextCol = colIndex - 1;
+            if (nextCol < 0) {
+              nextCol = colCount - 1;
+              nextRow = rowIndex - 1;
+            }
+          } else {
+            nextCol = colIndex + 1;
+            if (nextCol >= colCount) {
+              nextCol = 0;
+              nextRow = rowIndex + 1;
+            }
+          }
+          // Stop Tab from leaving the grid if we still have cells
+          if (nextRow >= 0 && nextRow < rowCount) {
+            e.preventDefault();
+          } else {
+            return; // let default Tab behavior proceed (leave grid)
+          }
+          break;
+        case "Escape":
+          dispatch(clearSelectedCell());
+          e.preventDefault();
+          return;
+        default:
+          return; // Unhandled key — don't prevent default
+      }
+
+      e.preventDefault();
+
+      // Clamp to valid range
+      nextRow = Math.max(0, Math.min(rowCount - 1, nextRow));
+      nextCol = Math.max(0, Math.min(colCount - 1, nextCol));
+
+      dispatch(setSelectedCell({ rowIndex: nextRow, columnId: GRID_COLUMNS[nextCol] }));
+    },
+    [selectedCell, rows.length, dispatch]
+  );
+
   return (
-    <div className="overflow-auto max-h-[calc(100vh-14rem)] rounded-lg border border-slate-700">
+    <div
+      ref={tableWrapperRef}
+      className="overflow-auto max-h-[calc(100vh-14rem)] rounded-lg border border-slate-700 outline-none"
+      tabIndex={0}
+      role="region"
+      aria-label="Budget grid navigation area"
+      onKeyDown={handleKeyDown}
+    >
       <table
         role="grid"
         aria-label="Budget categories"
@@ -251,7 +347,12 @@ const PeriodGridTable = ({ rows }: PeriodGridTableProps) => {
           onColumnResizeBatch={handleColumnResizeBatch}
           onResizeEnd={handleResizeEnd}
         />
-        <PeriodGridBody rows={rows} columnWidths={columnWidths} />
+        <PeriodGridBody
+          rows={rows}
+          columnWidths={columnWidths}
+          selectedCell={selectedCell}
+          onCellSelect={handleCellSelect}
+        />
       </table>
     </div>
   );

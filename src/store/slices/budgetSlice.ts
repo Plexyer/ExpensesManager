@@ -4,7 +4,7 @@ import type { GetGridDataResult } from "../../services/fileService";
 import { listPeriods, createPeriodFromTemplate } from "../../services/periodService";
 import type { PeriodBudgetInstance, CreatePeriodFromTemplateArgs, CreatePeriodResult } from "../../types/period.types";
 import { getUiSetting, setUiSetting } from "../../services/settingsService";
-import type { ColumnWidths, GridColumnId, OptimalWidths, SnapMode } from "../../components/features/BudgetGrid/types";
+import type { ColumnWidths, GridColumnId, OptimalWidths, SnapMode, SelectedCell } from "../../components/features/BudgetGrid/types";
 import { getDefaultColumnWidths, MIN_COLUMN_WIDTH, COLUMN_CONFIG } from "../../components/features/BudgetGrid/types";
 
 // ============================================================================
@@ -55,6 +55,8 @@ interface BudgetState {
   optimalWidths: OptimalWidths;
   /** Snap mode for column resize. Persisted in ui_settings. */
   snapMode: SnapMode;
+  /** Currently selected cell in the budget grid (TASK-4.3). */
+  selectedCell: SelectedCell | null;
 }
 
 const initialState: BudgetState = {
@@ -71,6 +73,7 @@ const initialState: BudgetState = {
   columnWidths: getDefaultColumnWidths(),
   optimalWidths: {},
   snapMode: "magnetic",
+  selectedCell: null,
 };
 
 // ============================================================================
@@ -207,6 +210,8 @@ const budgetSlice = createSlice({
       state.gridData = null;
       state.gridDataStatus = "idle";
       state.gridDataError = null;
+      // Clear cell selection when switching periods
+      state.selectedCell = null;
     },
     /** Resets all budget state (e.g. on file close). */
     clearBudgetState: () => initialState,
@@ -247,6 +252,14 @@ const budgetSlice = createSlice({
     setSnapMode: (state, action: PayloadAction<SnapMode>) => {
       state.snapMode = action.payload;
     },
+    /** Sets the currently selected cell in the grid (TASK-4.3). */
+    setSelectedCell: (state, action: PayloadAction<SelectedCell | null>) => {
+      state.selectedCell = action.payload;
+    },
+    /** Clears the selected cell (convenience alias). */
+    clearSelectedCell: (state) => {
+      state.selectedCell = null;
+    },
   },
   extraReducers: (builder) => {
     // fetchPeriods
@@ -274,6 +287,8 @@ const budgetSlice = createSlice({
       .addCase(fetchGridData.pending, (state) => {
         state.gridDataStatus = "loading";
         state.gridDataError = null;
+        // Clear cell selection when grid data is reloading
+        state.selectedCell = null;
       })
       .addCase(fetchGridData.fulfilled, (state, action: PayloadAction<GetGridDataResult>) => {
         state.gridDataStatus = "succeeded";
@@ -333,5 +348,7 @@ export const {
   setColumnWidths,
   setOptimalWidths,
   setSnapMode,
+  setSelectedCell,
+  clearSelectedCell,
 } = budgetSlice.actions;
 export default budgetSlice.reducer;
