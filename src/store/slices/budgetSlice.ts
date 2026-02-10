@@ -122,8 +122,8 @@ export const createPeriod = createAsyncThunk(
   }
 );
 
-/** IDs of resizable (non-frozen) columns — only these are persisted to the DB. */
-const RESIZABLE_COLUMN_IDS = COLUMN_CONFIG.filter((c) => !c.frozen).map((c) => c.id);
+/** IDs of resizable columns — only these are persisted to the DB. Non-resizable columns (frozen + fixed-width) are auto-computed. */
+const RESIZABLE_COLUMN_IDS = COLUMN_CONFIG.filter((c) => c.resizable).map((c) => c.id);
 
 /** Loads column widths from the database. Falls back to defaults if not found. Only loads resizable columns. */
 export const loadColumnWidths = createAsyncThunk(

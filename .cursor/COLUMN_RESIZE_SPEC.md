@@ -9,7 +9,7 @@
 
 ## Overview
 
-The budget grid table has five columns. The first two are frozen (pinned left), and the remaining three are resizable. This spec defines the exact visual and interactive behavior for column separators, auto-sizing, paired resize, horizontal scrolling, and snap-to-content-width.
+The budget grid table has five columns. The first two are frozen (pinned left) and the last one ("Remaining") is fixed-width auto-sized. Only the middle two columns ("Received Amount" and "Spent Amount") are resizable. This spec defines the exact visual and interactive behavior for column separators, auto-sizing, paired resize, horizontal scrolling, and snap-to-content-width.
 
 ### Column Layout
 
@@ -19,7 +19,7 @@ The budget grid table has five columns. The first two are frozen (pinned left), 
 | 1 | `received_date`  | Received Date    | Yes    | No        | Auto (widest content) |
 | 2 | `received_amount`| Received Amount  | No     | Yes       | 150px (default)       |
 | 3 | `spent_amount`   | Spent Amount     | No     | Yes       | 150px (default)       |
-| 4 | `remaining`      | Remaining        | No     | Yes       | 150px (default)       |
+| 4 | `remaining`      | Remaining        | No     | No        | Auto (widest content) |
 
 ---
 
@@ -112,11 +112,13 @@ Each resize handle sits on the right edge of a column. The handle controls the b
 
 | Handle Position          | Left Column       | Right Column       | Behavior           |
 |--------------------------|--------------------|--------------------|---------------------|
-| Right edge of col 0      | Category (frozen)  | Received Date (frozen) | **No handle** (both frozen) |
-| Right edge of col 1      | Received Date (frozen) | Received Amount (resizable) | **No handle** (frozen boundary — BUG-010 / #83) |
-| Right edge of col 2      | Received Amount    | Spent Amount       | Paired resize       |
-| Right edge of col 3      | Spent Amount       | Remaining          | Paired resize       |
-| Right edge of col 4      | Remaining          | (none)             | **No handle** (no right neighbor) |
+| Right edge of col 0      | Category (frozen, non-resizable)  | Received Date (frozen, non-resizable) | **No handle** |
+| Right edge of col 1      | Received Date (frozen, non-resizable) | Received Amount (resizable) | **No handle** (BUG-010 / #83) |
+| Right edge of col 2      | Received Amount (resizable)    | Spent Amount (resizable)       | **Paired resize** |
+| Right edge of col 3      | Spent Amount (resizable)       | Remaining (non-resizable)      | **No handle** (BUG-012 / #85) |
+| Right edge of col 4      | Remaining (non-resizable)      | (none)             | **No handle** (no right neighbor) |
+
+**Result:** Only **one** resize handle remains — between "Received Amount" and "Spent Amount".
 
 ### Implementation Approach
 
@@ -129,7 +131,7 @@ onMouseDown on handle at col i:
   startX = e.clientX
   startLeftWidth = columnWidths[leftColId]
   startRightWidth = rightColId ? columnWidths[rightColId] : 0
-  isPaired = !COLUMN_CONFIG[i].frozen && rightColId && !COLUMN_CONFIG[i+1].frozen
+  isPaired = COLUMN_CONFIG[i].resizable && rightColId && COLUMN_CONFIG[i+1].resizable
 
 onMouseMove:
   delta = e.clientX - startX

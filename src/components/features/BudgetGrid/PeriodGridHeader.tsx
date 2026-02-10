@@ -57,12 +57,14 @@ const PeriodGridHeader = ({
   /**
    * Determines the resize behavior for a handle at a given column index.
    *
-   * Handle positions (from COLUMN_RESIZE_SPEC):
-   * - Right edge of col 0 (Category, frozen) → NO HANDLE (both cols frozen)
-   * - Right edge of col 1 (Received Date, frozen) → NO HANDLE (frozen boundary)
-   * - Right edge of col 2 (Received Amount) → Paired resize (Received Amount + Spent Amount)
-   * - Right edge of col 3 (Spent Amount) → Paired resize (Spent Amount + Remaining)
+   * Handle positions (from COLUMN_RESIZE_SPEC, after BUG-010 + BUG-012):
+   * - Right edge of col 0 (Category, non-resizable) → NO HANDLE
+   * - Right edge of col 1 (Received Date, non-resizable) → NO HANDLE
+   * - Right edge of col 2 (Received Amount, resizable) → Paired resize (Received Amount + Spent Amount)
+   * - Right edge of col 3 (Spent Amount, resizable → Remaining non-resizable) → NO HANDLE
    * - Right edge of col 4 (Remaining, last) → NO HANDLE (no right neighbor)
+   *
+   * Result: Only ONE resize handle exists — between Received Amount and Spent Amount.
    */
   const getResizeBehavior = (
     colIndex: number
@@ -77,13 +79,8 @@ const PeriodGridHeader = ({
     // No handle if this is the last column (no right neighbor)
     if (!nextCol) return { type: "none" };
 
-    // No handle if both this column and next are frozen
-    if (col.frozen && nextCol.frozen) return { type: "none" };
-
-    // Frozen-to-resizable boundary: no handle (frozen columns are non-resizable)
-    if (col.frozen && !nextCol.frozen) {
-      return { type: "none" };
-    }
+    // No handle if either column is non-resizable (frozen, fixed-width, etc.)
+    if (!col.resizable || !nextCol.resizable) return { type: "none" };
 
     // Both resizable: paired resize
     return { type: "paired", leftColId: col.id, rightColId: nextCol.id };

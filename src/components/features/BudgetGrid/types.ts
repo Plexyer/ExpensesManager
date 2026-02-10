@@ -37,6 +37,8 @@ export interface GridColumnConfig {
   align: "left" | "right";
   /** Whether this column is frozen/sticky during horizontal scroll */
   frozen: boolean;
+  /** Whether the column has resize handles and user-adjustable width */
+  resizable: boolean;
   /** Default width in pixels */
   defaultWidth: number;
 }
@@ -46,11 +48,11 @@ export const MIN_COLUMN_WIDTH = 60;
 
 /** Column configuration for rendering */
 export const COLUMN_CONFIG: readonly GridColumnConfig[] = [
-  { id: "category", label: "Category", openable: false, align: "left", frozen: true, defaultWidth: 200 },
-  { id: "received_date", label: "Received Date", openable: false, align: "left", frozen: true, defaultWidth: 160 },
-  { id: "received_amount", label: "Received Amount", openable: true, align: "right", frozen: false, defaultWidth: 150 },
-  { id: "spent_amount", label: "Spent Amount", openable: true, align: "right", frozen: false, defaultWidth: 150 },
-  { id: "remaining", label: "Remaining", openable: false, align: "right", frozen: false, defaultWidth: 150 },
+  { id: "category", label: "Category", openable: false, align: "left", frozen: true, resizable: false, defaultWidth: 200 },
+  { id: "received_date", label: "Received Date", openable: false, align: "left", frozen: true, resizable: false, defaultWidth: 160 },
+  { id: "received_amount", label: "Received Amount", openable: true, align: "right", frozen: false, resizable: true, defaultWidth: 150 },
+  { id: "spent_amount", label: "Spent Amount", openable: true, align: "right", frozen: false, resizable: true, defaultWidth: 150 },
+  { id: "remaining", label: "Remaining", openable: false, align: "right", frozen: false, resizable: false, defaultWidth: 150 },
 ] as const;
 
 /** Index of the last frozen column (used to apply right-side shadow separator) */

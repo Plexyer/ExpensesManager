@@ -185,7 +185,8 @@ const PeriodGridTable = ({ rows }: PeriodGridTableProps) => {
 
   /**
    * On data load: compute optimal widths for all columns.
-   * For frozen columns, auto-size them to the optimal width.
+   * For non-resizable columns (frozen + fixed-width like "Remaining"),
+   * auto-size them to the optimal content width.
    * For resizable columns, store the optimal widths for snap logic.
    */
   useEffect(() => {
@@ -196,23 +197,23 @@ const PeriodGridTable = ({ rows }: PeriodGridTableProps) => {
 
     const allOptimal = computeAllOptimalWidths(rows);
 
-    // Store optimal widths for snap-to-content during resize
+    // Store optimal widths for snap-to-content during resize (resizable columns only)
     const resizableOptimal: OptimalWidths = {};
     for (const col of COLUMN_CONFIG) {
-      if (!col.frozen) {
+      if (col.resizable) {
         resizableOptimal[col.id] = allOptimal[col.id];
       }
     }
     dispatch(setOptimalWidths(resizableOptimal));
 
-    // Auto-size frozen columns to their content width
-    const frozenUpdates: Partial<Record<GridColumnId, number>> = {};
+    // Auto-size all non-resizable columns to their content width
+    const autoSizeUpdates: Partial<Record<GridColumnId, number>> = {};
     for (const col of COLUMN_CONFIG) {
-      if (col.frozen) {
-        frozenUpdates[col.id] = allOptimal[col.id];
+      if (!col.resizable) {
+        autoSizeUpdates[col.id] = allOptimal[col.id];
       }
     }
-    dispatch(setColumnWidths(frozenUpdates));
+    dispatch(setColumnWidths(autoSizeUpdates));
 
     autoSizedRef.current = true;
   }, [rows, dispatch]);
