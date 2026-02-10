@@ -337,7 +337,7 @@ const PeriodGridTable = ({ rows }: PeriodGridTableProps) => {
       <table
         role="grid"
         aria-label="Budget categories"
-        className="min-w-full border-collapse text-slate-200"
+        className="min-w-full border-collapse table-fixed text-slate-200"
       >
         <PeriodGridHeader
           columnWidths={columnWidths}

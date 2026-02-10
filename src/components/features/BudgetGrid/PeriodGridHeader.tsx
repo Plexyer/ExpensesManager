@@ -100,6 +100,19 @@ const PeriodGridHeader = ({
 
       const startX = e.clientX;
 
+      // Compute scale factor: the table's rendered width may exceed the sum of
+      // column CSS widths due to `min-w-full` stretching.  Dividing the mouse
+      // delta by this factor maps 1 CSS-px to 1 rendered-px → exact 1:1 movement.
+      const totalCssWidth = COLUMN_CONFIG.reduce(
+        (sum, col) => sum + widthsRef.current[col.id],
+        0
+      );
+      const tableEl = (e.currentTarget as HTMLElement).closest("table");
+      const tableRenderedWidth =
+        tableEl?.getBoundingClientRect().width ?? totalCssWidth;
+      const scaleFactor =
+        tableRenderedWidth > 0 ? tableRenderedWidth / totalCssWidth : 1;
+
       // For hard detent: track whether we're currently snapped
       let leftSnapped = false;
       let rightSnapped = false;
@@ -113,7 +126,7 @@ const PeriodGridHeader = ({
         const rightOptimal = optimalWidths[rightId];
 
         const handleMouseMove = (moveEvent: MouseEvent) => {
-          const delta = moveEvent.clientX - startX;
+          const delta = (moveEvent.clientX - startX) / scaleFactor;
           // For the frozen→resizable boundary:
           // drag LEFT = shrink resizable; drag RIGHT = grow resizable
           let newRightWidth = Math.max(startRightWidth + delta, MIN_COLUMN_WIDTH);
@@ -169,7 +182,7 @@ const PeriodGridHeader = ({
         const rightOptimal = optimalWidths[rightId];
 
         const handleMouseMove = (moveEvent: MouseEvent) => {
-          const delta = moveEvent.clientX - startX;
+          const delta = (moveEvent.clientX - startX) / scaleFactor;
 
           // Clamp: left column between MIN and (total - MIN)
           let newLeftWidth = Math.max(
@@ -339,6 +352,7 @@ const PeriodGridHeader = ({
               style={{
                 width,
                 minWidth: width,
+                maxWidth: width,
                 ...(isFrozen ? { left: stickyLeft } : {}),
               }}
             >
