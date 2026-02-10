@@ -59,7 +59,7 @@ const PeriodGridHeader = ({
    *
    * Handle positions (from COLUMN_RESIZE_SPEC):
    * - Right edge of col 0 (Category, frozen) → NO HANDLE (both cols frozen)
-   * - Right edge of col 1 (Received Date, frozen) → Single-column resize (only Received Amount)
+   * - Right edge of col 1 (Received Date, frozen) → NO HANDLE (frozen boundary)
    * - Right edge of col 2 (Received Amount) → Paired resize (Received Amount + Spent Amount)
    * - Right edge of col 3 (Spent Amount) → Paired resize (Spent Amount + Remaining)
    * - Right edge of col 4 (Remaining, last) → NO HANDLE (no right neighbor)
@@ -80,9 +80,9 @@ const PeriodGridHeader = ({
     // No handle if both this column and next are frozen
     if (col.frozen && nextCol.frozen) return { type: "none" };
 
-    // Frozen-to-resizable boundary: single-column resize on the resizable column
+    // Frozen-to-resizable boundary: no handle (frozen columns are non-resizable)
     if (col.frozen && !nextCol.frozen) {
-      return { type: "single", rightColId: nextCol.id };
+      return { type: "none" };
     }
 
     // Both resizable: paired resize
@@ -120,7 +120,10 @@ const PeriodGridHeader = ({
       let rightSnapBreakX = 0;
 
       if (behavior.type === "single" && behavior.rightColId) {
-        // Single-column resize: only adjust the right (resizable) column
+        // Single-column resize: only adjust the right (resizable) column.
+        // NOTE: Currently unreachable — no column boundary produces type "single"
+        // after the frozen-boundary handle was removed (BUG-010 / #83).
+        // Kept for future extensibility (e.g., BUG-012 / #85 may reintroduce it).
         const rightId = behavior.rightColId;
         const startRightWidth = widthsRef.current[rightId];
         const rightOptimal = optimalWidths[rightId];

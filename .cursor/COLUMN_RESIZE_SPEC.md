@@ -104,10 +104,7 @@ User drags border 30px to the RIGHT:
 2. **Drag RIGHT** = left column **grows**, right column **shrinks**.
 3. **Zero-sum:** The combined width of the two columns remains constant during the drag.
 4. **Minimum width: 60px.** Neither column can go below this. If one column hits 60px, the drag stops for that direction.
-5. **Boundary between frozen and resizable:** The border between Received Date (frozen, col index 1) and Received Amount (resizable, col index 2) is a special case:
-   - Since the frozen column is not resizable, dragging this border adjusts **only** Received Amount.
-   - Dragging LEFT shrinks Received Amount (down to 60px min). Dragging RIGHT grows Received Amount.
-   - This is a single-column resize, not paired.
+5. **Boundary between frozen and resizable:** The border between Received Date (frozen, col index 1) and Received Amount (resizable, col index 2) has **no resize handle** (BUG-010 / #83). Frozen columns are non-resizable on both sides. "Received Amount" can only be resized via the paired-resize handle on its right edge (between cols 2 and 3).
 
 ### Resize Handle Identification
 
@@ -116,7 +113,7 @@ Each resize handle sits on the right edge of a column. The handle controls the b
 | Handle Position          | Left Column       | Right Column       | Behavior           |
 |--------------------------|--------------------|--------------------|---------------------|
 | Right edge of col 0      | Category (frozen)  | Received Date (frozen) | **No handle** (both frozen) |
-| Right edge of col 1      | Received Date (frozen) | Received Amount (resizable) | Single-column resize (only Received Amount) |
+| Right edge of col 1      | Received Date (frozen) | Received Amount (resizable) | **No handle** (frozen boundary — BUG-010 / #83) |
 | Right edge of col 2      | Received Amount    | Spent Amount       | Paired resize       |
 | Right edge of col 3      | Spent Amount       | Remaining          | Paired resize       |
 | Right edge of col 4      | Remaining          | (none)             | **No handle** (no right neighbor) |
@@ -141,10 +138,7 @@ onMouseMove:
     newRightWidth = (startLeftWidth + startRightWidth) - newLeftWidth
     dispatch(setColumnWidth(leftColId, newLeftWidth))
     dispatch(setColumnWidth(rightColId, newRightWidth))
-  else if rightColId is resizable:
-    // frozen-to-resizable boundary: only adjust right column
-    newRightWidth = clamp(startRightWidth - delta, 60, Infinity)
-    dispatch(setColumnWidth(rightColId, newRightWidth))
+  // NOTE: frozen-to-resizable boundary returns "none" (no handle) — BUG-010 / #83
 ```
 
 ### Files Likely Affected
