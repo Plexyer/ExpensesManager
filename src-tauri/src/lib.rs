@@ -37,6 +37,7 @@ pub fn run() {
             encrypted_db::add_category_to_template,
             encrypted_db::remove_category_from_template,
             encrypted_db::update_template_category_amount,
+            encrypted_db::reorder_template_categories,
             // Period budget instance commands
             encrypted_db::create_period_from_template,
             encrypted_db::list_periods,

@@ -4,7 +4,7 @@ import type { GetGridDataResult } from "../../services/fileService";
 import { listPeriods, createPeriodFromTemplate } from "../../services/periodService";
 import type { PeriodBudgetInstance, CreatePeriodFromTemplateArgs, CreatePeriodResult } from "../../types/period.types";
 import { getUiSetting, setUiSetting } from "../../services/settingsService";
-import type { ColumnWidths, GridColumnId, OptimalWidths, SnapMode, SelectedCell } from "../../components/features/BudgetGrid/types";
+import type { ColumnWidths, GridColumnId, OptimalWidths, SelectedCell } from "../../components/features/BudgetGrid/types";
 import { getDefaultColumnWidths, MIN_COLUMN_WIDTH, COLUMN_CONFIG } from "../../components/features/BudgetGrid/types";
 import { formatErrorMessage } from "../../utils/formatErrorMessage";
 
@@ -15,8 +15,8 @@ import { formatErrorMessage } from "../../utils/formatErrorMessage";
 /** Key used to persist column widths in the ui_settings table. */
 const COLUMN_WIDTHS_SETTING_KEY = "grid_column_widths";
 
-/** Key used to persist snap mode in the ui_settings table. */
-const SNAP_MODE_SETTING_KEY = "grid_snap_mode";
+/** Key used to persist the "show spent minus" preference. */
+const SHOW_SPENT_MINUS_SETTING_KEY = "grid_show_spent_minus";
 
 // ============================================================================
 // Types
@@ -54,11 +54,11 @@ interface BudgetState {
   columnWidths: ColumnWidths;
   /** Optimal (content-fit) widths for each resizable column, computed from data. */
   optimalWidths: OptimalWidths;
-  /** Snap mode for column resize. Persisted in ui_settings. */
-  snapMode: SnapMode;
   /** Currently selected cell in the budget grid (TASK-4.3). */
   selectedCell: SelectedCell | null;
-  /** Error from settings persistence (column widths / snap mode). */
+  /** Whether spent amounts display a minus sign in the period table. */
+  showSpentMinus: boolean;
+  /** Error from settings persistence (column widths). */
   settingsError: string | null;
 }
 
@@ -75,8 +75,8 @@ const initialState: BudgetState = {
   periodViewMode: "grid",
   columnWidths: getDefaultColumnWidths(),
   optimalWidths: {},
-  snapMode: "magnetic",
   selectedCell: null,
+  showSpentMinus: true,
   settingsError: null,
 };
 
@@ -169,29 +169,29 @@ export const saveColumnWidths = createAsyncThunk(
   }
 );
 
-/** Loads snap mode setting from the database. Defaults to "magnetic". */
-export const loadSnapMode = createAsyncThunk(
-  "budget/loadSnapMode",
+/** Loads the "show spent minus" preference from the database. Defaults to true. */
+export const loadShowSpentMinus = createAsyncThunk(
+  "budget/loadShowSpentMinus",
   async (_, { rejectWithValue }) => {
     try {
-      const value = await getUiSetting(SNAP_MODE_SETTING_KEY);
-      if (value === "magnetic" || value === "detent") return value;
-      return "magnetic" as SnapMode;
+      const value = await getUiSetting(SHOW_SPENT_MINUS_SETTING_KEY);
+      if (value === "false") return false;
+      return true; // default on
     } catch {
-      return rejectWithValue("Failed to load snap mode");
+      return rejectWithValue("Failed to load spent minus setting");
     }
   }
 );
 
-/** Persists the snap mode setting to the database. */
-export const saveSnapMode = createAsyncThunk(
-  "budget/saveSnapMode",
-  async (mode: SnapMode, { rejectWithValue }) => {
+/** Persists the "show spent minus" preference to the database. */
+export const saveShowSpentMinus = createAsyncThunk(
+  "budget/saveShowSpentMinus",
+  async (enabled: boolean, { rejectWithValue }) => {
     try {
-      await setUiSetting(SNAP_MODE_SETTING_KEY, mode);
-      return mode;
+      await setUiSetting(SHOW_SPENT_MINUS_SETTING_KEY, String(enabled));
+      return enabled;
     } catch {
-      return rejectWithValue("Failed to save snap mode");
+      return rejectWithValue("Failed to save spent minus setting");
     }
   }
 );
@@ -253,10 +253,6 @@ const budgetSlice = createSlice({
     setOptimalWidths: (state, action: PayloadAction<OptimalWidths>) => {
       state.optimalWidths = action.payload;
     },
-    /** Sets the snap mode (magnetic or detent). */
-    setSnapMode: (state, action: PayloadAction<SnapMode>) => {
-      state.snapMode = action.payload;
-    },
     /** Sets the currently selected cell in the grid (TASK-4.3). */
     setSelectedCell: (state, action: PayloadAction<SelectedCell | null>) => {
       state.selectedCell = action.payload;
@@ -264,6 +260,10 @@ const budgetSlice = createSlice({
     /** Clears the selected cell (convenience alias). */
     clearSelectedCell: (state) => {
       state.selectedCell = null;
+    },
+    /** Sets whether spent amounts show a minus sign. */
+    setShowSpentMinus: (state, action: PayloadAction<boolean>) => {
+      state.showSpentMinus = action.payload;
     },
   },
   extraReducers: (builder) => {
@@ -331,30 +331,30 @@ const budgetSlice = createSlice({
         state.settingsError = action.payload as string;
       });
 
-    // loadSnapMode
-    builder
-      .addCase(loadSnapMode.fulfilled, (state, action: PayloadAction<SnapMode>) => {
-        state.snapMode = action.payload;
-      })
-      .addCase(loadSnapMode.rejected, (state, action) => {
-        console.warn("[budgetSlice] loadSnapMode failed:", action.payload);
-        state.settingsError = action.payload as string;
-      });
-
-    // saveSnapMode
-    builder
-      .addCase(saveSnapMode.fulfilled, (state, action: PayloadAction<SnapMode>) => {
-        state.snapMode = action.payload;
-      })
-      .addCase(saveSnapMode.rejected, (state, action) => {
-        console.warn("[budgetSlice] saveSnapMode failed:", action.payload);
-        state.settingsError = action.payload as string;
-      });
-
     // saveColumnWidths
     builder
       .addCase(saveColumnWidths.rejected, (state, action) => {
         console.warn("[budgetSlice] saveColumnWidths failed:", action.payload);
+        state.settingsError = action.payload as string;
+      });
+
+    // loadShowSpentMinus
+    builder
+      .addCase(loadShowSpentMinus.fulfilled, (state, action: PayloadAction<boolean>) => {
+        state.showSpentMinus = action.payload;
+      })
+      .addCase(loadShowSpentMinus.rejected, (state, action) => {
+        console.warn("[budgetSlice] loadShowSpentMinus failed:", action.payload);
+        state.settingsError = action.payload as string;
+      });
+
+    // saveShowSpentMinus
+    builder
+      .addCase(saveShowSpentMinus.fulfilled, (state, action: PayloadAction<boolean>) => {
+        state.showSpentMinus = action.payload;
+      })
+      .addCase(saveShowSpentMinus.rejected, (state, action) => {
+        console.warn("[budgetSlice] saveShowSpentMinus failed:", action.payload);
         state.settingsError = action.payload as string;
       });
   },
@@ -370,8 +370,8 @@ export const {
   setColumnWidth,
   setColumnWidths,
   setOptimalWidths,
-  setSnapMode,
   setSelectedCell,
   clearSelectedCell,
+  setShowSpentMinus,
 } = budgetSlice.actions;
 export default budgetSlice.reducer;

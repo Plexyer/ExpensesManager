@@ -209,7 +209,7 @@ const PasswordCreationModal = ({
               id="password-modal-title"
               className="text-lg font-semibold text-white"
             >
-              {t("password.setMasterPassword")}
+              {t("password.setPassword")}
             </h2>
           </div>
           <button
@@ -291,8 +291,8 @@ const PasswordCreationModal = ({
           {/* Password Field */}
           <div>
             <PasswordInput
-              id="master-password"
-              label={t("password.masterPassword")}
+              id="creation-password"
+              label={t("password.label")}
               value={form.password}
               onChange={(value) => {
                 setForm((prev) => ({ ...prev, password: value }));

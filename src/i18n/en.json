@@ -44,12 +44,12 @@
     "openFinanceFile": "Open Finance File",
     "openFinanceFileDesc": "Open an existing .financedb file from your computer",
     "openFinanceFileLabel": "Open an existing finance file",
-    "footerLine1": "Your data is stored locally and encrypted with your master password.",
+    "footerLine1": "Your data is stored locally and encrypted with your password.",
     "footerLine2": "No cloud. No tracking. You own your data."
   },
   "password": {
-    "setMasterPassword": "Set Master Password",
-    "masterPassword": "Master Password",
+    "setPassword": "Set Password",
+    "label": "Password",
     "confirmPassword": "Confirm Password",
     "passwordHint": "Password Hint",
     "passwordHintOptional": "optional",
@@ -64,13 +64,13 @@
     "unrecoverable": "Important: This password cannot be recovered",
     "unrecoverableDetail": "If you forget your password, your data will be permanently inaccessible. Please store it safely.",
     "discardPassword": "Discard Password?",
-    "discardPasswordConfirm": "You haven't finished setting your master password. Are you sure you want to cancel?",
+    "discardPasswordConfirm": "You haven't finished setting your password. Are you sure you want to cancel?",
     "keepEditing": "Keep Editing",
     "discard": "Discard",
     "closeModal": "Close modal",
     "passwordRequirements": "Password requirements",
     "unlockFinanceFile": "Unlock Finance File",
-    "enterMasterPassword": "Enter your master password",
+    "enterPassword": "Enter your password",
     "unlock": "Unlock",
     "unlocking": "Unlocking...",
     "accountLocked": "Account Locked",
@@ -163,16 +163,17 @@
   },
   "settings": {
     "title": "Settings",
-    "grid": "Grid",
-    "columnResizeSnap": "Column resize snap behavior",
-    "magneticSnap": "Magnetic snap",
-    "magneticSnapDesc": "Slight pull toward optimal width — you can drag past it smoothly.",
-    "detentSnap": "Hard detent snap",
-    "detentSnapDesc": "Column locks at optimal width — drag further to break free.",
     "language": "Language",
     "languageDesc": "Choose the display language for the application.",
     "english": "English",
-    "german": "Deutsch"
+    "german": "Deutsch",
+    "hungarian": "Magyar",
+    "periodTable": "Period Table",
+    "showSpentMinus": "Show minus sign on spent amounts",
+    "showSpentMinusDesc": "Display a minus sign in front of spent amounts to visually distinguish them from received amounts.",
+    "preview": "Preview",
+    "previewOn": "CHF -125.00",
+    "previewOff": "CHF 125.00"
   },
   "export": {
     "title": "Export",
@@ -197,7 +198,7 @@
     "showInExplorer": "Show in Explorer",
     "showInExplorerLabel": "Show file in file explorer",
     "noFileOpen": "No file currently open.",
-    "tip": "The file is encrypted with your master password. Anyone with the file still needs the password to open it.",
+    "tip": "The file is encrypted with your password. Anyone with the file still needs the password to open it.",
     "revealError": "Could not open the file explorer. Please navigate to the file manually."
   },
   "templates": {
@@ -241,7 +242,12 @@
     "removeConfirm": "Remove this category from the template?",
     "deleteConfirm": "Delete template \"{{name}}\"?",
     "selectCategoryLabel": "Select category",
-    "removeCategoryLabel": "Remove {{name}} from template"
+    "removeCategoryLabel": "Remove {{name}} from template",
+    "dragToReorder": "Drag to reorder {{name}}",
+    "editCategory": "Edit {{name}}",
+    "editAmount": "Edit amount",
+    "saveAmount": "Save amount",
+    "cancelEdit": "Cancel editing"
   },
   "ledger": {
     "received": "Received",

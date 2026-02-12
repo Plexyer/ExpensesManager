@@ -1,1 +1,8 @@
 @import "tailwindcss";
+
+/* Hide native browser password reveal button (Chromium/Edge WebView2).
+   We use a custom eye toggle in PasswordInput instead. */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none !important;
+}

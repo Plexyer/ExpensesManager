@@ -810,9 +810,9 @@ mod tests {
         let conn = create_test_db();
         apply_initial_schema(&conn).unwrap();
 
-        // Verify schema version is now 3
+        // Verify schema version is at least 3 (apply_initial_schema runs all migrations)
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
 
         // Verify category_line_items table exists
         let tables: Vec<String> = conn
@@ -1084,12 +1084,12 @@ mod tests {
             "category_line_items should not exist after v2"
         );
 
-        // Now run pending migrations (should apply v3)
+        // Now run pending migrations (should apply v3 and v4)
         run_pending(&conn).unwrap();
 
-        // Verify version is now 3
-        let version_after_v3 = get_schema_version(&conn).unwrap();
-        assert_eq!(version_after_v3, 3);
+        // Verify version is now at CURRENT_SCHEMA_VERSION
+        let version_after = get_schema_version(&conn).unwrap();
+        assert_eq!(version_after, CURRENT_SCHEMA_VERSION);
 
         // Verify category_line_items now exists
         let tables_v3: Vec<String> = conn

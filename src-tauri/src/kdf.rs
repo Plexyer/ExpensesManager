@@ -1,7 +1,7 @@
 //! Key Derivation Function (KDF) module for password-based encryption.
 //!
 //! This module implements Argon2id key derivation for deriving encryption keys
-//! from master passwords. The derived key is used with SQLCipher to encrypt
+//! from user passwords. The derived key is used with SQLCipher to encrypt
 //! the database file.
 //!
 //! ## Security Notes
@@ -83,7 +83,7 @@ pub fn generate_salt() -> [u8; SALT_LENGTH] {
 /// (`PRAGMA key = "x'hex'"`) to bypass SQLCipher's internal PBKDF2.
 ///
 /// # Arguments
-/// * `password` - The user's master password (must not be empty)
+/// * `password` - The user's password (must not be empty)
 /// * `salt` - A 32-byte random salt (use `generate_salt()` to create)
 ///
 /// # Returns

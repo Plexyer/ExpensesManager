@@ -87,14 +87,14 @@ const extractFileName = (filePath: string): string => {
 // ============================================================================
 //
 // These functions interact with SQLCipher-encrypted database files.
-// The encryption key is derived from the master password using Argon2id.
+// The encryption key is derived from the user password using Argon2id.
 // ============================================================================
 
 /**
  * Creates a new encrypted database file at the specified path.
  *
  * @param path - Full path to the file to create
- * @param password - Master password for encryption
+ * @param password - Password for encryption
  * @param hint - Optional password hint
  * @throws Error if file cannot be created
  */
@@ -127,7 +127,7 @@ export const getDbInfo = async (path: string): Promise<DbFileInfo> => {
  * Opens and unlocks an existing encrypted database.
  *
  * @param path - Full path to the database file
- * @param password - Master password for decryption
+ * @param password - Password for decryption
  * @returns File info if password is correct
  * @throws Error if password is wrong or file is invalid
  */

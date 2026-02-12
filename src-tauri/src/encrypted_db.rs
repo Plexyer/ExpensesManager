@@ -251,7 +251,7 @@ fn open_sqlcipher_db(path: &Path, key_hex: &str) -> Result<Connection, Encrypted
 ///
 /// # Arguments
 /// * `path` - Full path to the file to create
-/// * `password` - Master password for encryption
+/// * `password` - Password for encryption
 /// * `hint` - Optional password hint
 /// * `db_state` - Global database state
 ///
@@ -334,7 +334,7 @@ fn create_encrypted_db_internal(
 ///
 /// # Arguments
 /// * `path` - Full path to the file to open
-/// * `password` - Master password for decryption
+/// * `password` - Password for decryption
 /// * `db_state` - Global database state
 ///
 /// # Returns
@@ -1429,6 +1429,53 @@ fn update_template_category_amount_internal(
             template_category_id
         )));
     }
+
+    Ok(())
+}
+
+/// Reorders the categories of a template by updating their sort_order.
+/// Accepts the template_id and a Vec of template_category_ids in the desired order.
+#[tauri::command]
+pub fn reorder_template_categories(
+    template_id: i64,
+    ordered_ids: Vec<i64>,
+    db_state: State<DbState>,
+) -> Result<(), String> {
+    reorder_template_categories_internal(template_id, &ordered_ids, &db_state)
+        .map_err(|e| e.to_string())
+}
+
+fn reorder_template_categories_internal(
+    template_id: i64,
+    ordered_ids: &[i64],
+    db_state: &State<DbState>,
+) -> Result<(), EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let tx = conn.unchecked_transaction()?;
+
+    for (index, &tc_id) in ordered_ids.iter().enumerate() {
+        let rows_updated = tx.execute(
+            "UPDATE template_categories SET sort_order = ? WHERE template_category_id = ? AND template_id = ?",
+            rusqlite::params![index as i64 + 1, tc_id, template_id],
+        )?;
+
+        if rows_updated == 0 {
+            return Err(EncryptedDbError::DatabaseError(format!(
+                "Template category {} not found in template {}.",
+                tc_id, template_id
+            )));
+        }
+    }
+
+    tx.commit()?;
 
     Ok(())
 }

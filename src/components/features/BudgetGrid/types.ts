@@ -64,9 +64,6 @@ export const LAST_FROZEN_COL_INDEX = COLUMN_CONFIG.reduce<number>(
 /** Map of column IDs to their current widths in pixels. */
 export type ColumnWidths = Record<GridColumnId, number>;
 
-/** Snap mode for column resize snap-to-content-width behavior. */
-export type SnapMode = "magnetic" | "detent";
-
 /** Partial map of column IDs to their optimal (content-fit) widths. */
 export type OptimalWidths = Partial<Record<GridColumnId, number>>;
 

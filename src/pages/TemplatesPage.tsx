@@ -10,13 +10,17 @@ import {
   fetchTemplateCategories,
   addCategoryToTemplate,
   removeCategoryFromTemplate,
+  updateTemplateCategoryAmount,
+  reorderTemplateCategories,
+  setTemplateCategoriesOrder,
   clearTemplateError,
 } from "../store/slices/templateSlice";
 import { fetchCategories, createCategory, clearCategoryError } from "../store/slices/categorySlice";
 import AppHeader from "../components/common/AppHeader";
-import type { Cadence, Currency, CreateTemplateArgs } from "../types/template.types";
+import type { Cadence, Currency, CreateTemplateArgs, TemplateCategory } from "../types/template.types";
 import { CADENCE_OPTIONS, CURRENCY_OPTIONS } from "../types/template.types";
 import Onboarding from "../components/features/Onboarding/Onboarding";
+import TemplateCategoryList from "../components/features/Templates/TemplateCategoryList";
 
 /**
  * Page for managing budget templates.
@@ -181,6 +185,25 @@ const TemplatesPage = () => {
     } catch {
       // Error handled by Redux
     }
+  };
+
+  // Handle inline edit of a template category amount
+  const handleUpdateCategoryAmount = async (templateCategoryId: number, allocatedAmount: number) => {
+    try {
+      await dispatch(updateTemplateCategoryAmount({ templateCategoryId, allocatedAmount })).unwrap();
+    } catch {
+      // Error handled by Redux
+    }
+  };
+
+  // Handle category reorder via drag-and-drop
+  const handleReorderCategories = (reordered: TemplateCategory[]) => {
+    if (!selectedTemplate) return;
+    // Optimistic update: immediately reorder in Redux state
+    dispatch(setTemplateCategoriesOrder(reordered));
+    // Persist to database in the background
+    const orderedIds = reordered.map((tc) => tc.template_category_id);
+    dispatch(reorderTemplateCategories({ templateId: selectedTemplate.template_id, orderedIds }));
   };
 
   // Handle inline category creation
@@ -636,46 +659,15 @@ const TemplatesPage = () => {
                         </div>
                       )}
 
-                      {/* Category list - shows loading overlay while keeping old categories visible */}
+                      {/* Category list with drag-and-drop reordering */}
                       <div className={`relative transition-opacity duration-150 ${isCategoriesLoading ? "opacity-50 pointer-events-none" : ""}`}>
-                        {templateCategories.length === 0 ? (
-                          <p className="text-slate-500 text-sm text-center py-4">
-                            {t("templates.noCategoriesYet")}
-                          </p>
-                        ) : (
-                          <div className="space-y-2">
-                            {templateCategories.map((tc) => (
-                              <div
-                                key={tc.template_category_id}
-                                className="flex items-center justify-between px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg"
-                              >
-                                <div>
-                                  <span className="text-white">{tc.category_name}</span>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                  <span className="text-emerald-400 font-mono">
-                                    {selectedTemplate.default_currency} {tc.allocated_amount.toFixed(2)}
-                                  </span>
-                                  <button
-                                    onClick={() => handleRemoveCategory(tc.template_category_id)}
-                                    className="text-slate-400 hover:text-red-400 transition-colors"
-                                    type="button"
-                                    aria-label={t("templates.removeCategoryFromTemplate", { name: tc.category_name })}
-                                  >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M6 18L18 6M6 6l12 12"
-                                      />
-                                    </svg>
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                        <TemplateCategoryList
+                          categories={templateCategories}
+                          currency={selectedTemplate.default_currency}
+                          onRemove={handleRemoveCategory}
+                          onUpdateAmount={handleUpdateCategoryAmount}
+                          onReorder={handleReorderCategories}
+                        />
                         {/* Loading spinner overlay */}
                         {isCategoriesLoading && (
                           <div className="absolute inset-0 flex items-center justify-center">

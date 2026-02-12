@@ -16,6 +16,7 @@ import {
   addCategoryToTemplate as apiAddCategory,
   removeCategoryFromTemplate as apiRemoveCategory,
   updateTemplateCategoryAmount as apiUpdateAmount,
+  reorderTemplateCategories as apiReorderCategories,
 } from "../../services/templateService";
 import { formatErrorMessage } from "../../utils/formatErrorMessage";
 
@@ -149,6 +150,19 @@ export const updateTemplateCategoryAmount = createAsyncThunk(
   }
 );
 
+/** Persists the reordered category sort order to the database. */
+export const reorderTemplateCategories = createAsyncThunk(
+  "templates/reorderCategories",
+  async ({ templateId, orderedIds }: { templateId: number; orderedIds: number[] }, { rejectWithValue }) => {
+    try {
+      await apiReorderCategories(templateId, orderedIds);
+      return orderedIds;
+    } catch (error) {
+      return rejectWithValue(getErrorMessage(error, "Failed to reorder categories"));
+    }
+  }
+);
+
 const templateSlice = createSlice({
   name: "templates",
   initialState,
@@ -162,6 +176,10 @@ const templateSlice = createSlice({
       state.templateCategories = [];
       state.isLoading = false;
       state.error = null;
+    },
+    /** Optimistically reorder the templateCategories array (called on drag end). */
+    setTemplateCategoriesOrder: (state, action: PayloadAction<TemplateCategory[]>) => {
+      state.templateCategories = action.payload;
     },
     selectTemplate: (state, action: PayloadAction<Template | null>) => {
       const next = action.payload;
@@ -342,8 +360,14 @@ const templateSlice = createSlice({
         state.isLoading = false;
         state.error = action.payload as string;
       });
+
+    // Reorder categories (persistence) — state already updated optimistically
+    builder
+      .addCase(reorderTemplateCategories.rejected, (state, action) => {
+        state.error = action.payload as string;
+      });
   },
 });
 
-export const { clearTemplateError, resetTemplates, selectTemplate } = templateSlice.actions;
+export const { clearTemplateError, resetTemplates, selectTemplate, setTemplateCategoriesOrder } = templateSlice.actions;
 export default templateSlice.reducer;

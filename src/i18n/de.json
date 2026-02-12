@@ -44,12 +44,12 @@
     "openFinanceFile": "Finanzdatei öffnen",
     "openFinanceFileDesc": "Eine vorhandene .financedb-Datei von Ihrem Computer öffnen",
     "openFinanceFileLabel": "Eine vorhandene Finanzdatei öffnen",
-    "footerLine1": "Ihre Daten werden lokal gespeichert und mit Ihrem Master-Passwort verschlüsselt.",
+    "footerLine1": "Ihre Daten werden lokal gespeichert und mit Ihrem Passwort verschlüsselt.",
     "footerLine2": "Keine Cloud. Kein Tracking. Ihre Daten gehören Ihnen."
   },
   "password": {
-    "setMasterPassword": "Master-Passwort festlegen",
-    "masterPassword": "Master-Passwort",
+    "setPassword": "Passwort festlegen",
+    "label": "Passwort",
     "confirmPassword": "Passwort bestätigen",
     "passwordHint": "Passwort-Hinweis",
     "passwordHintOptional": "optional",
@@ -64,13 +64,13 @@
     "unrecoverable": "Wichtig: Dieses Passwort kann nicht wiederhergestellt werden",
     "unrecoverableDetail": "Wenn Sie Ihr Passwort vergessen, sind Ihre Daten dauerhaft unzugänglich. Bitte bewahren Sie es sicher auf.",
     "discardPassword": "Passwort verwerfen?",
-    "discardPasswordConfirm": "Sie haben die Einrichtung Ihres Master-Passworts nicht abgeschlossen. Möchten Sie wirklich abbrechen?",
+    "discardPasswordConfirm": "Sie haben die Einrichtung Ihres Passworts nicht abgeschlossen. Möchten Sie wirklich abbrechen?",
     "keepEditing": "Weiter bearbeiten",
     "discard": "Verwerfen",
     "closeModal": "Modal schliessen",
     "passwordRequirements": "Passwort-Anforderungen",
     "unlockFinanceFile": "Finanzdatei entsperren",
-    "enterMasterPassword": "Geben Sie Ihr Master-Passwort ein",
+    "enterPassword": "Geben Sie Ihr Passwort ein",
     "unlock": "Entsperren",
     "unlocking": "Entsperren...",
     "accountLocked": "Konto gesperrt",
@@ -163,16 +163,17 @@
   },
   "settings": {
     "title": "Einstellungen",
-    "grid": "Raster",
-    "columnResizeSnap": "Spaltengrössenänderungs-Einrastverhalten",
-    "magneticSnap": "Magnetisches Einrasten",
-    "magneticSnapDesc": "Leichter Zug zur optimalen Breite — Sie können sanft darüber hinaus ziehen.",
-    "detentSnap": "Hartes Einrasten",
-    "detentSnapDesc": "Spalte rastet bei optimaler Breite ein — weiter ziehen zum Lösen.",
     "language": "Sprache",
     "languageDesc": "Wählen Sie die Anzeigesprache für die Anwendung.",
     "english": "English",
-    "german": "Deutsch"
+    "german": "Deutsch",
+    "hungarian": "Magyar",
+    "periodTable": "Periodentabelle",
+    "showSpentMinus": "Minuszeichen bei Ausgaben anzeigen",
+    "showSpentMinusDesc": "Zeigt ein Minuszeichen vor Ausgabenbeträgen an, um sie visuell von Einnahmen zu unterscheiden.",
+    "preview": "Vorschau",
+    "previewOn": "CHF -125.00",
+    "previewOff": "CHF 125.00"
   },
   "export": {
     "title": "Export",
@@ -197,7 +198,7 @@
     "showInExplorer": "Im Explorer anzeigen",
     "showInExplorerLabel": "Datei im Datei-Explorer anzeigen",
     "noFileOpen": "Keine Datei geöffnet.",
-    "tip": "Die Datei ist mit Ihrem Master-Passwort verschlüsselt. Jeder, der die Datei hat, benötigt trotzdem das Passwort zum Öffnen.",
+    "tip": "Die Datei ist mit Ihrem Passwort verschlüsselt. Jeder, der die Datei hat, benötigt trotzdem das Passwort zum Öffnen.",
     "revealError": "Der Datei-Explorer konnte nicht geöffnet werden. Bitte navigieren Sie manuell zur Datei."
   },
   "templates": {
@@ -241,7 +242,12 @@
     "removeConfirm": "Diese Kategorie aus der Vorlage entfernen?",
     "deleteConfirm": "Vorlage \"{{name}}\" löschen?",
     "selectCategoryLabel": "Kategorie auswählen",
-    "removeCategoryLabel": "{{name}} aus der Vorlage entfernen"
+    "removeCategoryLabel": "{{name}} aus der Vorlage entfernen",
+    "dragToReorder": "Ziehen zum Neuordnen von {{name}}",
+    "editCategory": "{{name}} bearbeiten",
+    "editAmount": "Betrag bearbeiten",
+    "saveAmount": "Betrag speichern",
+    "cancelEdit": "Bearbeitung abbrechen"
   },
   "ledger": {
     "received": "Einnahmen",

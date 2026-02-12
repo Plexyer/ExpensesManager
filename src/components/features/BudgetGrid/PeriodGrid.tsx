@@ -8,7 +8,7 @@ import {
   setShowPeriodSelector,
   setPeriodViewMode,
   loadColumnWidths,
-  loadSnapMode,
+  loadShowSpentMinus,
   clearPeriodsError,
   clearSettingsError,
 } from "../../../store/slices/budgetSlice";
@@ -43,7 +43,7 @@ const PeriodGrid = () => {
     if (periodsStatus === "idle") {
       dispatch(fetchPeriods());
       dispatch(loadColumnWidths());
-      dispatch(loadSnapMode());
+      dispatch(loadShowSpentMinus());
     }
   }, [dispatch, periodsStatus]);
 

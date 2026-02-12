@@ -1,3 +1,4 @@
+import { useAppSelector } from "../../../store/hooks";
 import PeriodGridRow from "./PeriodGridRow";
 import { COLUMN_CONFIG, LAST_FROZEN_COL_INDEX, computeStickyLeft } from "./types";
 import type { ColumnWidths, SelectedCell, GridColumnId } from "./types";
@@ -29,6 +30,7 @@ const getRemainingColorClasses = (remaining: number): string => {
 };
 
 const PeriodGridBody = ({ rows, columnWidths, selectedCell, onCellSelect, onCellDoubleClick }: PeriodGridBodyProps) => {
+  const showSpentMinus = useAppSelector((state) => state.budget.showSpentMinus);
   // Compute totals for the summary row
   const totals = rows.reduce(
     (acc, row) => ({
@@ -91,7 +93,10 @@ const PeriodGridBody = ({ rows, columnWidths, selectedCell, onCellSelect, onCell
                 content = formatCurrency(totals.receivedTotal, currency);
                 break;
               case "spent_amount":
-                content = formatCurrency(totals.spentTotal, currency);
+                content = formatCurrency(
+                  showSpentMinus ? -totals.spentTotal : totals.spentTotal,
+                  currency
+                );
                 break;
               case "remaining":
                 content = formatCurrency(totals.remaining, currency);

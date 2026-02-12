@@ -136,3 +136,17 @@ export const updateTemplateCategoryAmount = async (
     allocatedAmount,
   });
 };
+
+/**
+ * Reorders the categories of a template by updating their sort_order.
+ *
+ * @param templateId - The ID of the template
+ * @param orderedIds - Array of template_category_ids in the desired display order
+ * @throws Error if any category is not found or no database is open
+ */
+export const reorderTemplateCategories = async (
+  templateId: number,
+  orderedIds: number[]
+): Promise<void> => {
+  await invoke("reorder_template_categories", { templateId, orderedIds });
+};

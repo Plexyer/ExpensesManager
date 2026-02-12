@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { useAppSelector } from "../../../store/hooks";
 import {
   listLineItems,
   createLineItem,
@@ -51,6 +52,7 @@ const CategoryLedgerModal = ({
   onDataChanged,
 }: CategoryLedgerModalProps) => {
   const { t } = useTranslation();
+  const showSpentMinus = useAppSelector((state) => state.budget.showSpentMinus);
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -239,6 +241,10 @@ const CategoryLedgerModal = ({
 
   // Compute total
   const total = lineItems.reduce((sum, item) => sum + item.amount, 0);
+
+  /** Negate amounts for display when showing "spent" transactions (if setting enabled). */
+  const displayAmount = (amount: number): number =>
+    ledgerState.kind === "spent" && showSpentMinus ? -amount : amount;
 
   return (
     <div
@@ -503,7 +509,7 @@ const CategoryLedgerModal = ({
                         )}
                       </td>
                       <td className="py-2.5 pr-4 text-right text-slate-200 whitespace-nowrap tabular-nums">
-                        {formatCurrency(item.amount, item.currency)}
+                        {formatCurrency(displayAmount(item.amount), item.currency)}
                       </td>
                       <td className="py-2.5 text-right whitespace-nowrap">
                         {isDeleting ? (
@@ -596,7 +602,7 @@ const CategoryLedgerModal = ({
                     {t("ledger.total", { count: lineItems.length })}
                   </td>
                   <td className="py-2.5 text-right text-white whitespace-nowrap tabular-nums">
-                    {formatCurrency(total, currency)}
+                    {formatCurrency(displayAmount(total), currency)}
                   </td>
                 </tr>
               </tfoot>

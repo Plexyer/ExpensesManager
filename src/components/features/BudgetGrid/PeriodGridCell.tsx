@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { useAppSelector } from "../../../store/hooks";
 import type { GridColumnConfig, GridColumnId, ColumnWidths } from "./types";
 import { COLUMN_CONFIG, LAST_FROZEN_COL_INDEX, computeStickyLeft } from "./types";
 import type { GridCategoryRow } from "../../../services/fileService";
@@ -27,7 +28,8 @@ const formatReceivedDate = (
 /** Get the display value for a cell based on column and row data. */
 const getCellDisplayValue = (
   row: GridCategoryRow,
-  columnId: GridColumnId
+  columnId: GridColumnId,
+  showSpentMinus: boolean
 ): string => {
   switch (columnId) {
     case "category":
@@ -40,7 +42,10 @@ const getCellDisplayValue = (
     case "received_amount":
       return formatCurrency(row.received_total, row.default_currency);
     case "spent_amount":
-      return formatCurrency(row.spent_total, row.default_currency);
+      return formatCurrency(
+        showSpentMinus ? -row.spent_total : row.spent_total,
+        row.default_currency
+      );
     case "remaining":
       return formatCurrency(row.remaining, row.default_currency);
   }
@@ -63,7 +68,8 @@ const PeriodGridCell = ({
   onDoubleClick,
 }: PeriodGridCellProps) => {
   const { t } = useTranslation();
-  const value = getCellDisplayValue(row, columnConfig.id);
+  const showSpentMinus = useAppSelector((state) => state.budget.showSpentMinus);
+  const value = getCellDisplayValue(row, columnConfig.id, showSpentMinus);
   const isRemaining = columnConfig.id === "remaining";
   const isRightAligned = columnConfig.align === "right";
   const isFrozen = columnConfig.frozen;

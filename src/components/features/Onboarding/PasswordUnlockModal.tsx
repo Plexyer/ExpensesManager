@@ -278,11 +278,11 @@ const PasswordUnlockModal = ({
               <div>
                 <PasswordInput
                   id="unlock-password"
-                  label={t("password.masterPassword")}
+                  label={t("password.label")}
                   value={password}
                   onChange={handlePasswordChange}
                   error={error || undefined}
-                  placeholder={t("password.enterMasterPassword")}
+                  placeholder={t("password.enterPassword")}
                   autoFocus
                   disabled={isSubmitting || isLockedOut}
                 />

@@ -176,7 +176,6 @@ const computeAllOptimalWidths = (
 const PeriodGridTable = ({ rows, onDataChanged }: PeriodGridTableProps) => {
   const dispatch = useAppDispatch();
   const columnWidths = useAppSelector((state) => state.budget.columnWidths);
-  const snapMode = useAppSelector((state) => state.budget.snapMode);
   const optimalWidths = useAppSelector((state) => state.budget.optimalWidths);
   const selectedCell = useAppSelector((state) => state.budget.selectedCell);
 
@@ -392,7 +391,6 @@ const PeriodGridTable = ({ rows, onDataChanged }: PeriodGridTableProps) => {
         <PeriodGridHeader
           columnWidths={columnWidths}
           optimalWidths={optimalWidths}
-          snapMode={snapMode}
           onColumnResize={handleColumnResize}
           onColumnResizeBatch={handleColumnResizeBatch}
           onResizeEnd={handleResizeEnd}

@@ -5,47 +5,38 @@ import {
   MIN_COLUMN_WIDTH,
   computeStickyLeft,
 } from "./types";
-import type { GridColumnId, ColumnWidths, OptimalWidths, SnapMode } from "./types";
+import type { GridColumnId, ColumnWidths, OptimalWidths } from "./types";
 
 interface PeriodGridHeaderProps {
   columnWidths: ColumnWidths;
   optimalWidths: OptimalWidths;
-  snapMode: SnapMode;
   onColumnResize: (columnId: GridColumnId, width: number) => void;
   onColumnResizeBatch: (updates: Partial<Record<GridColumnId, number>>) => void;
   onResizeEnd: (updatedWidths: ColumnWidths) => void;
 }
 
-/** Magnetic snap threshold in pixels. */
+/** Magnetic snap threshold in pixels — pull toward optimal width when within range. */
 const MAGNETIC_THRESHOLD = 8;
-/** Hard detent snap threshold — additional drag needed to break free. */
-const DETENT_BREAK_THRESHOLD = 12;
 
 /**
- * Apply snap-to-content logic to a column width during resize.
+ * Apply magnetic snap-to-content logic to a column width during resize.
  * Returns the potentially snapped width.
  */
 const applySnap = (
   rawWidth: number,
-  optimalWidth: number | undefined,
-  snapMode: SnapMode
+  optimalWidth: number | undefined
 ): number => {
   if (optimalWidth === undefined) return rawWidth;
 
-  if (snapMode === "magnetic") {
-    // Pull toward optimal width when within threshold
-    if (Math.abs(rawWidth - optimalWidth) < MAGNETIC_THRESHOLD) {
-      return optimalWidth;
-    }
+  if (Math.abs(rawWidth - optimalWidth) < MAGNETIC_THRESHOLD) {
+    return optimalWidth;
   }
-  // "detent" mode is handled in the drag state machine (see handleResizeMouseDown)
   return rawWidth;
 };
 
 const PeriodGridHeader = ({
   columnWidths,
   optimalWidths,
-  snapMode,
   onColumnResize,
   onColumnResizeBatch,
   onResizeEnd,
@@ -110,49 +101,16 @@ const PeriodGridHeader = ({
       const scaleFactor =
         tableRenderedWidth > 0 ? tableRenderedWidth / totalCssWidth : 1;
 
-      // For hard detent: track whether we're currently snapped
-      let leftSnapped = false;
-      let rightSnapped = false;
-      let leftSnapBreakX = 0;
-      let rightSnapBreakX = 0;
-
       if (behavior.type === "single" && behavior.rightColId) {
         // Single-column resize: only adjust the right (resizable) column.
-        // NOTE: Currently unreachable — no column boundary produces type "single"
-        // after the frozen-boundary handle was removed (BUG-010 / #83).
-        // Kept for future extensibility (e.g., BUG-012 / #85 may reintroduce it).
         const rightId = behavior.rightColId;
         const startRightWidth = widthsRef.current[rightId];
         const rightOptimal = optimalWidths[rightId];
 
         const handleMouseMove = (moveEvent: MouseEvent) => {
           const delta = (moveEvent.clientX - startX) / scaleFactor;
-          // For the frozen→resizable boundary:
-          // drag LEFT = shrink resizable; drag RIGHT = grow resizable
           let newRightWidth = Math.max(startRightWidth + delta, MIN_COLUMN_WIDTH);
-
-          // Apply snap logic
-          if (snapMode === "detent" && rightOptimal !== undefined) {
-            if (rightSnapped) {
-              // Currently snapped — check if we should break free
-              if (Math.abs(moveEvent.clientX - rightSnapBreakX) > DETENT_BREAK_THRESHOLD) {
-                rightSnapped = false;
-              } else {
-                newRightWidth = rightOptimal;
-              }
-            } else {
-              // Check if we should snap
-              const rawWidth = startRightWidth + delta;
-              if (Math.abs(rawWidth - rightOptimal) < MAGNETIC_THRESHOLD) {
-                rightSnapped = true;
-                rightSnapBreakX = moveEvent.clientX;
-                newRightWidth = rightOptimal;
-              }
-            }
-          } else {
-            newRightWidth = applySnap(newRightWidth, rightOptimal, snapMode);
-          }
-
+          newRightWidth = applySnap(newRightWidth, rightOptimal);
           onColumnResize(rightId, newRightWidth);
         };
 
@@ -176,8 +134,7 @@ const PeriodGridHeader = ({
         const leftId = behavior.leftColId;
         const rightId = behavior.rightColId;
         const startLeftWidth = widthsRef.current[leftId];
-        const startRightWidth = widthsRef.current[rightId];
-        const totalWidth = startLeftWidth + startRightWidth;
+        const totalWidth = startLeftWidth + widthsRef.current[rightId];
         const leftOptimal = optimalWidths[leftId];
         const rightOptimal = optimalWidths[rightId];
 
@@ -191,55 +148,19 @@ const PeriodGridHeader = ({
           );
           let newRightWidth = totalWidth - newLeftWidth;
 
-          // Apply snap logic to the left column
-          if (snapMode === "detent" && leftOptimal !== undefined) {
-            if (leftSnapped) {
-              if (Math.abs(moveEvent.clientX - leftSnapBreakX) > DETENT_BREAK_THRESHOLD) {
-                leftSnapped = false;
-              } else {
-                newLeftWidth = leftOptimal;
-                newRightWidth = totalWidth - newLeftWidth;
-              }
-            } else {
-              if (Math.abs(newLeftWidth - leftOptimal) < MAGNETIC_THRESHOLD) {
-                leftSnapped = true;
-                leftSnapBreakX = moveEvent.clientX;
-                newLeftWidth = leftOptimal;
-                newRightWidth = totalWidth - newLeftWidth;
-              }
-            }
-          } else {
-            const snappedLeft = applySnap(newLeftWidth, leftOptimal, snapMode);
-            if (snappedLeft !== newLeftWidth) {
-              newLeftWidth = snappedLeft;
-              newRightWidth = totalWidth - newLeftWidth;
-            }
+          // Apply magnetic snap to the left column
+          const snappedLeft = applySnap(newLeftWidth, leftOptimal);
+          if (snappedLeft !== newLeftWidth) {
+            newLeftWidth = snappedLeft;
+            newRightWidth = totalWidth - newLeftWidth;
           }
 
-          // Apply snap logic to the right column (if left didn't snap)
-          if (!leftSnapped) {
-            if (snapMode === "detent" && rightOptimal !== undefined) {
-              if (rightSnapped) {
-                if (Math.abs(moveEvent.clientX - rightSnapBreakX) > DETENT_BREAK_THRESHOLD) {
-                  rightSnapped = false;
-                } else {
-                  newRightWidth = rightOptimal;
-                  newLeftWidth = totalWidth - newRightWidth;
-                }
-              } else {
-                if (Math.abs(newRightWidth - rightOptimal) < MAGNETIC_THRESHOLD) {
-                  rightSnapped = true;
-                  rightSnapBreakX = moveEvent.clientX;
-                  newRightWidth = rightOptimal;
-                  newLeftWidth = totalWidth - newRightWidth;
-                }
-              }
-            } else {
-              const snappedRight = applySnap(newRightWidth, rightOptimal, snapMode);
-              if (snappedRight !== newRightWidth) {
-                newRightWidth = snappedRight;
-                newLeftWidth = totalWidth - newRightWidth;
-              }
+          // Apply magnetic snap to the right column (only if left didn't snap)
+          if (snappedLeft === newLeftWidth) {
+            const snappedRight = applySnap(newRightWidth, rightOptimal);
+            if (snappedRight !== newRightWidth) {
+              newRightWidth = snappedRight;
+              newLeftWidth = totalWidth - newRightWidth;
             }
           }
 
@@ -264,7 +185,7 @@ const PeriodGridHeader = ({
         document.body.style.userSelect = "none";
       }
     },
-    [onColumnResize, onColumnResizeBatch, onResizeEnd, optimalWidths, snapMode]
+    [onColumnResize, onColumnResizeBatch, onResizeEnd, optimalWidths]
   );
 
   /** Keyboard resize support: ArrowLeft/ArrowRight adjust width by 10px. */

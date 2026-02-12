@@ -2,9 +2,10 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import en from "./en.json";
 import de from "./de.json";
+import hu from "./hu.json";
 
 /** Supported language codes. */
-export type SupportedLanguage = "en" | "de";
+export type SupportedLanguage = "en" | "de" | "hu";
 
 /** All supported languages with their display labels. */
 export const SUPPORTED_LANGUAGES: ReadonlyArray<{
@@ -13,6 +14,7 @@ export const SUPPORTED_LANGUAGES: ReadonlyArray<{
 }> = [
   { code: "en", label: "English" },
   { code: "de", label: "Deutsch" },
+  { code: "hu", label: "Magyar" },
 ] as const;
 
 const STORAGE_KEY = "expenses-manager-language";
@@ -21,7 +23,7 @@ const STORAGE_KEY = "expenses-manager-language";
 const getStoredLanguage = (): SupportedLanguage => {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "en" || stored === "de") return stored;
+    if (stored === "en" || stored === "de" || stored === "hu") return stored;
   } catch {
     // localStorage not available — fall through to default
   }
@@ -41,6 +43,7 @@ i18n.use(initReactI18next).init({
   resources: {
     en: { translation: en },
     de: { translation: de },
+    hu: { translation: hu },
   },
   lng: getStoredLanguage(),
   fallbackLng: "en",
