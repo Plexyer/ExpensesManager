@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useAppSelector, useAppDispatch } from "../store/hooks";
 import { setSnapMode, saveSnapMode } from "../store/slices/budgetSlice";
 import type { SnapMode } from "../components/features/BudgetGrid/types";
@@ -5,21 +6,10 @@ import AppHeader from "../components/common/AppHeader";
 import Onboarding from "../components/features/Onboarding/Onboarding";
 import BackupSettings from "../components/features/Settings/BackupSettings";
 import ExportSettings from "../components/features/Settings/ExportSettings";
-
-const SNAP_MODE_OPTIONS: { value: SnapMode; label: string; description: string }[] = [
-  {
-    value: "magnetic",
-    label: "Magnetic snap",
-    description: "Slight pull toward optimal width — you can drag past it smoothly.",
-  },
-  {
-    value: "detent",
-    label: "Hard detent snap",
-    description: "Column locks at optimal width — drag further to break free.",
-  },
-];
+import LanguageSettings from "../components/features/Settings/LanguageSettings";
 
 const SettingsPage = () => {
+  const { t } = useTranslation();
   const dispatch = useAppDispatch();
   const { isFileOpen } = useAppSelector((state) => state.file);
   const snapMode = useAppSelector((state) => state.budget.snapMode);
@@ -28,6 +18,19 @@ const SettingsPage = () => {
   if (!isFileOpen) {
     return <Onboarding />;
   }
+
+  const SNAP_MODE_OPTIONS: { value: SnapMode; label: string; description: string }[] = [
+    {
+      value: "magnetic",
+      label: t("settings.magneticSnap"),
+      description: t("settings.magneticSnapDesc"),
+    },
+    {
+      value: "detent",
+      label: t("settings.detentSnap"),
+      description: t("settings.detentSnapDesc"),
+    },
+  ];
 
   const handleSnapModeChange = (mode: SnapMode) => {
     dispatch(setSnapMode(mode));
@@ -42,7 +45,10 @@ const SettingsPage = () => {
       <main className="flex-1 p-6">
         <div className="max-w-2xl mx-auto space-y-6">
           {/* Page Title */}
-          <h1 className="text-2xl font-semibold text-white">Settings</h1>
+          <h1 className="text-2xl font-semibold text-white">{t("settings.title")}</h1>
+
+          {/* Language Settings */}
+          <LanguageSettings />
 
           {/* Grid Settings Section */}
           <section
@@ -53,13 +59,13 @@ const SettingsPage = () => {
               id="grid-settings-heading"
               className="text-lg font-medium text-white mb-4"
             >
-              Grid
+              {t("settings.grid")}
             </h2>
 
             {/* Snap Mode Setting */}
             <fieldset>
               <legend className="text-sm font-medium text-slate-300 mb-3">
-                Column resize snap behavior
+                {t("settings.columnResizeSnap")}
               </legend>
               <div className="space-y-3">
                 {SNAP_MODE_OPTIONS.map((option) => {

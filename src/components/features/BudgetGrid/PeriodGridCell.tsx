@@ -1,6 +1,8 @@
+import { useTranslation } from "react-i18next";
 import type { GridColumnConfig, GridColumnId, ColumnWidths } from "./types";
 import { COLUMN_CONFIG, LAST_FROZEN_COL_INDEX, computeStickyLeft } from "./types";
 import type { GridCategoryRow } from "../../../services/fileService";
+import { formatCurrency } from "../../../utils/currency";
 
 interface PeriodGridCellProps {
   columnConfig: GridColumnConfig;
@@ -11,16 +13,6 @@ interface PeriodGridCellProps {
   onSelect: () => void;
   onDoubleClick?: () => void;
 }
-
-/** Format a number as currency using the row's default_currency. */
-const formatCurrency = (value: number, currencyCode: string): string => {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currencyCode,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-};
 
 /** Format the received date column (single date, range, or empty). */
 const formatReceivedDate = (
@@ -70,6 +62,7 @@ const PeriodGridCell = ({
   onSelect,
   onDoubleClick,
 }: PeriodGridCellProps) => {
+  const { t } = useTranslation();
   const value = getCellDisplayValue(row, columnConfig.id);
   const isRemaining = columnConfig.id === "remaining";
   const isRightAligned = columnConfig.align === "right";
@@ -119,7 +112,7 @@ const PeriodGridCell = ({
       className={`px-4 py-2.5 text-sm break-words border-b border-slate-700/50 cursor-pointer select-none outline-none ${separatorClass} ${
         isRightAligned ? "text-right" : "text-left"
       } ${colorClasses} ${stickyClasses} ${selectedClasses} ${openableClasses}`}
-      title={isOpenable ? `${value} (double-click to view)` : value}
+      title={isOpenable ? t("grid.doubleClickToView", { value }) : value}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       style={{

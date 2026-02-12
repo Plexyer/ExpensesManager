@@ -1,5 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
+// NON-NEGOTIABLE: Export always available — no license or mode checks permitted.
+// These functions must never be conditionally gated by app mode or license status.
+
 /**
  * Export all budget data (periods, categories, line items) as a CSV string.
  * Returns a multi-section CSV with headers for each data type.

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppSelector, useAppDispatch } from "../../../store/hooks";
 import {
   fetchPeriods,
@@ -8,6 +9,8 @@ import {
   setPeriodViewMode,
   loadColumnWidths,
   loadSnapMode,
+  clearPeriodsError,
+  clearSettingsError,
 } from "../../../store/slices/budgetSlice";
 import type { PeriodViewMode } from "../../../store/slices/budgetSlice";
 import PeriodList from "./PeriodList";
@@ -18,16 +21,19 @@ import PeriodGridEmpty from "./PeriodGridEmpty";
 import CreatePeriodModal from "./CreatePeriodModal";
 
 const PeriodGrid = () => {
+  const { t } = useTranslation();
   const dispatch = useAppDispatch();
   const {
     periods,
     periodsStatus,
+    periodsError,
     currentBudgetInstanceId,
     gridData,
     gridDataStatus,
     gridDataError,
     showPeriodSelector,
     periodViewMode,
+    settingsError,
   } = useAppSelector((state) => state.budget);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -79,6 +85,22 @@ const PeriodGrid = () => {
     dispatch(setShowPeriodSelector(true));
   };
 
+  /** Handle retry on periods load error. */
+  const handleRetryPeriods = () => {
+    dispatch(clearPeriodsError());
+    dispatch(fetchPeriods());
+  };
+
+  /** Handle dismiss on periods load error. */
+  const handleDismissPeriodsError = () => {
+    dispatch(clearPeriodsError());
+  };
+
+  /** Handle dismiss on settings persistence error. */
+  const handleDismissSettingsError = () => {
+    dispatch(clearSettingsError());
+  };
+
   /** Handle retry on grid data error. */
   const handleRetry = () => {
     if (currentBudgetInstanceId !== null) {
@@ -101,6 +123,54 @@ const PeriodGrid = () => {
   // Loading periods
   if (periodsStatus === "loading") {
     return <PeriodGridSkeleton />;
+  }
+
+  // Failed to load periods — show error UI with retry + dismiss
+  if (periodsStatus === "failed") {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="w-10 h-10 mb-4 rounded-full bg-red-500/10 flex items-center justify-center">
+          <svg
+            className="w-5 h-5 text-red-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+            />
+          </svg>
+        </div>
+        <p className="text-red-400 text-sm mb-1 font-medium">
+          {t("grid.failedToLoadPeriods")}
+        </p>
+        <p className="text-slate-400 text-xs mb-4 max-w-xs">
+          {periodsError ?? t("grid.failedToLoadPeriodsDesc")}
+        </p>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={handleDismissPeriodsError}
+            className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            aria-label={t("grid.dismissPeriodsError")}
+          >
+            {t("common.dismiss")}
+          </button>
+          <button
+            type="button"
+            onClick={handleRetryPeriods}
+            className="px-4 py-2 text-sm font-medium text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            aria-label={t("grid.retryLoadingPeriods")}
+          >
+            {t("common.retry")}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // No periods exist — show empty state
@@ -143,6 +213,26 @@ const PeriodGrid = () => {
   // ── Period Detail / Table View ──
   return (
     <div className="flex flex-col gap-4">
+      {/* Settings persistence error banner */}
+      {settingsError && (
+        <div
+          className="flex items-center justify-between gap-2 px-3 py-2 text-sm bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400"
+          role="alert"
+        >
+          <span>{settingsError}</span>
+          <button
+            type="button"
+            onClick={handleDismissSettingsError}
+            className="text-amber-400 hover:text-amber-300 transition-colors flex-shrink-0 p-0.5"
+            aria-label={t("grid.dismissSettingsError")}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       {/* Toolbar: back button + period info + save button */}
       <PeriodDetailToolbar
         period={currentPeriod}
@@ -155,15 +245,15 @@ const PeriodGrid = () => {
       {gridDataStatus === "failed" && (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <p className="text-red-400 text-sm mb-3">
-            {gridDataError ?? "Failed to load grid data."}
+            {gridDataError ?? t("grid.failedToLoadGridData")}
           </p>
           <button
             type="button"
             onClick={handleRetry}
             className="px-4 py-2 text-sm font-medium text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg transition-colors"
-            aria-label="Retry loading grid data"
+            aria-label={t("grid.retryLoadingGridData")}
           >
-            Retry
+            {t("common.retry")}
           </button>
         </div>
       )}

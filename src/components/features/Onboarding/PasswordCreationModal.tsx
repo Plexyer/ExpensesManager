@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import PasswordInput from "../../common/PasswordInput";
 import {
   getPasswordStrength,
   isStrengthAcceptable,
   type PasswordStrength,
 } from "../../../utils/passwordStrength";
+import { formatErrorMessage } from "../../../utils/formatErrorMessage";
 import {
   validatePassword,
   validatePasswordMatch,
@@ -38,6 +40,7 @@ const PasswordCreationModal = ({
   onSubmit,
   filePath,
 }: PasswordCreationModalProps) => {
+  const { t } = useTranslation();
   const [form, setForm] = useState<FormState>({
     password: "",
     confirmPassword: "",
@@ -102,7 +105,8 @@ const PasswordCreationModal = ({
     setShowDiscardConfirm(false);
   };
 
-  // Handle submit
+  // NON-NEGOTIABLE: Password creation must never check license or app mode.
+  // DB access never requires license — users must always be able to create files.
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -118,13 +122,7 @@ const PasswordCreationModal = ({
       // Clear password from memory after successful submit
       clearForm();
     } catch (error) {
-      // Tauri invoke errors can be strings or Error objects
-      const errorMessage = error instanceof Error 
-        ? error.message 
-        : typeof error === "string" 
-          ? error 
-          : "Failed to create file";
-      setSubmitError(errorMessage);
+      setSubmitError(formatErrorMessage(error, "Failed to create file"));
     } finally {
       setIsSubmitting(false);
     }
@@ -211,14 +209,14 @@ const PasswordCreationModal = ({
               id="password-modal-title"
               className="text-lg font-semibold text-white"
             >
-              Set Master Password
+              {t("password.setMasterPassword")}
             </h2>
           </div>
           <button
             type="button"
             onClick={handleClose}
             className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            aria-label="Close modal"
+            aria-label={t("password.closeModal")}
           >
             <svg
               className="w-5 h-5"
@@ -260,11 +258,10 @@ const PasswordCreationModal = ({
               </svg>
               <div>
                 <p className="text-sm font-medium text-amber-400">
-                  Important: This password cannot be recovered
+                  {t("password.unrecoverable")}
                 </p>
                 <p className="text-xs text-amber-400/70 mt-1">
-                  If you forget your password, your data will be permanently
-                  inaccessible. Please store it safely.
+                  {t("password.unrecoverableDetail")}
                 </p>
               </div>
             </div>
@@ -295,7 +292,7 @@ const PasswordCreationModal = ({
           <div>
             <PasswordInput
               id="master-password"
-              label="Master Password"
+              label={t("password.masterPassword")}
               value={form.password}
               onChange={(value) => {
                 setForm((prev) => ({ ...prev, password: value }));
@@ -308,7 +305,7 @@ const PasswordCreationModal = ({
                   ? passwordValidation.errors[0]
                   : undefined
               }
-              placeholder="Enter a strong password"
+              placeholder={t("password.enterStrongPassword")}
               autoFocus
               disabled={isSubmitting}
               aria-describedby="password-strength password-requirements"
@@ -338,7 +335,7 @@ const PasswordCreationModal = ({
                 <ul
                   id="password-requirements"
                   className="space-y-1"
-                  aria-label="Password requirements"
+                  aria-label={t("password.passwordRequirements")}
                 >
                   {requirements.map((req) => (
                     <li
@@ -386,7 +383,7 @@ const PasswordCreationModal = ({
                 {/* Strength Warning */}
                 {!isStrengthAcceptable(strength.score) && touched.password && (
                   <p className="text-xs text-red-400">
-                    Password is too weak. Please choose a stronger password.
+                    {t("password.passwordTooWeak")}
                   </p>
                 )}
               </div>
@@ -397,7 +394,7 @@ const PasswordCreationModal = ({
           <div>
             <PasswordInput
               id="confirm-password"
-              label="Confirm Password"
+              label={t("password.confirmPassword")}
               value={form.confirmPassword}
               onChange={(value) => {
                 setForm((prev) => ({ ...prev, confirmPassword: value }));
@@ -410,7 +407,7 @@ const PasswordCreationModal = ({
                   ? matchValidation.errors[0]
                   : undefined
               }
-              placeholder="Re-enter your password"
+              placeholder={t("password.reEnterPassword")}
               disabled={isSubmitting}
             />
 
@@ -431,7 +428,7 @@ const PasswordCreationModal = ({
                     d="M5 13l4 4L19 7"
                   />
                 </svg>
-                Passwords match
+                {t("password.passwordsMatch")}
               </p>
             )}
           </div>
@@ -442,8 +439,8 @@ const PasswordCreationModal = ({
               htmlFor="password-hint"
               className="block text-sm font-medium text-slate-300 mb-2"
             >
-              Password Hint{" "}
-              <span className="text-slate-500 font-normal">(optional)</span>
+              {t("password.passwordHint")}{" "}
+              <span className="text-slate-500 font-normal">({t("password.passwordHintOptional")})</span>
             </label>
             <input
               id="password-hint"
@@ -455,14 +452,13 @@ const PasswordCreationModal = ({
                   setTouched((prev) => ({ ...prev, hint: true }));
                 }
               }}
-              placeholder="e.g., Cat's name + birth year"
+              placeholder={t("password.hintPlaceholder")}
               maxLength={MAX_HINT_LENGTH}
               disabled={isSubmitting}
               className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900 focus:border-emerald-500/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <p className="mt-1.5 text-xs text-slate-500">
-              This hint will be shown when unlocking your file. Do not include
-              your password.
+              {t("password.hintDescription")}
             </p>
 
             {/* Hint Warnings */}
@@ -504,7 +500,7 @@ const PasswordCreationModal = ({
               disabled={isSubmitting}
               className="px-4 py-2.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
             <button
               type="submit"
@@ -533,10 +529,10 @@ const PasswordCreationModal = ({
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                     />
                   </svg>
-                  Creating...
+                  {t("password.creating")}
                 </>
               ) : (
-                "Create Finance File"
+                t("password.createFinanceFile")
               )}
             </button>
           </div>
@@ -547,11 +543,10 @@ const PasswordCreationModal = ({
           <div className="absolute inset-0 flex items-center justify-center bg-slate-900/95">
             <div className="max-w-sm mx-4 p-6 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl">
               <h3 className="text-lg font-semibold text-white mb-2">
-                Discard Password?
+                {t("password.discardPassword")}
               </h3>
               <p className="text-sm text-slate-400 mb-6">
-                You haven't finished setting your master password. Are you sure
-                you want to cancel?
+                {t("password.discardPasswordConfirm")}
               </p>
               <div className="flex items-center justify-end gap-3">
                 <button
@@ -559,14 +554,14 @@ const PasswordCreationModal = ({
                   onClick={handleCancelDiscard}
                   className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  Keep Editing
+                  {t("password.keepEditing")}
                 </button>
                 <button
                   type="button"
                   onClick={handleConfirmDiscard}
                   className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
                 >
-                  Discard
+                  {t("password.discard")}
                 </button>
               </div>
             </div>

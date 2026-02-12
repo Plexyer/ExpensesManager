@@ -1,6 +1,8 @@
 import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { save } from "@tauri-apps/plugin-dialog";
 import { exportCsvToFile } from "../../../services/exportService";
+import { formatErrorMessage } from "../../../utils/formatErrorMessage";
 
 type ExportState = "idle" | "exporting" | "success" | "error";
 
@@ -10,6 +12,7 @@ const CSV_FILTER = {
 };
 
 const ExportSettings = () => {
+  const { t } = useTranslation();
   const [exportState, setExportState] = useState<ExportState>("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
 
@@ -17,7 +20,7 @@ const ExportSettings = () => {
     try {
       // Open save dialog
       const path = await save({
-        title: "Export CSV",
+        title: t("export.exportCsv"),
         filters: [CSV_FILTER],
         defaultPath: "finance_export.csv",
       });
@@ -36,13 +39,11 @@ const ExportSettings = () => {
       setExportState("success");
       setTimeout(() => setExportState("idle"), 2500);
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : String(err);
-      setErrorMessage(message);
+      setErrorMessage(formatErrorMessage(err, "Failed to export CSV."));
       setExportState("error");
       setTimeout(() => setExportState("idle"), 4000);
     }
-  }, []);
+  }, [t]);
 
   const isExporting = exportState === "exporting";
 
@@ -55,21 +56,20 @@ const ExportSettings = () => {
         id="export-settings-heading"
         className="text-lg font-medium text-white mb-4"
       >
-        Export
+        {t("export.title")}
       </h2>
 
       <p className="text-sm text-slate-300 mb-4">
-        Export all your budget data (periods, categories, and transactions) as a
-        CSV file. The file can be opened in Excel, Google Sheets, or any
-        spreadsheet application.
+        {t("export.description")}
       </p>
 
-      {/* Export button */}
+      {/* NON-NEGOTIABLE: Export button must NEVER be disabled based on license or app mode.
+          The only valid disabled condition is isExporting (during active export). */}
       <button
         type="button"
         onClick={handleExportCsv}
         disabled={isExporting}
-        aria-label="Export budget data as CSV"
+        aria-label={t("export.exportCsvLabel")}
         className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
           isExporting
             ? "bg-slate-700 text-slate-400 cursor-not-allowed"
@@ -99,7 +99,7 @@ const ExportSettings = () => {
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               />
             </svg>
-            Exporting...
+            {t("export.exporting")}
           </>
         ) : (
           <>
@@ -118,7 +118,7 @@ const ExportSettings = () => {
                 d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
               />
             </svg>
-            Export CSV
+            {t("export.exportCsv")}
           </>
         )}
       </button>
@@ -144,7 +144,7 @@ const ExportSettings = () => {
               d="M4.5 12.75l6 6 9-13.5"
             />
           </svg>
-          CSV exported successfully.
+          {t("export.exportSuccess")}
         </div>
       )}
 
@@ -169,7 +169,7 @@ const ExportSettings = () => {
               d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
             />
           </svg>
-          <span>Export failed: {errorMessage || "Unknown error"}</span>
+          <span>{t("errors.exportFailed", { message: errorMessage || t("errors.unknownError") })}</span>
         </div>
       )}
     </section>

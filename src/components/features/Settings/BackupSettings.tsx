@@ -1,20 +1,24 @@
 import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppSelector } from "../../../store/hooks";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 type CopyState = "idle" | "copied" | "error";
-
-const BACKUP_STEPS = [
-  "Close the app (or ensure no writes are in progress).",
-  "Navigate to the file location shown below.",
-  "Copy the .db file to your backup destination (USB drive, cloud folder, etc.).",
-  "To restore, simply open the backed-up file with this app.",
-] as const;
+type RevealState = "idle" | "error";
 
 const BackupSettings = () => {
+  const { t } = useTranslation();
   const filePath = useAppSelector((state) => state.file.filePath);
   const fileName = useAppSelector((state) => state.file.fileName);
   const [copyState, setCopyState] = useState<CopyState>("idle");
+  const [revealState, setRevealState] = useState<RevealState>("idle");
+
+  const BACKUP_STEPS = [
+    t("backup.step1"),
+    t("backup.step2"),
+    t("backup.step3"),
+    t("backup.step4"),
+  ] as const;
 
   const handleCopyPath = useCallback(async () => {
     if (!filePath) return;
@@ -32,19 +36,22 @@ const BackupSettings = () => {
   const handleRevealInExplorer = useCallback(async () => {
     if (!filePath) return;
 
+    setRevealState("idle");
     try {
       await revealItemInDir(filePath);
     } catch (err) {
       console.error("Failed to reveal file in explorer:", err);
+      setRevealState("error");
+      setTimeout(() => setRevealState("idle"), 4000);
     }
   }, [filePath]);
 
   const copyButtonLabel =
     copyState === "copied"
-      ? "Copied!"
+      ? t("backup.copied")
       : copyState === "error"
-        ? "Copy failed"
-        : "Copy path";
+        ? t("backup.copyFailed")
+        : t("backup.copyPath");
 
   return (
     <section
@@ -55,14 +62,13 @@ const BackupSettings = () => {
         id="backup-settings-heading"
         className="text-lg font-medium text-white mb-4"
       >
-        Backup
+        {t("backup.title")}
       </h2>
 
       {/* Instructions */}
       <div className="mb-5">
         <p className="text-sm text-slate-300 mb-3">
-          Your finance data is stored in a single encrypted file. To back it up,
-          simply copy that file to a safe location.
+          {t("backup.description")}
         </p>
         <ol className="list-decimal list-inside space-y-1.5 text-sm text-slate-400">
           {BACKUP_STEPS.map((step, index) => (
@@ -74,7 +80,7 @@ const BackupSettings = () => {
       {/* File Location */}
       <div className="bg-slate-900/60 border border-slate-600/50 rounded-lg p-4">
         <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
-          Current file location
+          {t("backup.currentFileLocation")}
         </p>
 
         {filePath ? (
@@ -97,7 +103,7 @@ const BackupSettings = () => {
               <button
                 type="button"
                 onClick={handleCopyPath}
-                aria-label="Copy file path to clipboard"
+                aria-label={t("backup.copyPathLabel")}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
                   copyState === "copied"
                     ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
@@ -144,7 +150,7 @@ const BackupSettings = () => {
               <button
                 type="button"
                 onClick={handleRevealInExplorer}
-                aria-label="Show file in file explorer"
+                aria-label={t("backup.showInExplorerLabel")}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 text-white border border-slate-600 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 {/* Folder open icon */}
@@ -162,13 +168,20 @@ const BackupSettings = () => {
                     d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776"
                   />
                 </svg>
-                Show in Explorer
+                {t("backup.showInExplorer")}
               </button>
             </div>
+
+            {/* Reveal-in-explorer error */}
+            {revealState === "error" && (
+              <p className="mt-2 text-xs text-red-400" role="alert">
+                {t("backup.revealError")}
+              </p>
+            )}
           </>
         ) : (
           <p className="text-sm text-slate-500 italic">
-            No file currently open.
+            {t("backup.noFileOpen")}
           </p>
         )}
       </div>
@@ -190,8 +203,7 @@ const BackupSettings = () => {
           />
         </svg>
         <p>
-          The file is encrypted with your master password. Anyone with the file
-          still needs the password to open it.
+          {t("backup.tip")}
         </p>
       </div>
     </section>

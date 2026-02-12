@@ -257,6 +257,8 @@ fn open_sqlcipher_db(path: &Path, key_hex: &str) -> Result<Connection, Encrypted
 ///
 /// # Returns
 /// Information about the created file.
+// NON-NEGOTIABLE: DB access never requires license — no license or mode checks permitted.
+// Users must always be able to create a new database regardless of app mode or license status.
 #[tauri::command]
 pub fn create_encrypted_db(
     path: String,
@@ -337,6 +339,8 @@ fn create_encrypted_db_internal(
 ///
 /// # Returns
 /// Information about the opened file.
+// NON-NEGOTIABLE: DB access never requires license — no license or mode checks permitted.
+// Users must always be able to open and unlock their data regardless of app mode or license status.
 #[tauri::command]
 pub fn open_encrypted_db(
     path: String,
@@ -2244,6 +2248,8 @@ fn csv_row(fields: &[String]) -> String {
         .join(",")
 }
 
+// NON-NEGOTIABLE: Export always available — no license or mode checks permitted.
+// Users must always be able to export their data regardless of app mode or license status.
 #[tauri::command]
 pub fn export_to_csv(db_state: State<DbState>) -> Result<String, String> {
     export_to_csv_internal(&db_state).map_err(|e| e.to_string())
@@ -2251,6 +2257,7 @@ pub fn export_to_csv(db_state: State<DbState>) -> Result<String, String> {
 
 /// Generate CSV and write it to a file at the given path.
 /// Prepends a UTF-8 BOM so Excel on Windows opens the file correctly.
+// NON-NEGOTIABLE: Export always available — no license or mode checks permitted.
 #[tauri::command]
 pub fn export_csv_to_file(path: String, db_state: State<DbState>) -> Result<(), String> {
     export_csv_to_file_internal(&path, &db_state).map_err(|e| e.to_string())

@@ -17,19 +17,14 @@ import {
   removeCategoryFromTemplate as apiRemoveCategory,
   updateTemplateCategoryAmount as apiUpdateAmount,
 } from "../../services/templateService";
+import { formatErrorMessage } from "../../utils/formatErrorMessage";
 
 /**
  * Helper to extract error message from Tauri invoke errors.
- * Tauri returns errors as strings, not Error objects.
+ * Uses the shared formatErrorMessage utility for user-friendly output.
  */
 const getErrorMessage = (error: unknown, fallback: string): string => {
-  if (typeof error === "string") {
-    return error;
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return fallback;
+  return formatErrorMessage(error, fallback);
 };
 
 interface TemplateState {

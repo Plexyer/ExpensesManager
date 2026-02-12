@@ -1,4 +1,5 @@
 import { useState, useEffect, FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppSelector, useAppDispatch } from "../store/hooks";
 import {
   fetchTemplates,
@@ -22,6 +23,7 @@ import Onboarding from "../components/features/Onboarding/Onboarding";
  * Allows creating, editing, and deleting templates with cadence settings.
  */
 const TemplatesPage = () => {
+  const { t } = useTranslation();
   const dispatch = useAppDispatch();
   const { isFileOpen } = useAppSelector((state) => state.file);
   const { templates, selectedTemplate, templateCategories, isLoading, isCategoriesLoading, error: templateError } = useAppSelector(
@@ -123,7 +125,7 @@ const TemplatesPage = () => {
   // Handle template deletion
   const handleDeleteTemplate = async () => {
     if (!selectedTemplate) return;
-    if (!window.confirm(`Delete template "${selectedTemplate.name}"?`)) return;
+    if (!window.confirm(t("templates.confirmDelete", { name: selectedTemplate.name }))) return;
 
     try {
       await dispatch(deleteTemplate(selectedTemplate.template_id)).unwrap();
@@ -173,7 +175,7 @@ const TemplatesPage = () => {
 
   // Handle remove category from template
   const handleRemoveCategory = async (templateCategoryId: number) => {
-    if (!window.confirm("Remove this category from the template?")) return;
+    if (!window.confirm(t("templates.confirmRemoveCategory"))) return;
     try {
       await dispatch(removeCategoryFromTemplate(templateCategoryId)).unwrap();
     } catch {
@@ -230,7 +232,7 @@ const TemplatesPage = () => {
               <button
                 onClick={handleClearErrors}
                 className="text-red-400 hover:text-red-300"
-                aria-label="Dismiss error"
+                aria-label={t("common.dismiss")}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -244,7 +246,7 @@ const TemplatesPage = () => {
             <div className="w-80 flex-shrink-0">
               <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-white">Templates</h2>
+                  <h2 className="text-lg font-semibold text-white">{t("templates.title")}</h2>
                   <button
                     onClick={() => {
                       resetForm();
@@ -255,14 +257,14 @@ const TemplatesPage = () => {
                     type="button"
                     disabled={isLoading}
                   >
-                    New
+                    {t("templates.new")}
                   </button>
                 </div>
 
                 {/* Template list */}
-                <div className="space-y-1" role="listbox" aria-label="Budget templates">
+                <div className="space-y-1" role="listbox" aria-label={t("templates.budgetTemplates")}>
                   {templates.length === 0 && !isLoading && (
-                    <p className="text-slate-500 text-sm py-4 text-center">No templates yet</p>
+                    <p className="text-slate-500 text-sm py-4 text-center">{t("templates.noTemplatesYet")}</p>
                   )}
                   {templates.map((template) => (
                     <button
@@ -290,11 +292,11 @@ const TemplatesPage = () => {
               {/* Create form */}
               {isCreating && (
                 <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-                  <h2 className="text-lg font-semibold text-white mb-4">Create Template</h2>
+                  <h2 className="text-lg font-semibold text-white mb-4">{t("templates.createTemplate")}</h2>
                   <form onSubmit={handleCreateTemplate} className="space-y-4">
                     <div>
                       <label htmlFor="name" className="block text-sm font-medium text-slate-300 mb-1">
-                        Name *
+                        {t("templates.name")} *
                       </label>
                       <input
                         id="name"
@@ -302,28 +304,28 @@ const TemplatesPage = () => {
                         value={formName}
                         onChange={(e) => setFormName(e.target.value)}
                         className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        placeholder="e.g., Monthly Budget"
+                        placeholder={t("templates.namePlaceholder")}
                         required
                         autoFocus
                       />
                     </div>
                     <div>
                       <label htmlFor="description" className="block text-sm font-medium text-slate-300 mb-1">
-                        Description
+                        {t("templates.description")}
                       </label>
                       <textarea
                         id="description"
                         value={formDescription}
                         onChange={(e) => setFormDescription(e.target.value)}
                         className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        placeholder="Optional description"
+                        placeholder={t("templates.descriptionPlaceholder")}
                         rows={2}
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label htmlFor="cadence" className="block text-sm font-medium text-slate-300 mb-1">
-                          Cadence *
+                          {t("templates.cadence")} *
                         </label>
                         <select
                           id="cadence"
@@ -340,7 +342,7 @@ const TemplatesPage = () => {
                       </div>
                       <div>
                         <label htmlFor="currency" className="block text-sm font-medium text-slate-300 mb-1">
-                          Currency *
+                          {t("templates.currency")} *
                         </label>
                         <select
                           id="currency"
@@ -362,14 +364,14 @@ const TemplatesPage = () => {
                         className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         disabled={isLoading}
                       >
-                        {isLoading ? "Creating..." : "Create Template"}
+                        {isLoading ? t("templates.creating") : t("templates.createTemplate")}
                       </button>
                       <button
                         type="button"
                         onClick={resetForm}
                         className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       >
-                        Cancel
+                        {t("common.cancel")}
                       </button>
                     </div>
                   </form>
@@ -383,11 +385,11 @@ const TemplatesPage = () => {
                   <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
                     {isEditing ? (
                       <>
-                        <h2 className="text-lg font-semibold text-white mb-4">Edit Template</h2>
+                        <h2 className="text-lg font-semibold text-white mb-4">{t("templates.editTemplate")}</h2>
                         <form onSubmit={handleUpdateTemplate} className="space-y-4">
                           <div>
                             <label htmlFor="edit-name" className="block text-sm font-medium text-slate-300 mb-1">
-                              Name *
+                              {t("templates.name")} *
                             </label>
                             <input
                               id="edit-name"
@@ -400,7 +402,7 @@ const TemplatesPage = () => {
                           </div>
                           <div>
                             <label htmlFor="edit-description" className="block text-sm font-medium text-slate-300 mb-1">
-                              Description
+                              {t("templates.description")}
                             </label>
                             <textarea
                               id="edit-description"
@@ -413,7 +415,7 @@ const TemplatesPage = () => {
                           <div className="grid grid-cols-2 gap-4">
                             <div>
                               <label htmlFor="edit-cadence" className="block text-sm font-medium text-slate-300 mb-1">
-                                Cadence *
+                                {t("templates.cadence")} *
                               </label>
                               <select
                                 id="edit-cadence"
@@ -430,7 +432,7 @@ const TemplatesPage = () => {
                             </div>
                             <div>
                               <label htmlFor="edit-currency" className="block text-sm font-medium text-slate-300 mb-1">
-                                Currency *
+                                {t("templates.currency")} *
                               </label>
                               <select
                                 id="edit-currency"
@@ -452,14 +454,14 @@ const TemplatesPage = () => {
                               className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
                               disabled={isLoading}
                             >
-                              {isLoading ? "Saving..." : "Save Changes"}
+                              {isLoading ? t("templates.saving") : t("templates.saveChanges")}
                             </button>
                             <button
                               type="button"
                               onClick={() => setIsEditing(false)}
                               className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
                             >
-                              Cancel
+                              {t("common.cancel")}
                             </button>
                           </div>
                         </form>
@@ -479,24 +481,24 @@ const TemplatesPage = () => {
                               className="px-3 py-1.5 text-sm text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
                               type="button"
                             >
-                              Edit
+                              {t("templates.edit")}
                             </button>
                             <button
                               onClick={handleDeleteTemplate}
                               className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
                               type="button"
                             >
-                              Delete
+                              {t("templates.delete")}
                             </button>
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
-                            <span className="text-slate-500">Cadence:</span>
+                            <span className="text-slate-500">{t("templates.cadence")}:</span>
                             <span className="ml-2 text-white capitalize">{selectedTemplate.cadence}</span>
                           </div>
                           <div>
-                            <span className="text-slate-500">Currency:</span>
+                            <span className="text-slate-500">{t("templates.currency")}:</span>
                             <span className="ml-2 text-white">{selectedTemplate.default_currency}</span>
                           </div>
                         </div>
@@ -508,13 +510,13 @@ const TemplatesPage = () => {
                   {!isEditing && (
                     <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
                       <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-white">Categories</h3>
+                        <h3 className="text-lg font-semibold text-white">{t("templates.categories")}</h3>
                         <button
                           onClick={() => setShowAddCategory(true)}
                           className="px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
                           type="button"
                         >
-                          Add Category
+                          {t("templates.addCategory")}
                         </button>
                       </div>
 
@@ -525,7 +527,7 @@ const TemplatesPage = () => {
                             <div className="flex gap-3">
                               <div className="flex-1">
                                 <label htmlFor="category-select" className="sr-only">
-                                  Select category
+                                  {t("templates.selectCategory")}
                                 </label>
                                 <select
                                   id="category-select"
@@ -535,7 +537,7 @@ const TemplatesPage = () => {
                                   }
                                   className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                                 >
-                                  <option value="">Select a category...</option>
+                                  <option value="">{t("templates.selectCategory")}...</option>
                                   {availableCategories.map((cat) => (
                                     <option key={cat.global_category_id} value={cat.global_category_id}>
                                       {cat.name}
@@ -545,7 +547,7 @@ const TemplatesPage = () => {
                               </div>
                               <div className="w-32">
                                 <label htmlFor="category-amount" className="sr-only">
-                                  Default amount
+                                  {t("templates.defaultAmount")}
                                 </label>
                                 <input
                                   id="category-amount"
@@ -555,7 +557,7 @@ const TemplatesPage = () => {
                                   value={categoryAmount}
                                   onChange={(e) => setCategoryAmount(e.target.value)}
                                   className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                  placeholder="Amount"
+                                  placeholder={t("ledger.amount")}
                                 />
                               </div>
                             </div>
@@ -567,7 +569,7 @@ const TemplatesPage = () => {
                                 onClick={() => setShowNewCategory(true)}
                                 className="text-sm text-emerald-400 hover:text-emerald-300"
                               >
-                                + Create new category
+                                {t("templates.createNewCategory")}
                               </button>
                             ) : (
                               <div className="p-3 bg-slate-600/50 border border-slate-500 rounded-lg space-y-2">
@@ -576,14 +578,14 @@ const TemplatesPage = () => {
                                   value={newCategoryName}
                                   onChange={(e) => setNewCategoryName(e.target.value)}
                                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
-                                  placeholder="Category name"
+                                  placeholder={t("templates.categoryName")}
                                 />
                                 <input
                                   type="text"
                                   value={newCategoryDescription}
                                   onChange={(e) => setNewCategoryDescription(e.target.value)}
                                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
-                                  placeholder="Description (optional)"
+                                  placeholder={t("templates.descriptionOptional")}
                                 />
                                 <div className="flex gap-2">
                                   <button
@@ -592,7 +594,7 @@ const TemplatesPage = () => {
                                     className="px-3 py-1.5 text-sm bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors"
                                     disabled={!newCategoryName.trim()}
                                   >
-                                    Create
+                                    {t("templates.create")}
                                   </button>
                                   <button
                                     type="button"
@@ -603,7 +605,7 @@ const TemplatesPage = () => {
                                     }}
                                     className="px-3 py-1.5 text-sm text-slate-300 hover:text-white"
                                   >
-                                    Cancel
+                                    {t("common.cancel")}
                                   </button>
                                 </div>
                               </div>
@@ -615,7 +617,7 @@ const TemplatesPage = () => {
                                 className="px-3 py-1.5 text-sm bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
                                 disabled={selectedCategoryId === "" || !categoryAmount}
                               >
-                                Add to Template
+                                {t("templates.addToTemplate")}
                               </button>
                               <button
                                 type="button"
@@ -627,7 +629,7 @@ const TemplatesPage = () => {
                                 }}
                                 className="px-3 py-1.5 text-sm text-slate-300 hover:text-white"
                               >
-                                Cancel
+                                {t("common.cancel")}
                               </button>
                             </div>
                           </form>
@@ -638,7 +640,7 @@ const TemplatesPage = () => {
                       <div className={`relative transition-opacity duration-150 ${isCategoriesLoading ? "opacity-50 pointer-events-none" : ""}`}>
                         {templateCategories.length === 0 ? (
                           <p className="text-slate-500 text-sm text-center py-4">
-                            No categories added yet. Add categories to set default budget amounts.
+                            {t("templates.noCategoriesYet")}
                           </p>
                         ) : (
                           <div className="space-y-2">
@@ -658,7 +660,7 @@ const TemplatesPage = () => {
                                     onClick={() => handleRemoveCategory(tc.template_category_id)}
                                     className="text-slate-400 hover:text-red-400 transition-colors"
                                     type="button"
-                                    aria-label={`Remove ${tc.category_name} from template`}
+                                    aria-label={t("templates.removeCategoryFromTemplate", { name: tc.category_name })}
                                   >
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path
@@ -705,9 +707,9 @@ const TemplatesPage = () => {
                       />
                     </svg>
                   </div>
-                  <h2 className="text-xl font-semibold text-white mb-2">Budget Templates</h2>
+                  <h2 className="text-xl font-semibold text-white mb-2">{t("templates.budgetTemplates")}</h2>
                   <p className="text-slate-400 mb-4">
-                    Create templates to define default categories and amounts for your budget periods.
+                    {t("templates.emptyDescription")}
                   </p>
                   <button
                     onClick={() => {
@@ -717,7 +719,7 @@ const TemplatesPage = () => {
                     className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     type="button"
                   >
-                    Create Your First Template
+                    {t("templates.createFirstTemplate")}
                   </button>
                 </div>
               )}

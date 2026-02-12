@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { selectNewFilePath, selectExistingFilePath, getDbInfo } from "../../services/fileService";
+import { formatErrorMessage } from "../../utils/formatErrorMessage";
 
 export type OnboardingStep = "select" | "create-password" | "unlock-password" | "complete";
 
@@ -34,7 +35,7 @@ export const createNewFile = createAsyncThunk(
       }
       return result;
     } catch (error) {
-      return rejectWithValue(error instanceof Error ? error.message : "Failed to create file");
+      return rejectWithValue(formatErrorMessage(error, "Failed to create file"));
     }
   }
 );
@@ -65,7 +66,7 @@ export const openExistingFile = createAsyncThunk(
         passwordHint: fileInfo.password_hint,
       } as OpenFileResult;
     } catch (error) {
-      return rejectWithValue(error instanceof Error ? error.message : "Failed to open file");
+      return rejectWithValue(formatErrorMessage(error, "Failed to open file"));
     }
   }
 );

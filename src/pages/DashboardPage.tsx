@@ -1,8 +1,10 @@
+import { useTranslation } from "react-i18next";
 import { useAppSelector } from "../store/hooks";
 import AppHeader from "../components/common/AppHeader";
 import Onboarding from "../components/features/Onboarding/Onboarding";
 
 const DashboardPage = () => {
+  const { t } = useTranslation();
   const { isFileOpen } = useAppSelector((state) => state.file);
 
   // Show onboarding if no file is open
@@ -34,9 +36,9 @@ const DashboardPage = () => {
                 />
               </svg>
             </div>
-            <h2 className="text-xl font-semibold text-white mb-2">Dashboard</h2>
+            <h2 className="text-xl font-semibold text-white mb-2">{t("dashboard.title")}</h2>
             <p className="text-slate-400">
-              Dashboard placeholder. Financial summaries, spending trends, and budget overviews will be added here in a future update.
+              {t("dashboard.placeholder")}
             </p>
           </div>
         </div>

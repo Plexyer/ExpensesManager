@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 interface PeriodGridEmptyProps {
   /** Whether the file has no periods at all, vs. the selected period has no categories. */
@@ -8,6 +9,7 @@ interface PeriodGridEmptyProps {
 }
 
 const PeriodGridEmpty = ({ variant, onCreatePeriod }: PeriodGridEmptyProps) => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   if (variant === "no-categories") {
@@ -30,18 +32,18 @@ const PeriodGridEmpty = ({ variant, onCreatePeriod }: PeriodGridEmptyProps) => {
           </svg>
         </div>
         <h3 className="text-lg font-medium text-white mb-2">
-          No categories in this period
+          {t("periods.noCategoriesTitle")}
         </h3>
         <p className="text-slate-400 text-sm max-w-sm mb-4">
-          This period has no budget categories. Was the template empty?
+          {t("periods.noCategoriesDesc")}
         </p>
         <button
           type="button"
           onClick={() => navigate("/templates")}
           className="px-4 py-2 text-sm font-medium text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg transition-colors"
-          aria-label="Go to templates page"
+          aria-label={t("periods.goToTemplatesLabel")}
         >
-          Manage Templates
+          {t("periods.manageTemplates")}
         </button>
       </div>
     );
@@ -66,11 +68,10 @@ const PeriodGridEmpty = ({ variant, onCreatePeriod }: PeriodGridEmptyProps) => {
         </svg>
       </div>
       <h3 className="text-lg font-medium text-white mb-2">
-        No budget periods yet
+        {t("periods.noPeriodsTitle")}
       </h3>
       <p className="text-slate-400 text-sm max-w-sm mb-4">
-        Create your first budget period from a template to start tracking your
-        finances.
+        {t("periods.noPeriodsDesc")}
       </p>
 
       {/* Create Period button */}
@@ -78,7 +79,7 @@ const PeriodGridEmpty = ({ variant, onCreatePeriod }: PeriodGridEmptyProps) => {
         type="button"
         onClick={onCreatePeriod}
         className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-4"
-        aria-label="Create your first budget period"
+        aria-label={t("periods.createFirstPeriodLabel")}
       >
         <svg
           className="w-4 h-4"
@@ -94,18 +95,18 @@ const PeriodGridEmpty = ({ variant, onCreatePeriod }: PeriodGridEmptyProps) => {
             d="M12 4v16m8-8H4"
           />
         </svg>
-        Create First Period
+        {t("periods.createFirstPeriod")}
       </button>
 
       <p className="text-xs text-slate-500">
-        Need a template first?{" "}
+        {t("periods.needTemplate")}{" "}
         <button
           type="button"
           onClick={() => navigate("/templates")}
           className="text-blue-400 hover:text-blue-300 underline underline-offset-2"
-          aria-label="Go to templates page"
+          aria-label={t("periods.goToTemplatesLabel")}
         >
-          Go to Templates
+          {t("periods.goToTemplates")}
         </button>
       </p>
     </div>

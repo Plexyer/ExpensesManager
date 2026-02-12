@@ -1,13 +1,16 @@
+import { useTranslation } from "react-i18next";
 import { COLUMN_CONFIG } from "./types";
 
 const SKELETON_ROW_COUNT = 6;
 
 const PeriodGridSkeleton = () => {
+  const { t } = useTranslation();
+
   return (
     <div className="overflow-hidden rounded-lg border border-slate-700">
       <table
         role="grid"
-        aria-label="Loading budget categories"
+        aria-label={t("grid.loadingBudgetCategories")}
         aria-busy="true"
         className="w-full border-collapse"
       >

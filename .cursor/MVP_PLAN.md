@@ -621,7 +621,7 @@ See `.cursor/LICENSING_MVP_IMPACTS.md` for complete details.
 
 ---
 
-### Step 8.2: Internationalization (i18n)
+### Step 8.2: Internationalization (i18n) ✅ DONE
 **Goal**: Support English and German  
 **Scope**:
 - Set up i18n library (react-i18next)
@@ -632,6 +632,17 @@ See `.cursor/LICENSING_MVP_IMPACTS.md` for complete details.
 - ✅ UI supports English and German
 - ✅ User can switch language
 - ✅ Currency formatted correctly
+
+**Implementation Notes (completed)**:
+- Installed `react-i18next` and `i18next` npm dependencies.
+- Created `src/i18n/` with `index.ts` (config + localStorage persistence), `en.json` (~300 keys), `de.json` (~300 keys).
+- Created `src/utils/currency.ts` (locale-aware `formatCurrency` via `Intl.NumberFormat`).
+- Created `src/utils/dateFormat.ts` (locale-aware `formatDate`/`formatTime` via `Intl.DateTimeFormat`).
+- Created `src/components/features/Settings/LanguageSettings.tsx` for language selection.
+- Translated all 20+ component files across Onboarding, BudgetGrid, Settings, Templates, and common components.
+- Replaced local formatting utilities in `CategoryLedgerModal` and `PeriodGridCell` with shared utilities.
+- Language persisted to `localStorage` (pre-DB-open), de-CH locale for German, en-US for English.
+- TypeScript compiles with zero errors.
 
 **Likely Files**:
 - `src/i18n/` (new folder)

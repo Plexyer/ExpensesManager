@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import {
   createNewFile,
@@ -16,6 +17,7 @@ import {
 } from "../../../services/fileService";
 
 const Onboarding = () => {
+  const { t } = useTranslation();
   const dispatch = useAppDispatch();
   const { isLoading, error, onboardingStep, filePath, passwordHint } = useAppSelector(
     (state) => state.file
@@ -92,9 +94,9 @@ const Onboarding = () => {
               />
             </svg>
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">ExpensesManager</h1>
+          <h1 className="text-3xl font-bold text-white mb-2">{t("onboarding.appTitle")}</h1>
           <p className="text-slate-400">
-            Your local-first, encrypted budgeting app
+            {t("onboarding.appSubtitle")}
           </p>
         </div>
 
@@ -124,7 +126,7 @@ const Onboarding = () => {
             <button
               onClick={handleClearError}
               className="text-red-400 hover:text-red-300 transition-colors"
-              aria-label="Dismiss error"
+              aria-label={t("common.dismissError")}
               type="button"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -136,13 +138,15 @@ const Onboarding = () => {
 
         {/* Action Cards */}
         <div className="space-y-4">
+          {/* NON-NEGOTIABLE: Create/Open buttons must NEVER be disabled based on license or app mode.
+              The only valid disabled condition is isLoading. DB access never requires license. */}
           {/* Create New File */}
           <button
             onClick={handleCreateNew}
             disabled={isLoading}
             className="w-full p-6 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-emerald-500/50 rounded-xl transition-all duration-200 text-left group disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900"
             type="button"
-            aria-label="Create a new finance file"
+            aria-label={t("onboarding.createNewFileLabel")}
           >
             <div className="flex items-start gap-4">
               <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-emerald-500/10 group-hover:bg-emerald-500/20 flex items-center justify-center transition-colors">
@@ -158,9 +162,9 @@ const Onboarding = () => {
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <h2 className="text-lg font-semibold text-white mb-1">Create New Finance File</h2>
+                <h2 className="text-lg font-semibold text-white mb-1">{t("onboarding.createNewFile")}</h2>
                 <p className="text-sm text-slate-400">
-                  Start fresh with a new encrypted database for your budgets
+                  {t("onboarding.createNewFileDesc")}
                 </p>
               </div>
               <svg
@@ -180,7 +184,7 @@ const Onboarding = () => {
             disabled={isLoading}
             className="w-full p-6 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-sky-500/50 rounded-xl transition-all duration-200 text-left group disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-slate-900"
             type="button"
-            aria-label="Open an existing finance file"
+            aria-label={t("onboarding.openFinanceFileLabel")}
           >
             <div className="flex items-start gap-4">
               <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-sky-500/10 group-hover:bg-sky-500/20 flex items-center justify-center transition-colors">
@@ -201,9 +205,9 @@ const Onboarding = () => {
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <h2 className="text-lg font-semibold text-white mb-1">Open Finance File</h2>
+                <h2 className="text-lg font-semibold text-white mb-1">{t("onboarding.openFinanceFile")}</h2>
                 <p className="text-sm text-slate-400">
-                  Open an existing .financedb file from your computer
+                  {t("onboarding.openFinanceFileDesc")}
                 </p>
               </div>
               <svg
@@ -221,9 +225,9 @@ const Onboarding = () => {
         {/* Footer Info */}
         <div className="mt-8 text-center">
           <p className="text-xs text-slate-500">
-            Your data is stored locally and encrypted with your master password.
+            {t("onboarding.footerLine1")}
             <br />
-            No cloud. No tracking. You own your data.
+            {t("onboarding.footerLine2")}
           </p>
         </div>
       </div>

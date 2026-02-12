@@ -1,5 +1,7 @@
 import { useState, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { saveDb } from "../../../services/fileService";
+import { formatErrorMessage } from "../../../utils/formatErrorMessage";
 import type { PeriodBudgetInstance } from "../../../types/period.types";
 
 interface PeriodDetailToolbarProps {
@@ -23,6 +25,7 @@ const PeriodDetailToolbar = ({
   period,
   onBackToSelection,
 }: PeriodDetailToolbarProps) => {
+  const { t } = useTranslation();
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -48,13 +51,7 @@ const PeriodDetailToolbar = ({
         timerRef.current = null;
       }, 2000);
     } catch (error) {
-      const message =
-        typeof error === "string"
-          ? error
-          : error instanceof Error
-            ? error.message
-            : "Failed to save.";
-      setSaveError(message);
+      setSaveError(formatErrorMessage(error, "Failed to save."));
       setSaveStatus("error");
       // Auto-dismiss error after 4 seconds
       timerRef.current = setTimeout(() => {
@@ -65,7 +62,7 @@ const PeriodDetailToolbar = ({
     }
   }, [saveStatus]);
 
-  const name = period?.template_name ?? "Budget Period";
+  const name = period?.template_name ?? t("periods.budgetPeriod");
 
   /** Render the save button with current status. */
   const renderSaveButton = () => {
@@ -76,7 +73,7 @@ const PeriodDetailToolbar = ({
             type="button"
             disabled
             className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-slate-400 bg-slate-700/50 rounded-lg cursor-not-allowed"
-            aria-label="Saving period data"
+            aria-label={t("grid.savingLabel")}
             aria-busy="true"
           >
             <svg
@@ -99,7 +96,7 @@ const PeriodDetailToolbar = ({
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               />
             </svg>
-            Saving...
+            {t("grid.saving")}
           </button>
         );
 
@@ -108,7 +105,7 @@ const PeriodDetailToolbar = ({
           <span
             className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-emerald-400"
             role="status"
-            aria-label="Period saved successfully"
+            aria-label={t("grid.savedLabel")}
           >
             <svg
               className="w-4 h-4"
@@ -124,7 +121,7 @@ const PeriodDetailToolbar = ({
                 d="M5 13l4 4L19 7"
               />
             </svg>
-            Saved!
+            {t("grid.saved")}
           </span>
         );
 
@@ -148,7 +145,7 @@ const PeriodDetailToolbar = ({
                 d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            {saveError ?? "Save failed"}
+            {saveError ?? t("grid.saveFailed")}
           </span>
         );
 
@@ -158,7 +155,7 @@ const PeriodDetailToolbar = ({
             type="button"
             onClick={handleSave}
             className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            aria-label="Save period data to database"
+            aria-label={t("grid.savePeriodLabel")}
           >
             <svg
               className="w-4 h-4"
@@ -174,7 +171,7 @@ const PeriodDetailToolbar = ({
                 d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
               />
             </svg>
-            Save Period
+            {t("grid.savePeriod")}
           </button>
         );
     }
@@ -187,7 +184,7 @@ const PeriodDetailToolbar = ({
         type="button"
         onClick={onBackToSelection}
         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
-        aria-label="Go back to period selection"
+        aria-label={t("periods.backToSelection")}
       >
         <svg
           className="w-4 h-4"
@@ -203,7 +200,7 @@ const PeriodDetailToolbar = ({
             d="M15 19l-7-7 7-7"
           />
         </svg>
-        All Periods
+        {t("periods.allPeriods")}
       </button>
 
       {/* Center: Period info */}

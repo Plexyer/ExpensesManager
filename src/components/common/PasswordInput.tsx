@@ -1,4 +1,5 @@
 import { useState, useId } from "react";
+import { useTranslation } from "react-i18next";
 
 interface PasswordInputProps {
   id?: string;
@@ -23,6 +24,7 @@ const PasswordInput = ({
   disabled = false,
   "aria-describedby": ariaDescribedBy,
 }: PasswordInputProps) => {
+  const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
   const generatedId = useId();
   const inputId = providedId || generatedId;
@@ -76,7 +78,7 @@ const PasswordInput = ({
           type="button"
           onClick={handleToggleVisibility}
           disabled={disabled}
-          aria-label={showPassword ? "Hide password" : "Show password"}
+          aria-label={showPassword ? t("password.hidePassword") : t("password.showPassword")}
           aria-pressed={showPassword}
           className="
             absolute right-3 top-1/2 -translate-y-1/2

@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAppSelector, useAppDispatch } from "../../store/hooks";
 import { closeFile } from "../../store/slices/fileSlice";
 import { resetCategories } from "../../store/slices/categorySlice";
@@ -34,9 +36,11 @@ const NavLink = ({ to, label, isActive }: NavLinkProps) => {
  * Only visible when a file is open.
  */
 const AppHeader = () => {
+  const { t } = useTranslation();
   const { isFileOpen, fileName, filePath } = useAppSelector((state) => state.file);
   const location = useLocation();
   const dispatch = useAppDispatch();
+  const [closeError, setCloseError] = useState<string | null>(null);
 
   // Don't render if no file is open
   if (!isFileOpen) {
@@ -44,27 +48,53 @@ const AppHeader = () => {
   }
 
   const handleCloseFile = async () => {
+    setCloseError(null);
     try {
       await closeDb();
     } catch (error) {
-      console.error("Error closing database:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error closing database:", message);
+      setCloseError(t("errors.failedToCloseDb"));
     }
-    // Reset all related state
+    // Reset all related state regardless — the file handle is released
     dispatch(closeFile());
     dispatch(resetCategories());
     dispatch(resetTemplates());
     dispatch(clearBudgetState());
   };
 
+  const handleDismissCloseError = () => {
+    setCloseError(null);
+  };
+
   const navItems = [
-    { to: "/", label: "Dashboard" },
-    { to: "/periods", label: "Periods" },
-    { to: "/templates", label: "Templates" },
-    { to: "/settings", label: "Settings" },
+    { to: "/", label: t("nav.dashboard") },
+    { to: "/periods", label: t("nav.periods") },
+    { to: "/templates", label: t("nav.templates") },
+    { to: "/settings", label: t("nav.settings") },
   ];
 
   return (
     <header className="bg-slate-800 border-b border-slate-700 px-6 py-3">
+      {/* Close-file error banner */}
+      {closeError && (
+        <div
+          className="flex items-center justify-between gap-2 mb-2 px-3 py-2 text-sm bg-red-500/10 border border-red-500/30 rounded-lg text-red-400"
+          role="alert"
+        >
+          <span>{closeError}</span>
+          <button
+            type="button"
+            onClick={handleDismissCloseError}
+            className="text-red-400 hover:text-red-300 transition-colors flex-shrink-0 p-0.5"
+            aria-label={t("common.dismissError")}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         {/* Left side: Logo + File info */}
         <div className="flex items-center gap-4">
@@ -97,7 +127,7 @@ const AppHeader = () => {
           </div>
 
           {/* Navigation */}
-          <nav className="flex items-center gap-1 ml-4" aria-label="Main navigation">
+          <nav className="flex items-center gap-1 ml-4" aria-label={t("nav.mainNavigation")}>
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
@@ -114,9 +144,9 @@ const AppHeader = () => {
           onClick={handleCloseFile}
           className="px-3 py-1.5 text-sm text-slate-400 hover:text-white hover:bg-slate-700 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
           type="button"
-          aria-label="Close current file and return to file selection"
+          aria-label={t("nav.closeFileDesc")}
         >
-          Close File
+          {t("nav.closeFile")}
         </button>
       </div>
     </header>

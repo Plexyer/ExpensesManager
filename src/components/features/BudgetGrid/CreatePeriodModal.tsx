@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { createPeriod } from "../../../store/slices/budgetSlice";
 import { fetchTemplates } from "../../../store/slices/templateSlice";
@@ -19,6 +20,7 @@ const getTodayString = (): string => {
 };
 
 const CreatePeriodModal = ({ isOpen, onClose }: CreatePeriodModalProps) => {
+  const { t } = useTranslation();
   const dispatch = useAppDispatch();
   const { templates } = useAppSelector((state) => state.templates);
   const { isCreatingPeriod, periodsError } = useAppSelector(
@@ -66,15 +68,15 @@ const CreatePeriodModal = ({ isOpen, onClose }: CreatePeriodModalProps) => {
     setLocalError(null);
 
     if (selectedTemplateId === "") {
-      setLocalError("Please select a template.");
+      setLocalError(t("periods.selectTemplateRequired"));
       return;
     }
     if (!startDate) {
-      setLocalError("Please select a start date.");
+      setLocalError(t("periods.selectStartDate"));
       return;
     }
     if (isCustomCadence && !endDate) {
-      setLocalError("End date is required for custom cadence periods.");
+      setLocalError(t("periods.endDateRequired"));
       return;
     }
 
@@ -89,7 +91,7 @@ const CreatePeriodModal = ({ isOpen, onClose }: CreatePeriodModalProps) => {
       onClose(true);
     } catch {
       // Error is handled by periodsError in Redux; also show locally
-      setLocalError(periodsError ?? "Failed to create period.");
+      setLocalError(periodsError ?? t("periods.failedToCreatePeriod"));
     }
   };
 
@@ -114,11 +116,11 @@ const CreatePeriodModal = ({ isOpen, onClose }: CreatePeriodModalProps) => {
       onClose={handleDialogClose}
       onClick={handleBackdropClick}
       className="backdrop:bg-black/60 bg-transparent p-0 m-auto"
-      aria-label="Create budget period"
+      aria-label={t("periods.createBudgetPeriod")}
     >
       <div className="bg-slate-800 border border-slate-600 rounded-xl shadow-2xl w-full max-w-md p-6">
         <h2 className="text-lg font-semibold text-white mb-4">
-          Create Budget Period
+          {t("periods.createBudgetPeriod")}
         </h2>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -128,7 +130,7 @@ const CreatePeriodModal = ({ isOpen, onClose }: CreatePeriodModalProps) => {
               htmlFor="create-period-template"
               className="text-sm font-medium text-slate-300"
             >
-              Template *
+              {t("periods.template")} *
             </label>
             <select
               id="create-period-template"
@@ -140,9 +142,9 @@ const CreatePeriodModal = ({ isOpen, onClose }: CreatePeriodModalProps) => {
               }
               className="px-3 py-2 text-sm bg-slate-700 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
               required
-              aria-label="Select a template for the period"
+              aria-label={t("periods.selectTemplateForPeriod")}
             >
-              <option value="">Select a template...</option>
+              <option value="">{t("periods.selectTemplate")}</option>
               {templates.map((template) => (
                 <option key={template.template_id} value={template.template_id}>
                   {template.name} ({template.cadence}, {template.default_currency})
@@ -151,7 +153,7 @@ const CreatePeriodModal = ({ isOpen, onClose }: CreatePeriodModalProps) => {
             </select>
             {templates.length === 0 && (
               <p className="text-xs text-amber-400">
-                No templates found. Create a template first.
+                {t("periods.noTemplatesFound")}
               </p>
             )}
           </div>
@@ -162,7 +164,7 @@ const CreatePeriodModal = ({ isOpen, onClose }: CreatePeriodModalProps) => {
               htmlFor="create-period-start"
               className="text-sm font-medium text-slate-300"
             >
-              Start Date *
+              {t("periods.startDate")} *
             </label>
             <input
               id="create-period-start"
@@ -171,7 +173,7 @@ const CreatePeriodModal = ({ isOpen, onClose }: CreatePeriodModalProps) => {
               onChange={(e) => setStartDate(e.target.value)}
               className="px-3 py-2 text-sm bg-slate-700 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
               required
-              aria-label="Period start date"
+              aria-label={t("periods.periodStartDate")}
             />
           </div>
 
@@ -182,7 +184,7 @@ const CreatePeriodModal = ({ isOpen, onClose }: CreatePeriodModalProps) => {
                 htmlFor="create-period-end"
                 className="text-sm font-medium text-slate-300"
               >
-                End Date *
+                {t("periods.endDate")} *
               </label>
               <input
                 id="create-period-end"
@@ -192,7 +194,7 @@ const CreatePeriodModal = ({ isOpen, onClose }: CreatePeriodModalProps) => {
                 min={startDate}
                 className="px-3 py-2 text-sm bg-slate-700 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                 required
-                aria-label="Period end date"
+                aria-label={t("periods.periodEndDate")}
               />
             </div>
           )}
@@ -201,19 +203,19 @@ const CreatePeriodModal = ({ isOpen, onClose }: CreatePeriodModalProps) => {
           {selectedTemplate && (
             <div className="bg-slate-700/50 border border-slate-600/50 rounded-lg p-3">
               <p className="text-xs text-slate-400">
-                Cadence:{" "}
+                {t("periods.cadence")}:{" "}
                 <span className="text-slate-200">
                   {selectedTemplate.cadence.charAt(0).toUpperCase() +
                     selectedTemplate.cadence.slice(1)}
                 </span>
-                {" · "}Currency:{" "}
+                {" · "}{t("periods.currency")}:{" "}
                 <span className="text-slate-200">
                   {selectedTemplate.default_currency}
                 </span>
               </p>
               {!isCustomCadence && (
                 <p className="text-xs text-slate-500 mt-1">
-                  End date will be calculated automatically from the cadence.
+                  {t("periods.endDateAutoCalculated")}
                 </p>
               )}
             </div>
@@ -233,9 +235,9 @@ const CreatePeriodModal = ({ isOpen, onClose }: CreatePeriodModalProps) => {
               onClick={() => onClose()}
               disabled={isCreatingPeriod}
               className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors disabled:opacity-50"
-              aria-label="Cancel creating period"
+              aria-label={t("common.cancel")}
             >
-              Cancel
+              {t("common.cancel")}
             </button>
             <button
               type="submit"
@@ -245,9 +247,9 @@ const CreatePeriodModal = ({ isOpen, onClose }: CreatePeriodModalProps) => {
                 templates.length === 0
               }
               className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="Create the budget period"
+              aria-label={t("periods.createPeriod")}
             >
-              {isCreatingPeriod ? "Creating..." : "Create Period"}
+              {isCreatingPeriod ? t("periods.creating") : t("periods.createPeriod")}
             </button>
           </div>
         </form>

@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import type { PeriodBudgetInstance } from "../../../types/period.types";
 
 interface PeriodCardProps {
@@ -12,13 +13,15 @@ const formatCadence = (cadence: string): string =>
   cadence.charAt(0).toUpperCase() + cadence.slice(1);
 
 /** Format the date range. */
-const formatDateRange = (startDate: string, endDate: string | null): string => {
-  if (endDate) return `${startDate}  to  ${endDate}`;
+const formatDateRange = (startDate: string, endDate: string | null, toLabel: string): string => {
+  if (endDate) return `${startDate}  ${toLabel}  ${endDate}`;
   return startDate;
 };
 
 const PeriodCard = React.memo(
   ({ period, isSelected, onSelect }: PeriodCardProps) => {
+    const { t } = useTranslation();
+
     const handleClick = () => {
       onSelect(period.budget_instance_id);
     };
@@ -30,7 +33,8 @@ const PeriodCard = React.memo(
       }
     };
 
-    const name = period.template_name ?? "Untitled Period";
+    const name = period.template_name ?? t("periods.untitledPeriod");
+    const dateRange = formatDateRange(period.start_date, period.end_date, t("periods.to"));
 
     return (
       <div
@@ -38,7 +42,7 @@ const PeriodCard = React.memo(
         tabIndex={0}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
-        aria-label={`Select period: ${name}, ${formatCadence(period.cadence)}, ${formatDateRange(period.start_date, period.end_date)}`}
+        aria-label={t("periods.selectPeriod", { name, cadence: formatCadence(period.cadence), dates: dateRange })}
         aria-pressed={isSelected}
         className={`group relative flex flex-col gap-1.5 p-4 rounded-xl border cursor-pointer transition-all ${
           isSelected
@@ -71,7 +75,7 @@ const PeriodCard = React.memo(
 
         {/* Date range */}
         <p className="text-xs text-slate-400 mt-0.5">
-          {formatDateRange(period.start_date, period.end_date)}
+          {dateRange}
         </p>
       </div>
     );

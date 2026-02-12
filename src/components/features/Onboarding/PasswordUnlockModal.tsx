@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import PasswordInput from "../../common/PasswordInput";
+import { formatErrorMessage } from "../../../utils/formatErrorMessage";
 
 const MAX_ATTEMPTS = 5;
 
@@ -18,6 +20,7 @@ const PasswordUnlockModal = ({
   filePath,
   passwordHint,
 }: PasswordUnlockModalProps) => {
+  const { t } = useTranslation();
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +38,8 @@ const PasswordUnlockModal = ({
     // Note: attemptCount is NOT cleared - it persists for the session
   }, []);
 
-  // Handle submit
+  // NON-NEGOTIABLE: Password unlock must never check license or app mode.
+  // DB access never requires license — users must always be able to open their data.
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -56,15 +60,9 @@ const PasswordUnlockModal = ({
       setAttemptCount(newAttemptCount);
 
       if (newAttemptCount >= MAX_ATTEMPTS) {
-        setError("Too many failed attempts. Please restart the application to try again.");
+        setError(t("password.tooManyAttempts"));
       } else {
-        // Tauri invoke errors can be strings or Error objects
-        const errorMessage = err instanceof Error 
-          ? err.message 
-          : typeof err === "string" 
-            ? err 
-            : "Incorrect password. Please try again.";
-        setError(errorMessage);
+        setError(formatErrorMessage(err, "Incorrect password. Please try again."));
       }
     } finally {
       setIsSubmitting(false);
@@ -165,14 +163,14 @@ const PasswordUnlockModal = ({
               id="unlock-modal-title"
               className="text-lg font-semibold text-white"
             >
-              Unlock Finance File
+              {t("password.unlockFinanceFile")}
             </h2>
           </div>
           <button
             type="button"
             onClick={handleClose}
             className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500"
-            aria-label="Close modal"
+            aria-label={t("password.closeModal")}
           >
             <svg
               className="w-5 h-5"
@@ -236,7 +234,7 @@ const PasswordUnlockModal = ({
                   />
                 </svg>
                 <div>
-                  <p className="text-sm font-medium text-sky-400">Password Hint</p>
+                  <p className="text-sm font-medium text-sky-400">{t("password.passwordHint")}</p>
                   <p className="text-sm text-sky-300/80 mt-1">{passwordHint}</p>
                 </div>
               </div>
@@ -266,10 +264,10 @@ const PasswordUnlockModal = ({
                 </svg>
                 <div>
                   <p className="text-sm font-medium text-red-400">
-                    Account Locked
+                    {t("password.accountLocked")}
                   </p>
                   <p className="text-xs text-red-400/70 mt-1">
-                    Too many failed attempts. Please restart the application to try again.
+                    {t("password.tooManyAttempts")}
                   </p>
                 </div>
               </div>
@@ -280,11 +278,11 @@ const PasswordUnlockModal = ({
               <div>
                 <PasswordInput
                   id="unlock-password"
-                  label="Master Password"
+                  label={t("password.masterPassword")}
                   value={password}
                   onChange={handlePasswordChange}
                   error={error || undefined}
-                  placeholder="Enter your master password"
+                  placeholder={t("password.enterMasterPassword")}
                   autoFocus
                   disabled={isSubmitting || isLockedOut}
                 />
@@ -292,7 +290,7 @@ const PasswordUnlockModal = ({
                 {/* Remaining attempts warning */}
                 {attemptCount > 0 && !isLockedOut && (
                   <p className="mt-2 text-xs text-amber-400">
-                    {remainingAttempts} attempt{remainingAttempts !== 1 ? "s" : ""} remaining
+                    {t("password.attemptsRemaining", { count: remainingAttempts })}
                   </p>
                 )}
               </div>
@@ -307,7 +305,7 @@ const PasswordUnlockModal = ({
               disabled={isSubmitting}
               className="px-4 py-2.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
             <button
               type="submit"
@@ -336,10 +334,10 @@ const PasswordUnlockModal = ({
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                     />
                   </svg>
-                  Unlocking...
+                  {t("password.unlocking")}
                 </>
               ) : (
-                "Unlock"
+                t("password.unlock")
               )}
             </button>
           </div>

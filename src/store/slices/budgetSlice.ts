@@ -6,6 +6,7 @@ import type { PeriodBudgetInstance, CreatePeriodFromTemplateArgs, CreatePeriodRe
 import { getUiSetting, setUiSetting } from "../../services/settingsService";
 import type { ColumnWidths, GridColumnId, OptimalWidths, SnapMode, SelectedCell } from "../../components/features/BudgetGrid/types";
 import { getDefaultColumnWidths, MIN_COLUMN_WIDTH, COLUMN_CONFIG } from "../../components/features/BudgetGrid/types";
+import { formatErrorMessage } from "../../utils/formatErrorMessage";
 
 // ============================================================================
 // Constants
@@ -57,6 +58,8 @@ interface BudgetState {
   snapMode: SnapMode;
   /** Currently selected cell in the budget grid (TASK-4.3). */
   selectedCell: SelectedCell | null;
+  /** Error from settings persistence (column widths / snap mode). */
+  settingsError: string | null;
 }
 
 const initialState: BudgetState = {
@@ -68,12 +71,13 @@ const initialState: BudgetState = {
   gridDataStatus: "idle",
   gridDataError: null,
   isCreatingPeriod: false,
-  showPeriodSelector: false,
+  showPeriodSelector: true,
   periodViewMode: "grid",
   columnWidths: getDefaultColumnWidths(),
   optimalWidths: {},
   snapMode: "magnetic",
   selectedCell: null,
+  settingsError: null,
 };
 
 // ============================================================================
@@ -87,8 +91,7 @@ export const fetchPeriods = createAsyncThunk(
     try {
       return await listPeriods();
     } catch (error) {
-      const message = typeof error === "string" ? error : error instanceof Error ? error.message : "Failed to load periods";
-      return rejectWithValue(message);
+      return rejectWithValue(formatErrorMessage(error, "Failed to load periods"));
     }
   }
 );
@@ -100,8 +103,7 @@ export const fetchGridData = createAsyncThunk(
     try {
       return await getGridData(budgetInstanceId);
     } catch (error) {
-      const message = typeof error === "string" ? error : error instanceof Error ? error.message : "Failed to load grid data";
-      return rejectWithValue(message);
+      return rejectWithValue(formatErrorMessage(error, "Failed to load grid data"));
     }
   }
 );
@@ -116,8 +118,7 @@ export const createPeriod = createAsyncThunk(
       await dispatch(fetchPeriods()).unwrap();
       return result;
     } catch (error) {
-      const message = typeof error === "string" ? error : error instanceof Error ? error.message : "Failed to create period";
-      return rejectWithValue(message);
+      return rejectWithValue(formatErrorMessage(error, "Failed to create period"));
     }
   }
 );
@@ -218,6 +219,10 @@ const budgetSlice = createSlice({
     /** Clears periods error (e.g. after dismissing an error message). */
     clearPeriodsError: (state) => {
       state.periodsError = null;
+    },
+    /** Clears settings persistence error (e.g. after dismissing an error message). */
+    clearSettingsError: (state) => {
+      state.settingsError = null;
     },
     /** Sets whether the period selector view is shown. */
     setShowPeriodSelector: (state, action: PayloadAction<boolean>) => {
@@ -320,21 +325,38 @@ const budgetSlice = createSlice({
     builder
       .addCase(loadColumnWidths.fulfilled, (state, action: PayloadAction<ColumnWidths>) => {
         state.columnWidths = action.payload;
+      })
+      .addCase(loadColumnWidths.rejected, (state, action) => {
+        console.warn("[budgetSlice] loadColumnWidths failed:", action.payload);
+        state.settingsError = action.payload as string;
       });
 
     // loadSnapMode
     builder
       .addCase(loadSnapMode.fulfilled, (state, action: PayloadAction<SnapMode>) => {
         state.snapMode = action.payload;
+      })
+      .addCase(loadSnapMode.rejected, (state, action) => {
+        console.warn("[budgetSlice] loadSnapMode failed:", action.payload);
+        state.settingsError = action.payload as string;
       });
 
     // saveSnapMode
     builder
       .addCase(saveSnapMode.fulfilled, (state, action: PayloadAction<SnapMode>) => {
         state.snapMode = action.payload;
+      })
+      .addCase(saveSnapMode.rejected, (state, action) => {
+        console.warn("[budgetSlice] saveSnapMode failed:", action.payload);
+        state.settingsError = action.payload as string;
       });
 
-    // saveColumnWidths — fire-and-forget, no state changes needed
+    // saveColumnWidths
+    builder
+      .addCase(saveColumnWidths.rejected, (state, action) => {
+        console.warn("[budgetSlice] saveColumnWidths failed:", action.payload);
+        state.settingsError = action.payload as string;
+      });
   },
 });
 
@@ -342,6 +364,7 @@ export const {
   setCurrentBudgetInstanceId,
   clearBudgetState,
   clearPeriodsError,
+  clearSettingsError,
   setShowPeriodSelector,
   setPeriodViewMode,
   setColumnWidth,

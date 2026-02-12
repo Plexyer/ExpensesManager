@@ -98,6 +98,7 @@ const extractFileName = (filePath: string): string => {
  * @param hint - Optional password hint
  * @throws Error if file cannot be created
  */
+// NON-NEGOTIABLE: DB access never requires license — this function must never be gated by app mode or license status.
 export const createEncryptedDb = async (
   path: string,
   password: string,
@@ -130,6 +131,7 @@ export const getDbInfo = async (path: string): Promise<DbFileInfo> => {
  * @returns File info if password is correct
  * @throws Error if password is wrong or file is invalid
  */
+// NON-NEGOTIABLE: DB access never requires license — this function must never be gated by app mode or license status.
 export const openEncryptedDb = async (
   path: string,
   password: string
