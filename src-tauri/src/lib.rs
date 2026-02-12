@@ -42,9 +42,17 @@ pub fn run() {
             encrypted_db::list_periods,
             encrypted_db::get_period,
             encrypted_db::delete_period,
+            // Line item commands
+            encrypted_db::list_line_items,
+            encrypted_db::create_line_item,
+            encrypted_db::update_line_item,
+            encrypted_db::delete_line_item,
             // UI settings commands
             encrypted_db::get_ui_setting,
             encrypted_db::set_ui_setting,
+            // Export commands
+            encrypted_db::export_to_csv,
+            encrypted_db::export_csv_to_file,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

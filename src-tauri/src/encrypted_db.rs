@@ -1863,6 +1863,333 @@ fn get_ui_setting_internal(
     }
 }
 
+// ============================================================================
+// Line Item Commands
+// ============================================================================
+
+/// A single line item (received or spent) for a category within a budget instance.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LineItem {
+    pub line_item_id: i64,
+    pub budget_instance_category_id: i64,
+    pub kind: String,
+    pub occurred_at: String,
+    pub description: Option<String>,
+    pub amount: f64,
+    pub currency: String,
+    pub notes: Option<String>,
+    pub is_template_default: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Lists line items for a specific category within a budget instance, filtered by kind.
+/// Returns non-deleted items ordered by occurred_at descending.
+#[tauri::command]
+pub fn list_line_items(
+    budget_instance_category_id: i64,
+    kind: String,
+    db_state: State<DbState>,
+) -> Result<Vec<LineItem>, String> {
+    list_line_items_internal(budget_instance_category_id, &kind, &db_state)
+        .map_err(|e| e.to_string())
+}
+
+fn list_line_items_internal(
+    budget_instance_category_id: i64,
+    kind: &str,
+    db_state: &State<DbState>,
+) -> Result<Vec<LineItem>, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT
+            line_item_id,
+            budget_instance_category_id,
+            kind,
+            occurred_at,
+            description,
+            amount,
+            currency,
+            notes,
+            is_template_default,
+            created_at,
+            updated_at
+        FROM category_line_items
+        WHERE budget_instance_category_id = ?
+          AND kind = ?
+          AND deleted_at IS NULL
+        ORDER BY occurred_at DESC
+        "#,
+    )?;
+
+    let rows = stmt.query_map(
+        rusqlite::params![budget_instance_category_id, kind],
+        |row| {
+            Ok(LineItem {
+                line_item_id: row.get(0)?,
+                budget_instance_category_id: row.get(1)?,
+                kind: row.get(2)?,
+                occurred_at: row.get(3)?,
+                description: row.get(4)?,
+                amount: row.get(5)?,
+                currency: row.get(6)?,
+                notes: row.get(7)?,
+                is_template_default: row.get::<_, i64>(8)? != 0,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        },
+    )?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+
+    Ok(items)
+}
+
+/// Arguments for creating a new line item.
+#[derive(Debug, Deserialize)]
+pub struct CreateLineItemArgs {
+    pub budget_instance_category_id: i64,
+    pub kind: String,
+    pub occurred_at: String,
+    pub amount: f64,
+    pub currency: String,
+    pub description: Option<String>,
+    pub notes: Option<String>,
+}
+
+/// Creates a new line item (received or spent) for a category within a budget instance.
+/// Returns the created LineItem.
+#[tauri::command]
+pub fn create_line_item(
+    args: CreateLineItemArgs,
+    db_state: State<DbState>,
+) -> Result<LineItem, String> {
+    create_line_item_internal(&args, &db_state).map_err(|e| e.to_string())
+}
+
+fn create_line_item_internal(
+    args: &CreateLineItemArgs,
+    db_state: &State<DbState>,
+) -> Result<LineItem, EncryptedDbError> {
+    // Validate kind
+    if args.kind != "received" && args.kind != "spent" {
+        return Err(EncryptedDbError::DatabaseError(
+            "kind must be 'received' or 'spent'.".to_string(),
+        ));
+    }
+
+    // Validate amount
+    if args.amount <= 0.0 {
+        return Err(EncryptedDbError::DatabaseError(
+            "amount must be greater than 0.".to_string(),
+        ));
+    }
+
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    conn.execute(
+        r#"
+        INSERT INTO category_line_items
+            (budget_instance_category_id, kind, occurred_at, amount, currency, description, notes, is_template_default)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+        "#,
+        rusqlite::params![
+            args.budget_instance_category_id,
+            args.kind,
+            args.occurred_at,
+            args.amount,
+            args.currency,
+            args.description,
+            args.notes,
+        ],
+    )?;
+
+    let line_item_id = conn.last_insert_rowid();
+
+    // Fetch the created row to return it with server-generated fields
+    let item = conn.query_row(
+        r#"
+        SELECT
+            line_item_id, budget_instance_category_id, kind, occurred_at,
+            description, amount, currency, notes, is_template_default,
+            created_at, updated_at
+        FROM category_line_items
+        WHERE line_item_id = ?
+        "#,
+        [line_item_id],
+        |row| {
+            Ok(LineItem {
+                line_item_id: row.get(0)?,
+                budget_instance_category_id: row.get(1)?,
+                kind: row.get(2)?,
+                occurred_at: row.get(3)?,
+                description: row.get(4)?,
+                amount: row.get(5)?,
+                currency: row.get(6)?,
+                notes: row.get(7)?,
+                is_template_default: row.get::<_, i64>(8)? != 0,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        },
+    )?;
+
+    Ok(item)
+}
+
+/// Arguments for updating an existing line item.
+#[derive(Debug, Deserialize)]
+pub struct UpdateLineItemArgs {
+    pub line_item_id: i64,
+    pub occurred_at: String,
+    pub amount: f64,
+    pub description: Option<String>,
+    pub notes: Option<String>,
+}
+
+/// Updates an existing line item's mutable fields.
+/// Returns the updated LineItem.
+#[tauri::command]
+pub fn update_line_item(
+    args: UpdateLineItemArgs,
+    db_state: State<DbState>,
+) -> Result<LineItem, String> {
+    update_line_item_internal(&args, &db_state).map_err(|e| e.to_string())
+}
+
+fn update_line_item_internal(
+    args: &UpdateLineItemArgs,
+    db_state: &State<DbState>,
+) -> Result<LineItem, EncryptedDbError> {
+    // Validate amount
+    if args.amount <= 0.0 {
+        return Err(EncryptedDbError::DatabaseError(
+            "amount must be greater than 0.".to_string(),
+        ));
+    }
+
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let rows_affected = conn.execute(
+        r#"
+        UPDATE category_line_items
+        SET occurred_at = ?, description = ?, amount = ?, notes = ?,
+            updated_at = datetime('now')
+        WHERE line_item_id = ? AND deleted_at IS NULL
+        "#,
+        rusqlite::params![
+            args.occurred_at,
+            args.description,
+            args.amount,
+            args.notes,
+            args.line_item_id,
+        ],
+    )?;
+
+    if rows_affected == 0 {
+        return Err(EncryptedDbError::DatabaseError(
+            "Line item not found or already deleted.".to_string(),
+        ));
+    }
+
+    // Fetch the updated row
+    let item = conn.query_row(
+        r#"
+        SELECT
+            line_item_id, budget_instance_category_id, kind, occurred_at,
+            description, amount, currency, notes, is_template_default,
+            created_at, updated_at
+        FROM category_line_items
+        WHERE line_item_id = ?
+        "#,
+        [args.line_item_id],
+        |row| {
+            Ok(LineItem {
+                line_item_id: row.get(0)?,
+                budget_instance_category_id: row.get(1)?,
+                kind: row.get(2)?,
+                occurred_at: row.get(3)?,
+                description: row.get(4)?,
+                amount: row.get(5)?,
+                currency: row.get(6)?,
+                notes: row.get(7)?,
+                is_template_default: row.get::<_, i64>(8)? != 0,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        },
+    )?;
+
+    Ok(item)
+}
+
+/// Soft-deletes a line item by setting `deleted_at`.
+#[tauri::command]
+pub fn delete_line_item(
+    line_item_id: i64,
+    db_state: State<DbState>,
+) -> Result<(), String> {
+    delete_line_item_internal(line_item_id, &db_state).map_err(|e| e.to_string())
+}
+
+fn delete_line_item_internal(
+    line_item_id: i64,
+    db_state: &State<DbState>,
+) -> Result<(), EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let rows_affected = conn.execute(
+        r#"
+        UPDATE category_line_items
+        SET deleted_at = datetime('now'), updated_at = datetime('now')
+        WHERE line_item_id = ? AND deleted_at IS NULL
+        "#,
+        [line_item_id],
+    )?;
+
+    if rows_affected == 0 {
+        return Err(EncryptedDbError::DatabaseError(
+            "Line item not found or already deleted.".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 /// Sets a UI setting value by key (upsert). Creates the key if it doesn't exist.
 #[tauri::command]
 pub fn set_ui_setting(
@@ -1893,6 +2220,260 @@ fn set_ui_setting_internal(
     )?;
 
     Ok(())
+}
+
+// ─── CSV Export ──────────────────────────────────────────────────────────────
+
+/// Escape a value for CSV: wrap in double quotes if the value contains
+/// commas, double quotes, or newlines. Internal double quotes are doubled.
+fn csv_escape(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\n') || value.contains('\r') {
+        let escaped = value.replace('"', "\"\"");
+        format!("\"{}\"", escaped)
+    } else {
+        value.to_string()
+    }
+}
+
+/// Build a single CSV row from a slice of field values.
+fn csv_row(fields: &[String]) -> String {
+    fields
+        .iter()
+        .map(|f| csv_escape(f))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+#[tauri::command]
+pub fn export_to_csv(db_state: State<DbState>) -> Result<String, String> {
+    export_to_csv_internal(&db_state).map_err(|e| e.to_string())
+}
+
+/// Generate CSV and write it to a file at the given path.
+/// Prepends a UTF-8 BOM so Excel on Windows opens the file correctly.
+#[tauri::command]
+pub fn export_csv_to_file(path: String, db_state: State<DbState>) -> Result<(), String> {
+    export_csv_to_file_internal(&path, &db_state).map_err(|e| e.to_string())
+}
+
+fn export_csv_to_file_internal(
+    path: &str,
+    db_state: &State<DbState>,
+) -> Result<(), EncryptedDbError> {
+    let csv = export_to_csv_internal(db_state)?;
+
+    // UTF-8 BOM for Excel compatibility
+    let bom = "\u{FEFF}";
+    let content = format!("{}{}", bom, csv);
+
+    fs::write(path, content.as_bytes()).map_err(|e| {
+        EncryptedDbError::FileWriteError(format!("Failed to write CSV file: {}", e))
+    })?;
+
+    Ok(())
+}
+
+fn export_to_csv_internal(db_state: &State<DbState>) -> Result<String, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let mut csv = String::new();
+
+    // ── Section 1: Budget Instances (Periods) ────────────────────────────
+    csv.push_str("BudgetInstances\n");
+    csv.push_str("budget_instance_id,cadence,start_date,end_date,template_name,income_arrival_date,created_at\n");
+    {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT
+                pbi.budget_instance_id,
+                pbi.cadence,
+                pbi.start_date,
+                pbi.end_date,
+                bt.name,
+                pbi.income_arrival_date,
+                pbi.created_at
+            FROM period_budget_instances pbi
+            LEFT JOIN budget_templates bt ON bt.template_id = pbi.template_id
+            ORDER BY pbi.start_date, pbi.budget_instance_id
+            "#,
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, String>(6)?,
+            ))
+        })?;
+
+        for row in rows {
+            let (id, cadence, start, end, tmpl, arrival, created) = row?;
+            let line = csv_row(&[
+                id.to_string(),
+                cadence,
+                start,
+                end.unwrap_or_default(),
+                tmpl.unwrap_or_default(),
+                arrival.unwrap_or_default(),
+                created,
+            ]);
+            csv.push_str(&line);
+            csv.push('\n');
+        }
+    }
+
+    // ── Section 2: Global Categories ─────────────────────────────────────
+    csv.push_str("\nGlobalCategories\n");
+    csv.push_str("global_category_id,name,description\n");
+    {
+        let mut stmt = conn.prepare(
+            "SELECT global_category_id, name, description FROM global_categories ORDER BY name",
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })?;
+
+        for row in rows {
+            let (id, name, desc) = row?;
+            let line = csv_row(&[
+                id.to_string(),
+                name,
+                desc.unwrap_or_default(),
+            ]);
+            csv.push_str(&line);
+            csv.push('\n');
+        }
+    }
+
+    // ── Section 3: Budget Instance Categories (with rollup totals) ───────
+    csv.push_str("\nBudgetInstanceCategories\n");
+    csv.push_str("budget_instance_id,category_name,default_amount,default_currency,sort_order,received_total,spent_total,remaining\n");
+    {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT
+                bic.budget_instance_id,
+                gc.name AS category_name,
+                bic.default_amount,
+                bic.default_currency,
+                bic.sort_order,
+                COALESCE(SUM(CASE WHEN li.kind = 'received' THEN li.amount ELSE 0 END), 0) AS received_total,
+                COALESCE(SUM(CASE WHEN li.kind = 'spent' THEN li.amount ELSE 0 END), 0) AS spent_total
+            FROM budget_instance_categories bic
+            JOIN global_categories gc ON gc.global_category_id = bic.global_category_id
+            LEFT JOIN category_line_items li
+                ON li.budget_instance_category_id = bic.budget_instance_category_id
+                AND li.deleted_at IS NULL
+            GROUP BY bic.budget_instance_category_id
+            ORDER BY bic.budget_instance_id, bic.sort_order, bic.budget_instance_category_id
+            "#,
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, f64>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, f64>(5)?,
+                row.get::<_, f64>(6)?,
+            ))
+        })?;
+
+        for row in rows {
+            let (inst_id, cat_name, default_amt, currency, sort, received, spent) = row?;
+            let remaining = received - spent;
+            let line = csv_row(&[
+                inst_id.to_string(),
+                cat_name,
+                format!("{:.2}", default_amt),
+                currency,
+                sort.to_string(),
+                format!("{:.2}", received),
+                format!("{:.2}", spent),
+                format!("{:.2}", remaining),
+            ]);
+            csv.push_str(&line);
+            csv.push('\n');
+        }
+    }
+
+    // ── Section 4: Line Items ────────────────────────────────────────────
+    csv.push_str("\nLineItems\n");
+    csv.push_str("line_item_id,budget_instance_id,category_name,kind,occurred_at,description,amount,currency,notes\n");
+    {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT
+                li.line_item_id,
+                bic.budget_instance_id,
+                gc.name AS category_name,
+                li.kind,
+                li.occurred_at,
+                li.description,
+                li.amount,
+                li.currency,
+                li.notes
+            FROM category_line_items li
+            JOIN budget_instance_categories bic
+                ON bic.budget_instance_category_id = li.budget_instance_category_id
+            JOIN global_categories gc
+                ON gc.global_category_id = bic.global_category_id
+            WHERE li.deleted_at IS NULL
+            ORDER BY bic.budget_instance_id, gc.name, li.occurred_at
+            "#,
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, f64>(6)?,
+                row.get::<_, String>(7)?,
+                row.get::<_, Option<String>>(8)?,
+            ))
+        })?;
+
+        for row in rows {
+            let (li_id, inst_id, cat_name, kind, occurred, desc, amount, currency, notes) = row?;
+            let line = csv_row(&[
+                li_id.to_string(),
+                inst_id.to_string(),
+                cat_name,
+                kind,
+                occurred,
+                desc.unwrap_or_default(),
+                format!("{:.2}", amount),
+                currency,
+                notes.unwrap_or_default(),
+            ]);
+            csv.push_str(&line);
+            csv.push('\n');
+        }
+    }
+
+    Ok(csv)
 }
 
 #[cfg(test)]

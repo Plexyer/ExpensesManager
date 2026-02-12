@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppSelector, useAppDispatch } from "../../../store/hooks";
 import {
   setColumnWidth,
@@ -10,8 +10,9 @@ import {
 } from "../../../store/slices/budgetSlice";
 import PeriodGridHeader from "./PeriodGridHeader";
 import PeriodGridBody from "./PeriodGridBody";
+import CategoryLedgerModal from "./CategoryLedgerModal";
 import type { GridCategoryRow } from "../../../services/fileService";
-import type { GridColumnId, ColumnWidths, OptimalWidths } from "./types";
+import type { GridColumnId, ColumnWidths, OptimalWidths, LedgerModalState } from "./types";
 import {
   MIN_COLUMN_WIDTH,
   COLUMN_CONFIG,
@@ -23,6 +24,8 @@ import {
 
 interface PeriodGridTableProps {
   rows: GridCategoryRow[];
+  /** Called when transaction data changes (e.g. after adding a line item) so the grid can refresh. */
+  onDataChanged?: () => void;
 }
 
 /**
@@ -170,7 +173,7 @@ const computeAllOptimalWidths = (
   return widths;
 };
 
-const PeriodGridTable = ({ rows }: PeriodGridTableProps) => {
+const PeriodGridTable = ({ rows, onDataChanged }: PeriodGridTableProps) => {
   const dispatch = useAppDispatch();
   const columnWidths = useAppSelector((state) => state.budget.columnWidths);
   const snapMode = useAppSelector((state) => state.budget.snapMode);
@@ -252,6 +255,41 @@ const PeriodGridTable = ({ rows }: PeriodGridTableProps) => {
     [dispatch]
   );
 
+  // ---- Ledger modal state (TASK-5.1) ----
+  const [ledgerModal, setLedgerModal] = useState<{
+    state: LedgerModalState;
+    categoryName: string;
+    currency: string;
+  } | null>(null);
+
+  /** Handle double-clicking an openable cell to show the ledger modal. */
+  const handleCellDoubleClick = useCallback(
+    (rowIndex: number, columnId: GridColumnId) => {
+      const colConfig = COLUMN_CONFIG.find((c) => c.id === columnId);
+      if (!colConfig?.openable) return;
+
+      const row = rows[rowIndex];
+      if (!row) return;
+
+      const kind: "received" | "spent" =
+        columnId === "received_amount" ? "received" : "spent";
+
+      setLedgerModal({
+        state: {
+          budgetInstanceCategoryId: row.budget_instance_category_id,
+          kind,
+        },
+        categoryName: row.category_name,
+        currency: row.default_currency,
+      });
+    },
+    [rows]
+  );
+
+  const handleCloseLedgerModal = useCallback(() => {
+    setLedgerModal(null);
+  }, []);
+
   /** Handle keyboard navigation on the grid (TASK-4.3). */
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -307,6 +345,17 @@ const PeriodGridTable = ({ rows }: PeriodGridTableProps) => {
             return; // let default Tab behavior proceed (leave grid)
           }
           break;
+        case "Enter": {
+          // Open ledger modal on Enter for openable cells (TASK-5.1)
+          const colConfig = COLUMN_CONFIG.find(
+            (c) => c.id === columnId
+          );
+          if (colConfig?.openable) {
+            handleCellDoubleClick(rowIndex, columnId);
+            e.preventDefault();
+          }
+          return;
+        }
         case "Escape":
           dispatch(clearSelectedCell());
           e.preventDefault();
@@ -353,8 +402,20 @@ const PeriodGridTable = ({ rows }: PeriodGridTableProps) => {
           columnWidths={columnWidths}
           selectedCell={selectedCell}
           onCellSelect={handleCellSelect}
+          onCellDoubleClick={handleCellDoubleClick}
         />
       </table>
+
+      {/* Ledger modal (TASK-5.1, TASK-5.2) */}
+      {ledgerModal && (
+        <CategoryLedgerModal
+          ledgerState={ledgerModal.state}
+          categoryName={ledgerModal.categoryName}
+          currency={ledgerModal.currency}
+          onClose={handleCloseLedgerModal}
+          onDataChanged={onDataChanged}
+        />
+      )}
     </div>
   );
 };

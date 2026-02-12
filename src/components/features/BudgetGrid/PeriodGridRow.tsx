@@ -10,6 +10,7 @@ interface PeriodGridRowProps {
   columnWidths: ColumnWidths;
   selectedColumnId: GridColumnId | null;
   onCellSelect: (rowIndex: number, columnId: GridColumnId) => void;
+  onCellDoubleClick: (rowIndex: number, columnId: GridColumnId) => void;
 }
 
 const PeriodGridRow = React.memo(({
@@ -18,6 +19,7 @@ const PeriodGridRow = React.memo(({
   columnWidths,
   selectedColumnId,
   onCellSelect,
+  onCellDoubleClick,
 }: PeriodGridRowProps) => {
   return (
     <tr className="hover:bg-slate-700/20 transition-colors">
@@ -30,6 +32,7 @@ const PeriodGridRow = React.memo(({
           columnWidths={columnWidths}
           isSelected={selectedColumnId === col.id}
           onSelect={() => onCellSelect(rowIndex, col.id)}
+          onDoubleClick={() => onCellDoubleClick(rowIndex, col.id)}
         />
       ))}
     </tr>

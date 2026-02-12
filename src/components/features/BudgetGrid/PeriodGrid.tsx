@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAppSelector, useAppDispatch } from "../../../store/hooks";
 import {
   fetchPeriods,
@@ -86,6 +86,13 @@ const PeriodGrid = () => {
     }
   };
 
+  /** Refresh grid data after a transaction is added/modified in the modal. */
+  const handleGridDataChanged = useCallback(() => {
+    if (currentBudgetInstanceId !== null) {
+      dispatch(fetchGridData(currentBudgetInstanceId));
+    }
+  }, [dispatch, currentBudgetInstanceId]);
+
   // Find the current period object for the detail toolbar
   const currentPeriod = periods.find(
     (p) => p.budget_instance_id === currentBudgetInstanceId
@@ -166,7 +173,7 @@ const PeriodGrid = () => {
           {gridData.rows.length === 0 ? (
             <PeriodGridEmpty variant="no-categories" />
           ) : (
-            <PeriodGridTable rows={gridData.rows} />
+            <PeriodGridTable rows={gridData.rows} onDataChanged={handleGridDataChanged} />
           )}
         </>
       )}

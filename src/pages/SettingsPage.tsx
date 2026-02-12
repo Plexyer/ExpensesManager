@@ -3,6 +3,8 @@ import { setSnapMode, saveSnapMode } from "../store/slices/budgetSlice";
 import type { SnapMode } from "../components/features/BudgetGrid/types";
 import AppHeader from "../components/common/AppHeader";
 import Onboarding from "../components/features/Onboarding/Onboarding";
+import BackupSettings from "../components/features/Settings/BackupSettings";
+import ExportSettings from "../components/features/Settings/ExportSettings";
 
 const SNAP_MODE_OPTIONS: { value: SnapMode; label: string; description: string }[] = [
   {
@@ -98,15 +100,11 @@ const SettingsPage = () => {
             </fieldset>
           </section>
 
-          {/* Placeholder for future settings sections */}
-          <section className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-            <h2 className="text-lg font-medium text-white mb-2">
-              More settings
-            </h2>
-            <p className="text-sm text-slate-400">
-              Export, backup, and licensing features will be added here in future tasks.
-            </p>
-          </section>
+          {/* Export Settings */}
+          <ExportSettings />
+
+          {/* Backup Settings */}
+          <BackupSettings />
         </div>
       </main>
     </div>

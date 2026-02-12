@@ -8,6 +8,7 @@ interface PeriodGridBodyProps {
   columnWidths: ColumnWidths;
   selectedCell: SelectedCell | null;
   onCellSelect: (rowIndex: number, columnId: GridColumnId) => void;
+  onCellDoubleClick: (rowIndex: number, columnId: GridColumnId) => void;
 }
 
 /** Format a number as currency. */
@@ -27,7 +28,7 @@ const getRemainingColorClasses = (remaining: number): string => {
   return "bg-amber-500/10 text-amber-300";
 };
 
-const PeriodGridBody = ({ rows, columnWidths, selectedCell, onCellSelect }: PeriodGridBodyProps) => {
+const PeriodGridBody = ({ rows, columnWidths, selectedCell, onCellSelect, onCellDoubleClick }: PeriodGridBodyProps) => {
   // Compute totals for the summary row
   const totals = rows.reduce(
     (acc, row) => ({
@@ -53,6 +54,7 @@ const PeriodGridBody = ({ rows, columnWidths, selectedCell, onCellSelect }: Peri
             selectedCell?.rowIndex === rowIndex ? selectedCell.columnId : null
           }
           onCellSelect={onCellSelect}
+          onCellDoubleClick={onCellDoubleClick}
         />
       ))}
 

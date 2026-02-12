@@ -9,6 +9,7 @@ interface PeriodGridCellProps {
   columnWidths: ColumnWidths;
   isSelected: boolean;
   onSelect: () => void;
+  onDoubleClick?: () => void;
 }
 
 /** Format a number as currency using the row's default_currency. */
@@ -67,6 +68,7 @@ const PeriodGridCell = ({
   columnWidths,
   isSelected,
   onSelect,
+  onDoubleClick,
 }: PeriodGridCellProps) => {
   const value = getCellDisplayValue(row, columnConfig.id);
   const isRemaining = columnConfig.id === "remaining";
@@ -93,9 +95,21 @@ const PeriodGridCell = ({
     ? "ring-2 ring-inset ring-blue-500 bg-blue-500/10"
     : "";
 
+  const isOpenable = columnConfig.openable;
+
   const handleClick = () => {
     onSelect();
   };
+
+  const handleDoubleClick = () => {
+    if (isOpenable && onDoubleClick) {
+      onDoubleClick();
+    }
+  };
+
+  const openableClasses = isOpenable
+    ? "underline decoration-dotted decoration-slate-500 underline-offset-4"
+    : "";
 
   return (
     <td
@@ -104,9 +118,10 @@ const PeriodGridCell = ({
       aria-selected={isSelected}
       className={`px-4 py-2.5 text-sm break-words border-b border-slate-700/50 cursor-pointer select-none outline-none ${separatorClass} ${
         isRightAligned ? "text-right" : "text-left"
-      } ${colorClasses} ${stickyClasses} ${selectedClasses}`}
-      title={value}
+      } ${colorClasses} ${stickyClasses} ${selectedClasses} ${openableClasses}`}
+      title={isOpenable ? `${value} (double-click to view)` : value}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       style={{
         width,
         minWidth: width,
