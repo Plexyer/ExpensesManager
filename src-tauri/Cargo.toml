@@ -33,3 +33,8 @@ hex = "0.4"
 rusqlite = { version = "0.35", features = ["bundled-sqlcipher"] }
 tempfile = "3"
 thiserror = "1"
+
+# Image processing + MIME detection - TASK-11.3
+image = "0.25"
+infer = "0.16"
+base64 = "0.22"

@@ -25,6 +25,7 @@
     "react-redux": "^9.2.0",
     "react-router-dom": "^7.13.0",
     "tailwindcss": "^4.1.18",
+    "yet-another-react-lightbox": "^3.29.1",
     "zxcvbn": "^4.4.2"
   },
   "devDependencies": {

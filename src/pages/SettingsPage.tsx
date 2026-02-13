@@ -6,6 +6,7 @@ import BackupSettings from "../components/features/Settings/BackupSettings";
 import ExportSettings from "../components/features/Settings/ExportSettings";
 import LanguageSettings from "../components/features/Settings/LanguageSettings";
 import PeriodTableSettings from "../components/features/Settings/PeriodTableSettings";
+import AttachmentViewSettings from "../components/features/Settings/AttachmentViewSettings";
 
 const SettingsPage = () => {
   const { t } = useTranslation();
@@ -31,6 +32,9 @@ const SettingsPage = () => {
 
           {/* Period Table Settings */}
           <PeriodTableSettings />
+
+          {/* Attachment View Settings */}
+          <AttachmentViewSettings />
 
           {/* Export Settings */}
           <ExportSettings />

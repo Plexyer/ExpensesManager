@@ -7,11 +7,24 @@ import {
   updateLineItem,
   deleteLineItem,
 } from "../../../services/lineItemService";
+import {
+  getAttachmentSummaries,
+  listAttachments,
+} from "../../../services/attachmentService";
+import { getUiSetting } from "../../../services/settingsService";
 import type { LineItem } from "../../../types/lineItem.types";
+import type { AttachmentSummary } from "../../../types/attachment.types";
+import type { AttachmentMeta } from "../../../types/attachment.types";
 import type { LedgerModalState } from "./types";
+import type { AnchorRect } from "./AttachmentPopover";
+import AttachmentIndicator from "./AttachmentIndicator";
+import AttachmentPopover from "./AttachmentPopover";
+import AttachmentLightbox from "./AttachmentLightbox";
 import { formatErrorMessage } from "../../../utils/formatErrorMessage";
 import { formatCurrency } from "../../../utils/currency";
 import { formatDate, formatTime } from "../../../utils/dateFormat";
+
+type AttachmentViewMode = "popover" | "lightbox";
 
 interface CategoryLedgerModalProps {
   /** Which category + kind to display */
@@ -72,8 +85,41 @@ const CategoryLedgerModal = ({
   const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // ── Attachment state ──
+  const [attachmentSummaries, setAttachmentSummaries] = useState<
+    Record<string, AttachmentSummary>
+  >({});
+  const [viewMode, setViewMode] = useState<AttachmentViewMode>("popover");
+  const [popoverState, setPopoverState] = useState<{
+    lineItemId: number;
+    anchorRect: AnchorRect;
+  } | null>(null);
+  const [lightboxState, setLightboxState] = useState<{
+    lineItemId: number;
+    attachments: AttachmentMeta[];
+    index: number;
+  } | null>(null);
+
   const kindLabel = ledgerState.kind === "received" ? t("ledger.received") : t("ledger.spent");
   const isEditMode = editingItem !== null;
+
+  // ── Fetch attachment summaries for all visible line items ──
+  const fetchAttachmentSummaries = useCallback(
+    async (items: LineItem[]) => {
+      if (items.length === 0) {
+        setAttachmentSummaries({});
+        return;
+      }
+      try {
+        const ids = items.map((i) => i.line_item_id);
+        const summaries = await getAttachmentSummaries(ids);
+        setAttachmentSummaries(summaries);
+      } catch {
+        // Non-critical: indicators will show 0 counts silently
+      }
+    },
+    []
+  );
 
   // ── Fetch line items ──
   const fetchItems = useCallback(async () => {
@@ -85,17 +131,34 @@ const CategoryLedgerModal = ({
         ledgerState.kind
       );
       setLineItems(items);
+      // Fetch attachment summaries for the loaded items
+      fetchAttachmentSummaries(items);
     } catch (err) {
       setError(formatErrorMessage(err, t("ledger.failedToLoadItems")));
     } finally {
       setLoading(false);
     }
-  }, [ledgerState.budgetInstanceCategoryId, ledgerState.kind]);
+  }, [ledgerState.budgetInstanceCategoryId, ledgerState.kind, fetchAttachmentSummaries]);
 
   // Fetch on mount and when dependencies change
   useEffect(() => {
     fetchItems();
   }, [fetchItems]);
+
+  // Load attachment view mode setting on mount
+  useEffect(() => {
+    const loadViewMode = async () => {
+      try {
+        const stored = await getUiSetting("attachment_view_mode");
+        if (stored === "popover" || stored === "lightbox") {
+          setViewMode(stored);
+        }
+      } catch {
+        // Fall back to default silently
+      }
+    };
+    loadViewMode();
+  }, []);
 
   // Focus the modal on mount for accessibility
   useEffect(() => {
@@ -109,12 +172,16 @@ const CategoryLedgerModal = ({
     }
   }, [showForm]);
 
-  // Close on Escape key
+  // Close on Escape key — layered: popover/lightbox > delete confirm > form > modal
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        if (deletingItemId !== null) {
+        if (popoverState !== null) {
+          setPopoverState(null);
+        } else if (lightboxState !== null) {
+          setLightboxState(null);
+        } else if (deletingItemId !== null) {
           setDeletingItemId(null);
           setDeleteError(null);
         } else if (showForm) {
@@ -125,17 +192,17 @@ const CategoryLedgerModal = ({
         }
       }
     },
-    [onClose, showForm, deletingItemId]
+    [onClose, showForm, deletingItemId, popoverState, lightboxState]
   );
 
-  // Close on backdrop click
+  // Unfocus active field on backdrop click (modal stays open)
   const handleBackdropClick = useCallback(
     (e: React.MouseEvent) => {
       if (e.target === e.currentTarget) {
-        onClose();
+        (document.activeElement as HTMLElement)?.blur();
       }
     },
-    [onClose]
+    []
   );
 
   // ── Form helpers ──
@@ -238,6 +305,67 @@ const CategoryLedgerModal = ({
     setDeletingItemId(null);
     setDeleteError(null);
   };
+
+  // ── Attachment handlers ──
+
+  /** Called when an attachment indicator is clicked. Routes to popover or lightbox. */
+  const handleIndicatorClick = useCallback(
+    async (lineItemId: number, event: React.MouseEvent<HTMLElement>) => {
+      if (viewMode === "popover") {
+        // Compute anchor rect from the clicked button
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        const anchorRect: AnchorRect = {
+          top: rect.top,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
+        };
+
+        // Toggle: if same popover is open, close it; otherwise open new one
+        if (popoverState?.lineItemId === lineItemId) {
+          setPopoverState(null);
+        } else {
+          setPopoverState({ lineItemId, anchorRect });
+        }
+      } else {
+        // Lightbox mode: fetch full attachment list then open
+        try {
+          const attachments = await listAttachments(lineItemId);
+          setLightboxState({ lineItemId, attachments, index: 0 });
+        } catch {
+          // Silently fail — user can try again
+        }
+      }
+    },
+    [viewMode, popoverState]
+  );
+
+  /** Refresh attachment summaries after add/delete in popover or lightbox. */
+  const handleAttachmentsChanged = useCallback(() => {
+    fetchAttachmentSummaries(lineItems);
+  }, [fetchAttachmentSummaries, lineItems]);
+
+  /** Called from popover when user wants to view an image in lightbox. */
+  const handleOpenLightboxFromPopover = useCallback(
+    (attachments: AttachmentMeta[], startIndex: number) => {
+      if (!popoverState) return;
+      setPopoverState(null);
+      setLightboxState({
+        lineItemId: popoverState.lineItemId,
+        attachments,
+        index: startIndex,
+      });
+    },
+    [popoverState]
+  );
+
+  const handleClosePopover = useCallback(() => {
+    setPopoverState(null);
+  }, []);
+
+  const handleCloseLightbox = useCallback(() => {
+    setLightboxState(null);
+  }, []);
 
   // Compute total
   const total = lineItems.reduce((sum, item) => sum + item.amount, 0);
@@ -464,7 +592,7 @@ const CategoryLedgerModal = ({
                     {t("ledger.description")}
                   </th>
                   <th className="text-right py-2 pr-4 font-medium">{t("ledger.amount")}</th>
-                  <th className="text-right py-2 font-medium w-20">{t("ledger.actions")}</th>
+                  <th className="text-right py-2 font-medium w-28">{t("ledger.actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -536,6 +664,22 @@ const CategoryLedgerModal = ({
                         ) : (
                           /* Normal action buttons */
                           <div className="flex items-center justify-end gap-1">
+                            {/* Attachment indicator */}
+                            <AttachmentIndicator
+                              lineItemId={item.line_item_id}
+                              attachmentCount={
+                                attachmentSummaries[String(item.line_item_id)]?.count ?? 0
+                              }
+                              firstThumbnail={
+                                attachmentSummaries[String(item.line_item_id)]?.first_thumbnail ?? null
+                              }
+                              firstMimeType={
+                                attachmentSummaries[String(item.line_item_id)]?.first_mime_type ?? null
+                              }
+                              onClick={(e: React.MouseEvent<HTMLElement>) =>
+                                handleIndicatorClick(item.line_item_id, e)
+                              }
+                            />
                             {/* Edit button */}
                             <button
                               type="button"
@@ -610,6 +754,26 @@ const CategoryLedgerModal = ({
           )}
         </div>
       </div>
+
+      {/* ── Attachment Popover ── */}
+      <AttachmentPopover
+        isOpen={popoverState !== null}
+        lineItemId={popoverState?.lineItemId ?? 0}
+        anchorRect={popoverState?.anchorRect ?? null}
+        onClose={handleClosePopover}
+        onAttachmentsChanged={handleAttachmentsChanged}
+        onOpenLightbox={handleOpenLightboxFromPopover}
+      />
+
+      {/* ── Attachment Lightbox ── */}
+      <AttachmentLightbox
+        isOpen={lightboxState !== null}
+        attachments={lightboxState?.attachments ?? []}
+        initialIndex={lightboxState?.index ?? 0}
+        lineItemId={lightboxState?.lineItemId ?? 0}
+        onClose={handleCloseLightbox}
+        onAttachmentsChanged={handleAttachmentsChanged}
+      />
     </div>
   );
 };

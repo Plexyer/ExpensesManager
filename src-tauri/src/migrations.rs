@@ -17,7 +17,7 @@ use rusqlite::Connection;
 use thiserror::Error;
 
 /// Current schema version. Increment when adding new migrations.
-pub const CURRENT_SCHEMA_VERSION: u32 = 4;
+pub const CURRENT_SCHEMA_VERSION: u32 = 5;
 
 /// Errors that can occur during migrations.
 #[derive(Debug, Error)]
@@ -103,6 +103,7 @@ fn apply_migration(conn: &Connection, version: u32) -> Result<(), MigrationError
         2 => apply_migration_v2(conn),
         3 => apply_migration_v3(conn),
         4 => apply_migration_v4(conn),
+        5 => apply_migration_v5(conn),
         _ => Err(MigrationError::UnknownVersion(version)),
     }
 }
@@ -392,6 +393,69 @@ CREATE TABLE IF NOT EXISTS ui_settings (
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+"#;
+
+/// Migration v5: Create line_item_attachments table.
+///
+/// Stores file attachments (images, PDFs, any documents) linked to individual
+/// transactions. Files are stored as BLOBs and are automatically encrypted
+/// by SQLCipher at the page level. A separate `thumbnail` column stores a
+/// small preview image (~120x120 JPEG) for images; NULL for non-image files.
+fn apply_migration_v5(conn: &Connection) -> Result<(), MigrationError> {
+    let tx = conn.unchecked_transaction()?;
+
+    tx.execute_batch(MIGRATION_V5_SQL)?;
+
+    tx.execute(
+        "INSERT OR REPLACE INTO _meta (key, value) VALUES ('schema_version', '5')",
+        [],
+    )?;
+
+    tx.commit()?;
+
+    Ok(())
+}
+
+/// SQL for migration v5: Line item attachments table.
+///
+/// Stores file attachments for transactions. Each attachment includes the full
+/// file data as a BLOB, an optional thumbnail for image previews, and metadata
+/// (filename, MIME type, size). Supports soft deletion via `deleted_at`.
+const MIGRATION_V5_SQL: &str = r#"
+-- ============================================================================
+-- Migration v5: Line Item Attachments Table
+-- ============================================================================
+-- Stores file attachments (receipts, PDFs, documents) linked to individual
+-- transactions. Files are stored as BLOBs and encrypted automatically by
+-- SQLCipher. Thumbnails are small JPEG previews for image attachments.
+-- ============================================================================
+
+-- Line item attachments: Files attached to individual transactions
+CREATE TABLE IF NOT EXISTS line_item_attachments (
+    attachment_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+    line_item_id   INTEGER NOT NULL,
+    file_name      TEXT    NOT NULL,
+    mime_type      TEXT    NOT NULL,
+    file_size      INTEGER NOT NULL,
+    thumbnail      BLOB,
+    file_data      BLOB    NOT NULL,
+    created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+    deleted_at     TEXT,
+    FOREIGN KEY (line_item_id)
+        REFERENCES category_line_items(line_item_id) ON DELETE CASCADE
+);
+
+-- ============================================================================
+-- Indexes for performance
+-- ============================================================================
+
+-- Primary lookup: Get all attachments for a line item
+CREATE INDEX IF NOT EXISTS idx_attachments_line_item
+    ON line_item_attachments(line_item_id);
+
+-- Filtered lookup: Get non-deleted attachments for a line item
+CREATE INDEX IF NOT EXISTS idx_attachments_active
+    ON line_item_attachments(line_item_id, deleted_at);
 "#;
 
 #[cfg(test)]
@@ -1104,6 +1168,277 @@ mod tests {
         assert!(
             tables_v3.contains(&"category_line_items".to_string()),
             "category_line_items should exist after upgrade to v3"
+        );
+    }
+
+    // ========================================================================
+    // Migration v5 Tests: line_item_attachments table
+    // ========================================================================
+
+    #[test]
+    fn test_migration_v5_creates_line_item_attachments() {
+        let conn = create_test_db();
+        apply_initial_schema(&conn).unwrap();
+
+        // Verify schema version is 5
+        let version = get_schema_version(&conn).unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+
+        // Verify line_item_attachments table exists
+        let tables: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert!(
+            tables.contains(&"line_item_attachments".to_string()),
+            "line_item_attachments table should exist"
+        );
+    }
+
+    #[test]
+    fn test_migration_v5_creates_indexes() {
+        let conn = create_test_db();
+        apply_initial_schema(&conn).unwrap();
+
+        // Query for v5 indexes
+        let indexes: Vec<String> = conn
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_attachments_%' ORDER BY name",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert!(
+            indexes.contains(&"idx_attachments_line_item".to_string()),
+            "idx_attachments_line_item should exist"
+        );
+        assert!(
+            indexes.contains(&"idx_attachments_active".to_string()),
+            "idx_attachments_active should exist"
+        );
+    }
+
+    #[test]
+    fn test_migration_v5_table_structure() {
+        let conn = create_test_db();
+        apply_initial_schema(&conn).unwrap();
+
+        // Insert prerequisite data (global category → template → period → bic → line item)
+        conn.execute(
+            "INSERT INTO global_categories (name) VALUES ('Test Category')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO budget_templates (name, cadence) VALUES ('Test Template', 'monthly')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO period_budget_instances (cadence, start_date, template_id) VALUES ('monthly', '2026-02-01', 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO budget_instance_categories (budget_instance_id, global_category_id, default_amount) VALUES (1, 1, 500.00)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount) VALUES (1, 'spent', '2026-02-01T00:00:00', 100.00)",
+            [],
+        )
+        .unwrap();
+
+        // Insert an attachment with all columns
+        conn.execute(
+            "INSERT INTO line_item_attachments (line_item_id, file_name, mime_type, file_size, thumbnail, file_data) VALUES (1, 'receipt.jpg', 'image/jpeg', 12345, X'FFD8FF', X'FFD8FFE0')",
+            [],
+        )
+        .unwrap();
+
+        // Insert an attachment without thumbnail (non-image)
+        conn.execute(
+            "INSERT INTO line_item_attachments (line_item_id, file_name, mime_type, file_size, file_data) VALUES (1, 'document.pdf', 'application/pdf', 67890, X'255044462D')",
+            [],
+        )
+        .unwrap();
+
+        // Verify data was inserted
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM line_item_attachments",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+
+        // Verify first attachment values
+        let (file_name, mime_type, file_size): (String, String, i64) = conn
+            .query_row(
+                "SELECT file_name, mime_type, file_size FROM line_item_attachments WHERE attachment_id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(file_name, "receipt.jpg");
+        assert_eq!(mime_type, "image/jpeg");
+        assert_eq!(file_size, 12345);
+
+        // Verify second attachment has NULL thumbnail
+        let thumbnail: Option<Vec<u8>> = conn
+            .query_row(
+                "SELECT thumbnail FROM line_item_attachments WHERE attachment_id = 2",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(thumbnail.is_none(), "PDF attachment should have NULL thumbnail");
+    }
+
+    #[test]
+    fn test_migration_v5_fk_constraint() {
+        let conn = create_test_db();
+        // Enable foreign keys
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+        apply_initial_schema(&conn).unwrap();
+
+        // Try to insert attachment with non-existent line_item_id — should fail
+        let result = conn.execute(
+            "INSERT INTO line_item_attachments (line_item_id, file_name, mime_type, file_size, file_data) VALUES (9999, 'bad.jpg', 'image/jpeg', 100, X'FF')",
+            [],
+        );
+        assert!(
+            result.is_err(),
+            "FK constraint should reject non-existent line_item_id"
+        );
+    }
+
+    #[test]
+    fn test_migration_v5_cascade_delete() {
+        let conn = create_test_db();
+        // Enable foreign keys
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+        apply_initial_schema(&conn).unwrap();
+
+        // Insert prerequisite chain
+        conn.execute(
+            "INSERT INTO global_categories (name) VALUES ('Test Category')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO budget_templates (name, cadence) VALUES ('Test Template', 'monthly')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO period_budget_instances (cadence, start_date, template_id) VALUES ('monthly', '2026-02-01', 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO budget_instance_categories (budget_instance_id, global_category_id, default_amount) VALUES (1, 1, 500.00)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount) VALUES (1, 'spent', '2026-02-01T00:00:00', 50.00)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO line_item_attachments (line_item_id, file_name, mime_type, file_size, file_data) VALUES (1, 'receipt.jpg', 'image/jpeg', 100, X'FF')",
+            [],
+        )
+        .unwrap();
+
+        // Verify attachment exists
+        let count_before: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM line_item_attachments",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count_before, 1);
+
+        // Delete the line item — should cascade to attachments
+        conn.execute(
+            "DELETE FROM category_line_items WHERE line_item_id = 1",
+            [],
+        )
+        .unwrap();
+
+        // Verify attachment was deleted via cascade
+        let count_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM line_item_attachments",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            count_after, 0,
+            "line_item_attachments should be deleted via cascade"
+        );
+    }
+
+    #[test]
+    fn test_migration_v4_to_v5_upgrade() {
+        let conn = create_test_db();
+
+        // Apply v1 through v4 only
+        apply_migration_v1(&conn).unwrap();
+        apply_migration_v2(&conn).unwrap();
+        apply_migration_v3(&conn).unwrap();
+        apply_migration_v4(&conn).unwrap();
+        let version_after_v4 = get_schema_version(&conn).unwrap();
+        assert_eq!(version_after_v4, 4);
+
+        // Verify line_item_attachments does NOT exist yet
+        let tables_v4: Vec<String> = conn
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'line_item_attachments'",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert!(
+            tables_v4.is_empty(),
+            "line_item_attachments should not exist after v4"
+        );
+
+        // Now run pending migrations (should apply v5)
+        run_pending(&conn).unwrap();
+
+        // Verify version is now 5
+        let version_after = get_schema_version(&conn).unwrap();
+        assert_eq!(version_after, CURRENT_SCHEMA_VERSION);
+
+        // Verify line_item_attachments now exists
+        let tables_v5: Vec<String> = conn
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'line_item_attachments'",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert!(
+            tables_v5.contains(&"line_item_attachments".to_string()),
+            "line_item_attachments should exist after upgrade to v5"
         );
     }
 }

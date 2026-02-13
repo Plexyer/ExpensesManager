@@ -48,6 +48,16 @@ pub fn run() {
             encrypted_db::create_line_item,
             encrypted_db::update_line_item,
             encrypted_db::delete_line_item,
+            // Attachment commands
+            encrypted_db::add_attachment,
+            encrypted_db::list_attachments,
+            encrypted_db::get_attachment_counts,
+            encrypted_db::get_attachment_summaries,
+            encrypted_db::delete_attachment,
+            encrypted_db::export_attachment,
+            encrypted_db::get_attachment_data,
+            // File metadata commands
+            encrypted_db::get_file_sizes,
             // UI settings commands
             encrypted_db::get_ui_setting,
             encrypted_db::set_ui_setting,

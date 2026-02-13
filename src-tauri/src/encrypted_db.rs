@@ -15,8 +15,11 @@
 use crate::file_header::{FileHeader, FileHeaderError};
 use crate::kdf::{self, KdfError};
 use crate::migrations::{self, MigrationError};
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+use image::codecs::jpeg::JpegEncoder;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -2241,6 +2244,618 @@ fn delete_line_item_internal(
     Ok(())
 }
 
+// ============================================================================
+// Attachment Commands
+// ============================================================================
+
+/// Metadata for a file attachment on a line item (without the full file data).
+///
+/// The `thumbnail` field contains a base64 data URL string (`"data:image/jpeg;base64,..."`)
+/// for image attachments, or `None` for non-image files.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AttachmentMeta {
+    pub attachment_id: i64,
+    pub line_item_id: i64,
+    pub file_name: String,
+    pub mime_type: String,
+    pub file_size: i64,
+    pub thumbnail: Option<String>, // base64 data URL for image thumbnails, None for non-images
+    pub created_at: String,
+}
+
+/// Detects MIME type from file header bytes using the `infer` crate,
+/// falling back to extension-based detection if byte detection fails.
+fn detect_mime_type(file_data: &[u8], file_name: &str) -> String {
+    // Try byte-level detection first (magic bytes)
+    if let Some(kind) = infer::get(file_data) {
+        return kind.mime_type().to_string();
+    }
+
+    // Fallback to extension-based detection
+    detect_mime_type_from_extension(file_name)
+}
+
+/// Detects MIME type from file extension only.
+/// Used as a fallback when byte-level detection (via `infer`) cannot determine the type.
+fn detect_mime_type_from_extension(file_name: &str) -> String {
+    let ext = Path::new(file_name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    match ext.as_str() {
+        "jpg" | "jpeg" => "image/jpeg".to_string(),
+        "png" => "image/png".to_string(),
+        "gif" => "image/gif".to_string(),
+        "webp" => "image/webp".to_string(),
+        "bmp" => "image/bmp".to_string(),
+        "tiff" | "tif" => "image/tiff".to_string(),
+        "svg" => "image/svg+xml".to_string(),
+        "pdf" => "application/pdf".to_string(),
+        "doc" => "application/msword".to_string(),
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            .to_string(),
+        "xls" => "application/vnd.ms-excel".to_string(),
+        "xlsx" => {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string()
+        }
+        "txt" => "text/plain".to_string(),
+        "csv" => "text/csv".to_string(),
+        "json" => "application/json".to_string(),
+        "xml" => "application/xml".to_string(),
+        "zip" => "application/zip".to_string(),
+        _ => "application/octet-stream".to_string(),
+    }
+}
+
+/// Generates a JPEG thumbnail for image files, resized to fit within 120x120 pixels.
+///
+/// Returns `Some(Vec<u8>)` containing JPEG bytes at ~70% quality for supported image types
+/// (JPEG, PNG, WebP, GIF, BMP, TIFF). Returns `None` for non-image files, SVGs,
+/// corrupted images, or empty data. Never panics — all errors result in `None`.
+fn generate_thumbnail(file_data: &[u8], mime_type: &str) -> Option<Vec<u8>> {
+    // Only generate thumbnails for raster image types
+    if !mime_type.starts_with("image/") || mime_type == "image/svg+xml" {
+        return None;
+    }
+
+    if file_data.is_empty() {
+        return None;
+    }
+
+    // Decode the image from raw bytes
+    let img = image::load_from_memory(file_data).ok()?;
+
+    // Resize to fit within 120x120 maintaining aspect ratio
+    let thumb = img.thumbnail(120, 120);
+
+    // Encode as JPEG at 70% quality
+    let mut buf = Vec::new();
+    let encoder = JpegEncoder::new_with_quality(&mut buf, 70);
+    thumb.write_with_encoder(encoder).ok()?;
+
+    Some(buf)
+}
+
+/// Converts raw thumbnail JPEG bytes into a base64 data URL string
+/// suitable for direct use in an HTML `<img src="...">` tag.
+fn thumbnail_to_base64(thumbnail_bytes: &[u8]) -> String {
+    let encoded = BASE64_STANDARD.encode(thumbnail_bytes);
+    format!("data:image/jpeg;base64,{}", encoded)
+}
+
+/// Adds a file attachment to a line item by reading it from the filesystem.
+///
+/// Reads the file at `file_path`, detects MIME type from file bytes (with extension fallback),
+/// generates a thumbnail for image files, and stores everything as BLOBs in the
+/// `line_item_attachments` table. Returns the created `AttachmentMeta` (without `file_data`).
+#[tauri::command]
+pub fn add_attachment(
+    line_item_id: i64,
+    file_path: String,
+    db_state: State<DbState>,
+) -> Result<AttachmentMeta, String> {
+    add_attachment_internal(line_item_id, &file_path, &db_state).map_err(|e| e.to_string())
+}
+
+fn add_attachment_internal(
+    line_item_id: i64,
+    file_path: &str,
+    db_state: &State<DbState>,
+) -> Result<AttachmentMeta, EncryptedDbError> {
+    // Read file from filesystem
+    let file_data = fs::read(file_path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            EncryptedDbError::FileNotFound(file_path.to_string())
+        } else {
+            EncryptedDbError::FileReadError(e.to_string())
+        }
+    })?;
+
+    // Extract filename from path
+    let file_name = Path::new(file_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    // Detect MIME type from file bytes with extension fallback
+    let mime_type = detect_mime_type(&file_data, &file_name);
+
+    // Generate thumbnail for image files (returns None for non-images)
+    let thumbnail = generate_thumbnail(&file_data, &mime_type);
+
+    let file_size = file_data.len() as i64;
+
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    // Verify the line item exists
+    let line_item_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM category_line_items WHERE line_item_id = ? AND deleted_at IS NULL",
+            [line_item_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|count| count > 0)?;
+
+    if !line_item_exists {
+        return Err(EncryptedDbError::DatabaseError(
+            "Line item not found.".to_string(),
+        ));
+    }
+
+    // Insert attachment
+    conn.execute(
+        r#"
+        INSERT INTO line_item_attachments
+            (line_item_id, file_name, mime_type, file_size, thumbnail, file_data)
+        VALUES (?, ?, ?, ?, ?, ?)
+        "#,
+        rusqlite::params![line_item_id, file_name, mime_type, file_size, thumbnail, file_data],
+    )?;
+
+    let attachment_id = conn.last_insert_rowid();
+
+    // Fetch the created row to return server-generated fields
+    let meta = conn.query_row(
+        r#"
+        SELECT attachment_id, line_item_id, file_name, mime_type, file_size, thumbnail, created_at
+        FROM line_item_attachments
+        WHERE attachment_id = ?
+        "#,
+        [attachment_id],
+        |row| {
+            let thumb_bytes: Option<Vec<u8>> = row.get(5)?;
+            Ok(AttachmentMeta {
+                attachment_id: row.get(0)?,
+                line_item_id: row.get(1)?,
+                file_name: row.get(2)?,
+                mime_type: row.get(3)?,
+                file_size: row.get(4)?,
+                thumbnail: thumb_bytes.map(|b| thumbnail_to_base64(&b)),
+                created_at: row.get(6)?,
+            })
+        },
+    )?;
+
+    Ok(meta)
+}
+
+/// Lists attachment metadata for a line item (without full file data).
+///
+/// Returns non-deleted attachments ordered by `created_at ASC`.
+/// The `thumbnail` field contains a base64 data URL for image attachments, or `None`.
+#[tauri::command]
+pub fn list_attachments(
+    line_item_id: i64,
+    db_state: State<DbState>,
+) -> Result<Vec<AttachmentMeta>, String> {
+    list_attachments_internal(line_item_id, &db_state).map_err(|e| e.to_string())
+}
+
+fn list_attachments_internal(
+    line_item_id: i64,
+    db_state: &State<DbState>,
+) -> Result<Vec<AttachmentMeta>, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT
+            attachment_id,
+            line_item_id,
+            file_name,
+            mime_type,
+            file_size,
+            thumbnail,
+            created_at
+        FROM line_item_attachments
+        WHERE line_item_id = ?
+          AND deleted_at IS NULL
+        ORDER BY created_at ASC
+        "#,
+    )?;
+
+    let rows = stmt.query_map([line_item_id], |row| {
+        let thumb_bytes: Option<Vec<u8>> = row.get(5)?;
+        Ok(AttachmentMeta {
+            attachment_id: row.get(0)?,
+            line_item_id: row.get(1)?,
+            file_name: row.get(2)?,
+            mime_type: row.get(3)?,
+            file_size: row.get(4)?,
+            thumbnail: thumb_bytes.map(|b| thumbnail_to_base64(&b)),
+            created_at: row.get(6)?,
+        })
+    })?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+
+    Ok(items)
+}
+
+/// Returns attachment counts for multiple line items in a single batch query.
+///
+/// Used for efficient badge rendering on the transaction list.
+/// Line items with zero attachments are omitted from the result map —
+/// the frontend should treat a missing key as count 0.
+#[tauri::command]
+pub fn get_attachment_counts(
+    line_item_ids: Vec<i64>,
+    db_state: State<DbState>,
+) -> Result<HashMap<i64, i64>, String> {
+    get_attachment_counts_internal(&line_item_ids, &db_state).map_err(|e| e.to_string())
+}
+
+fn get_attachment_counts_internal(
+    line_item_ids: &[i64],
+    db_state: &State<DbState>,
+) -> Result<HashMap<i64, i64>, EncryptedDbError> {
+    if line_item_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    // Build parameterized IN clause
+    let placeholders: Vec<String> = line_item_ids.iter().map(|_| "?".to_string()).collect();
+    let sql = format!(
+        r#"
+        SELECT line_item_id, COUNT(*) as cnt
+        FROM line_item_attachments
+        WHERE line_item_id IN ({})
+          AND deleted_at IS NULL
+        GROUP BY line_item_id
+        "#,
+        placeholders.join(", ")
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+
+    let params: Vec<Box<dyn rusqlite::types::ToSql>> = line_item_ids
+        .iter()
+        .map(|id| Box::new(*id) as Box<dyn rusqlite::types::ToSql>)
+        .collect();
+
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+    let rows = stmt.query_map(param_refs.as_slice(), |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+    })?;
+
+    let mut counts = HashMap::new();
+    for row in rows {
+        let (line_item_id, count) = row?;
+        counts.insert(line_item_id, count);
+    }
+
+    Ok(counts)
+}
+
+/// Summary of attachments for a single line item, used for efficient
+/// indicator rendering. Includes count + first attachment's thumbnail/MIME.
+#[derive(Debug, Serialize, Clone)]
+pub struct AttachmentSummary {
+    pub count: i64,
+    pub first_thumbnail: Option<String>, // base64 data URL or None
+    pub first_mime_type: Option<String>,
+}
+
+/// Returns attachment summaries (count + first thumbnail + first MIME type)
+/// for multiple line items in an efficient batch query.
+///
+/// Used by the frontend to render attachment indicators on transaction rows
+/// without loading full attachment data.
+/// Line items with zero attachments are omitted from the result map.
+#[tauri::command]
+pub fn get_attachment_summaries(
+    line_item_ids: Vec<i64>,
+    db_state: State<DbState>,
+) -> Result<HashMap<i64, AttachmentSummary>, String> {
+    get_attachment_summaries_internal(&line_item_ids, &db_state).map_err(|e| e.to_string())
+}
+
+fn get_attachment_summaries_internal(
+    line_item_ids: &[i64],
+    db_state: &State<DbState>,
+) -> Result<HashMap<i64, AttachmentSummary>, EncryptedDbError> {
+    if line_item_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    // Build parameterized IN clause — need two copies of params for the
+    // main query and the correlated subqueries.
+    let placeholders: Vec<String> = line_item_ids.iter().map(|_| "?".to_string()).collect();
+    let in_clause = placeholders.join(", ");
+
+    let sql = format!(
+        r#"
+        SELECT
+            a.line_item_id,
+            COUNT(*) AS cnt,
+            (SELECT sub.thumbnail
+             FROM line_item_attachments sub
+             WHERE sub.line_item_id = a.line_item_id AND sub.deleted_at IS NULL
+             ORDER BY sub.created_at ASC LIMIT 1
+            ) AS first_thumbnail,
+            (SELECT sub2.mime_type
+             FROM line_item_attachments sub2
+             WHERE sub2.line_item_id = a.line_item_id AND sub2.deleted_at IS NULL
+             ORDER BY sub2.created_at ASC LIMIT 1
+            ) AS first_mime_type
+        FROM line_item_attachments a
+        WHERE a.line_item_id IN ({})
+          AND a.deleted_at IS NULL
+        GROUP BY a.line_item_id
+        "#,
+        in_clause
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+
+    let params: Vec<Box<dyn rusqlite::types::ToSql>> = line_item_ids
+        .iter()
+        .map(|id| Box::new(*id) as Box<dyn rusqlite::types::ToSql>)
+        .collect();
+
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+    let rows = stmt.query_map(param_refs.as_slice(), |row| {
+        let line_item_id: i64 = row.get(0)?;
+        let count: i64 = row.get(1)?;
+        let thumbnail_bytes: Option<Vec<u8>> = row.get(2)?;
+        let first_mime_type: Option<String> = row.get(3)?;
+        Ok((line_item_id, count, thumbnail_bytes, first_mime_type))
+    })?;
+
+    let mut summaries = HashMap::new();
+    for row in rows {
+        let (line_item_id, count, thumbnail_bytes, first_mime_type) = row?;
+        let first_thumbnail = thumbnail_bytes
+            .filter(|b| !b.is_empty())
+            .map(|b| thumbnail_to_base64(&b));
+
+        summaries.insert(
+            line_item_id,
+            AttachmentSummary {
+                count,
+                first_thumbnail,
+                first_mime_type,
+            },
+        );
+    }
+
+    Ok(summaries)
+}
+
+/// Soft-deletes an attachment by setting `deleted_at`.
+///
+/// Returns an error if the attachment is not found or already deleted.
+#[tauri::command]
+pub fn delete_attachment(
+    attachment_id: i64,
+    db_state: State<DbState>,
+) -> Result<(), String> {
+    delete_attachment_internal(attachment_id, &db_state).map_err(|e| e.to_string())
+}
+
+fn delete_attachment_internal(
+    attachment_id: i64,
+    db_state: &State<DbState>,
+) -> Result<(), EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let rows_affected = conn.execute(
+        r#"
+        UPDATE line_item_attachments
+        SET deleted_at = datetime('now')
+        WHERE attachment_id = ? AND deleted_at IS NULL
+        "#,
+        [attachment_id],
+    )?;
+
+    if rows_affected == 0 {
+        return Err(EncryptedDbError::DatabaseError(
+            "Attachment not found or already deleted.".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+/// Exports an attachment by reading the full BLOB from the database and
+/// writing it to the specified filesystem path.
+///
+/// Returns an error if the attachment is not found, already deleted,
+/// or the file cannot be written.
+#[tauri::command]
+pub fn export_attachment(
+    attachment_id: i64,
+    save_path: String,
+    db_state: State<DbState>,
+) -> Result<(), String> {
+    export_attachment_internal(attachment_id, &save_path, &db_state).map_err(|e| e.to_string())
+}
+
+fn export_attachment_internal(
+    attachment_id: i64,
+    save_path: &str,
+    db_state: &State<DbState>,
+) -> Result<(), EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    // Read the full file data BLOB
+    let file_data: Vec<u8> = conn
+        .query_row(
+            "SELECT file_data FROM line_item_attachments WHERE attachment_id = ? AND deleted_at IS NULL",
+            [attachment_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => EncryptedDbError::DatabaseError(
+                "Attachment not found or already deleted.".to_string(),
+            ),
+            other => EncryptedDbError::from(other),
+        })?;
+
+    // Write to the filesystem
+    fs::write(save_path, &file_data).map_err(|e| EncryptedDbError::FileWriteError(e.to_string()))?;
+
+    Ok(())
+}
+
+/// Returns the full file data for an attachment as a base64 data URL string.
+///
+/// Used by the frontend lightbox to display full-resolution images.
+/// Returns a string like `"data:image/jpeg;base64,/9j/4AAQ..."`.
+#[tauri::command]
+pub fn get_attachment_data(
+    attachment_id: i64,
+    db_state: State<DbState>,
+) -> Result<String, String> {
+    get_attachment_data_internal(attachment_id, &db_state).map_err(|e| e.to_string())
+}
+
+fn get_attachment_data_internal(
+    attachment_id: i64,
+    db_state: &State<DbState>,
+) -> Result<String, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    let (file_data, mime_type): (Vec<u8>, String) = conn
+        .query_row(
+            "SELECT file_data, mime_type FROM line_item_attachments WHERE attachment_id = ? AND deleted_at IS NULL",
+            [attachment_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => EncryptedDbError::DatabaseError(
+                "Attachment not found or already deleted.".to_string(),
+            ),
+            other => EncryptedDbError::from(other),
+        })?;
+
+    let encoded = BASE64_STANDARD.encode(&file_data);
+    Ok(format!("data:{};base64,{}", mime_type, encoded))
+}
+
+// ============================================================================
+// File Metadata (no DB required)
+// ============================================================================
+
+/// Lightweight file metadata returned by `get_file_sizes`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FileMetaInfo {
+    pub path: String,
+    pub file_name: String,
+    pub file_size: u64,
+}
+
+/// Returns file metadata (name + size) for a list of filesystem paths.
+/// Uses `std::fs::metadata()` — does NOT read file contents into memory.
+/// Skips paths that cannot be stat-ed (e.g., missing files) with an error entry.
+#[tauri::command]
+pub fn get_file_sizes(paths: Vec<String>) -> Result<Vec<FileMetaInfo>, String> {
+    let mut results = Vec::with_capacity(paths.len());
+
+    for path_str in &paths {
+        let path = Path::new(path_str);
+
+        let metadata = fs::metadata(path).map_err(|e| {
+            format!("Cannot read file metadata for '{}': {}", path_str, e)
+        })?;
+
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        results.push(FileMetaInfo {
+            path: path_str.clone(),
+            file_name,
+            file_size: metadata.len(),
+        });
+    }
+
+    Ok(results)
+}
+
 /// Sets a UI setting value by key (upsert). Creates the key if it doesn't exist.
 #[tauri::command]
 pub fn set_ui_setting(
@@ -2534,6 +3149,7 @@ fn export_to_csv_internal(db_state: &State<DbState>) -> Result<String, Encrypted
 mod tests {
     use super::*;
     use crate::kdf;
+    use std::io::Cursor;
     use tempfile::NamedTempFile;
 
     // Note: These tests require the full Tauri runtime for State<DbState>,
@@ -4177,5 +4793,1056 @@ mod tests {
         assert_eq!(rows[2].0, "Transport");
         assert!((rows[2].1 - 0.0).abs() < 0.01);
         assert!((rows[2].2 - 0.0).abs() < 0.01);
+    }
+
+    // ========================================================================
+    // Attachment CRUD Tests
+    // ========================================================================
+
+    /// Helper: create a test DB and insert prerequisite data up to a line item.
+    /// Returns (Connection, line_item_id).
+    fn setup_attachment_test_db() -> (Connection, i64) {
+        let conn = setup_grid_test_db();
+        let (_budget_instance_id, bic_id, _global_cat_id) = insert_grid_test_data(&conn);
+
+        // Insert a line item to attach files to
+        conn.execute(
+            r#"
+            INSERT INTO category_line_items
+                (budget_instance_category_id, kind, occurred_at, amount, currency, is_template_default)
+            VALUES (?, 'spent', '2026-02-13T10:00:00', 42.50, 'CHF', 0)
+            "#,
+            [bic_id],
+        )
+        .unwrap();
+        let line_item_id = conn.last_insert_rowid();
+
+        (conn, line_item_id)
+    }
+
+    /// Helper: insert an attachment directly via SQL (bypasses filesystem read).
+    fn insert_test_attachment(
+        conn: &Connection,
+        line_item_id: i64,
+        file_name: &str,
+        mime_type: &str,
+        file_data: &[u8],
+    ) -> i64 {
+        conn.execute(
+            r#"
+            INSERT INTO line_item_attachments
+                (line_item_id, file_name, mime_type, file_size, file_data)
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+            rusqlite::params![line_item_id, file_name, mime_type, file_data.len() as i64, file_data],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
+    // -- MIME Type Detection Tests --
+
+    #[test]
+    fn test_detect_mime_type_from_extension_fallback() {
+        // When byte detection fails (empty/unknown bytes), extension is used
+        let empty: &[u8] = &[];
+        assert_eq!(detect_mime_type(empty, "photo.jpg"), "image/jpeg");
+        assert_eq!(detect_mime_type(empty, "photo.JPEG"), "image/jpeg");
+        assert_eq!(detect_mime_type(empty, "image.png"), "image/png");
+        assert_eq!(detect_mime_type(empty, "doc.pdf"), "application/pdf");
+        assert_eq!(detect_mime_type(empty, "sheet.xlsx"), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        assert_eq!(detect_mime_type(empty, "data.csv"), "text/csv");
+        assert_eq!(detect_mime_type(empty, "readme.txt"), "text/plain");
+        assert_eq!(detect_mime_type(empty, "archive.zip"), "application/zip");
+    }
+
+    #[test]
+    fn test_detect_mime_type_unknown() {
+        // Unknown bytes + unknown extension -> application/octet-stream
+        let garbage = vec![0x00, 0x01, 0x02, 0x03];
+        assert_eq!(detect_mime_type(&garbage, "mystery.xyz"), "application/octet-stream");
+        assert_eq!(detect_mime_type(&garbage, "noext"), "application/octet-stream");
+        assert_eq!(detect_mime_type(&[], "mystery.xyz"), "application/octet-stream");
+    }
+
+    #[test]
+    fn test_detect_mime_type_from_bytes_jpeg() {
+        // Real JPEG magic bytes should be detected regardless of extension
+        let jpeg_header = vec![
+            0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46,
+            0x49, 0x46, 0x00, 0x01,
+        ];
+        let result = detect_mime_type(&jpeg_header, "wrong_extension.txt");
+        assert_eq!(result, "image/jpeg");
+    }
+
+    #[test]
+    fn test_detect_mime_type_from_bytes_png() {
+        // Real PNG magic bytes
+        let png_header = vec![
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        ];
+        let result = detect_mime_type(&png_header, "wrong_extension.doc");
+        assert_eq!(result, "image/png");
+    }
+
+    #[test]
+    fn test_detect_mime_type_from_bytes_pdf() {
+        // Real PDF magic bytes
+        let pdf_header = b"%PDF-1.4 fake pdf content";
+        let result = detect_mime_type(pdf_header, "wrong_extension.jpg");
+        assert_eq!(result, "application/pdf");
+    }
+
+    #[test]
+    fn test_detect_mime_type_from_extension_only() {
+        // Extension-only helper still works correctly
+        assert_eq!(detect_mime_type_from_extension("photo.jpg"), "image/jpeg");
+        assert_eq!(detect_mime_type_from_extension("image.png"), "image/png");
+        assert_eq!(detect_mime_type_from_extension("doc.pdf"), "application/pdf");
+        assert_eq!(detect_mime_type_from_extension("mystery.xyz"), "application/octet-stream");
+        assert_eq!(detect_mime_type_from_extension("noext"), "application/octet-stream");
+    }
+
+    // -- Thumbnail Generation Tests --
+
+    /// Helper: creates a minimal valid PNG image (1x1 pixel, red) for testing.
+    fn create_test_png() -> Vec<u8> {
+        let img = image::RgbaImage::from_pixel(1, 1, image::Rgba([255, 0, 0, 255]));
+        let dyn_img = image::DynamicImage::ImageRgba8(img);
+        let mut buf = Vec::new();
+        dyn_img.write_to(&mut Cursor::new(&mut buf), image::ImageFormat::Png).unwrap();
+        buf
+    }
+
+    /// Helper: creates a larger test PNG (200x150 pixels) for thumbnail resize testing.
+    fn create_test_png_large(width: u32, height: u32) -> Vec<u8> {
+        let img = image::RgbaImage::from_pixel(width, height, image::Rgba([0, 128, 255, 255]));
+        let dyn_img = image::DynamicImage::ImageRgba8(img);
+        let mut buf = Vec::new();
+        dyn_img.write_to(&mut Cursor::new(&mut buf), image::ImageFormat::Png).unwrap();
+        buf
+    }
+
+    /// Helper: creates a minimal valid JPEG image (1x1 pixel) for testing.
+    fn create_test_jpeg() -> Vec<u8> {
+        let img = image::RgbImage::from_pixel(1, 1, image::Rgb([255, 0, 0]));
+        let dyn_img = image::DynamicImage::ImageRgb8(img);
+        let mut buf = Vec::new();
+        let encoder = JpegEncoder::new_with_quality(&mut buf, 70);
+        dyn_img.write_with_encoder(encoder).unwrap();
+        buf
+    }
+
+    #[test]
+    fn test_generate_thumbnail_jpeg() {
+        let jpeg_data = create_test_jpeg();
+        let result = generate_thumbnail(&jpeg_data, "image/jpeg");
+        assert!(result.is_some(), "Valid JPEG should produce a thumbnail");
+        let thumb = result.unwrap();
+        assert!(!thumb.is_empty(), "Thumbnail should not be empty");
+        // Verify it starts with JPEG magic bytes
+        assert_eq!(&thumb[0..2], &[0xFF, 0xD8], "Thumbnail should be valid JPEG");
+    }
+
+    #[test]
+    fn test_generate_thumbnail_png() {
+        let png_data = create_test_png();
+        let result = generate_thumbnail(&png_data, "image/png");
+        assert!(result.is_some(), "Valid PNG should produce a thumbnail");
+        let thumb = result.unwrap();
+        // Output is JPEG regardless of input format
+        assert_eq!(&thumb[0..2], &[0xFF, 0xD8], "Thumbnail should be JPEG even for PNG input");
+    }
+
+    #[test]
+    fn test_generate_thumbnail_respects_max_dimensions() {
+        // Create a 200x150 image — thumbnail should fit within 120x120
+        let png_data = create_test_png_large(200, 150);
+        let result = generate_thumbnail(&png_data, "image/png");
+        assert!(result.is_some());
+        let thumb_bytes = result.unwrap();
+
+        // Decode the thumbnail to check dimensions
+        let thumb_img = image::load_from_memory(&thumb_bytes).unwrap();
+        assert!(thumb_img.width() <= 120, "Thumbnail width should be <= 120, got {}", thumb_img.width());
+        assert!(thumb_img.height() <= 120, "Thumbnail height should be <= 120, got {}", thumb_img.height());
+
+        // Check aspect ratio is maintained (200:150 = 4:3)
+        // With 120 max: 120x90 expected
+        assert_eq!(thumb_img.width(), 120);
+        assert_eq!(thumb_img.height(), 90);
+    }
+
+    #[test]
+    fn test_generate_thumbnail_large_image() {
+        // Create a large image (1000x800) — should still produce a thumbnail
+        let png_data = create_test_png_large(1000, 800);
+        let result = generate_thumbnail(&png_data, "image/png");
+        assert!(result.is_some(), "Large image should produce a thumbnail");
+        let thumb_bytes = result.unwrap();
+        let thumb_img = image::load_from_memory(&thumb_bytes).unwrap();
+        assert!(thumb_img.width() <= 120);
+        assert!(thumb_img.height() <= 120);
+    }
+
+    #[test]
+    fn test_generate_thumbnail_non_image_returns_none() {
+        let pdf_data = b"%PDF-1.4 fake pdf content";
+        assert!(generate_thumbnail(pdf_data, "application/pdf").is_none());
+
+        let text_data = b"Hello, world!";
+        assert!(generate_thumbnail(text_data, "text/plain").is_none());
+
+        let zip_data = b"PK\x03\x04fake zip";
+        assert!(generate_thumbnail(zip_data, "application/zip").is_none());
+    }
+
+    #[test]
+    fn test_generate_thumbnail_svg_returns_none() {
+        let svg_data = b"<svg xmlns='http://www.w3.org/2000/svg'></svg>";
+        assert!(generate_thumbnail(svg_data, "image/svg+xml").is_none(),
+            "SVG should return None (cannot rasterize without extra deps)");
+    }
+
+    #[test]
+    fn test_generate_thumbnail_corrupted_data_returns_none() {
+        let corrupted = vec![0xFF, 0xD8, 0xFF, 0x00, 0x01, 0x02]; // invalid JPEG
+        let result = generate_thumbnail(&corrupted, "image/jpeg");
+        assert!(result.is_none(), "Corrupted image should return None, not panic");
+    }
+
+    #[test]
+    fn test_generate_thumbnail_empty_data_returns_none() {
+        assert!(generate_thumbnail(&[], "image/jpeg").is_none(),
+            "Empty data should return None");
+    }
+
+    // -- Base64 Encoding Tests --
+
+    #[test]
+    fn test_thumbnail_to_base64_format() {
+        let fake_bytes = vec![0xFF, 0xD8, 0xFF, 0xE0];
+        let result = thumbnail_to_base64(&fake_bytes);
+        assert!(result.starts_with("data:image/jpeg;base64,"),
+            "Should start with data URL prefix");
+        // Verify the base64 part decodes back to the original bytes
+        let base64_part = result.strip_prefix("data:image/jpeg;base64,").unwrap();
+        let decoded = BASE64_STANDARD.decode(base64_part).unwrap();
+        assert_eq!(decoded, fake_bytes);
+    }
+
+    #[test]
+    fn test_thumbnail_to_base64_roundtrip() {
+        let jpeg_data = create_test_jpeg();
+        let thumb = generate_thumbnail(&jpeg_data, "image/jpeg").unwrap();
+        let data_url = thumbnail_to_base64(&thumb);
+
+        // Decode back and verify it's valid JPEG
+        let base64_part = data_url.strip_prefix("data:image/jpeg;base64,").unwrap();
+        let decoded = BASE64_STANDARD.decode(base64_part).unwrap();
+        assert_eq!(&decoded[0..2], &[0xFF, 0xD8], "Decoded thumbnail should be valid JPEG");
+    }
+
+    #[test]
+    fn test_add_attachment_via_sql_and_list() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+        let file_data = b"Hello, this is test file content";
+
+        let att_id = insert_test_attachment(
+            &conn,
+            line_item_id,
+            "receipt.jpg",
+            "image/jpeg",
+            file_data,
+        );
+
+        // Verify it was inserted
+        let (stored_name, stored_mime, stored_size): (String, String, i64) = conn
+            .query_row(
+                "SELECT file_name, mime_type, file_size FROM line_item_attachments WHERE attachment_id = ?",
+                [att_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+
+        assert_eq!(stored_name, "receipt.jpg");
+        assert_eq!(stored_mime, "image/jpeg");
+        assert_eq!(stored_size, file_data.len() as i64);
+    }
+
+    #[test]
+    fn test_add_attachment_from_filesystem_pdf() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+
+        // Create a temp file to "upload"
+        let temp_dir = tempfile::tempdir().unwrap();
+        let test_file_path = temp_dir.path().join("test_receipt.pdf");
+        let test_content = b"%PDF-1.4 fake PDF content for testing";
+        fs::write(&test_file_path, test_content).unwrap();
+
+        // Simulate add_attachment_internal by reading the file and inserting
+        let file_data = fs::read(&test_file_path).unwrap();
+        let file_name = "test_receipt.pdf";
+        let mime_type = detect_mime_type(&file_data, file_name);
+        let thumbnail = generate_thumbnail(&file_data, &mime_type);
+        let file_size = file_data.len() as i64;
+
+        conn.execute(
+            r#"
+            INSERT INTO line_item_attachments
+                (line_item_id, file_name, mime_type, file_size, thumbnail, file_data)
+            VALUES (?, ?, ?, ?, ?, ?)
+            "#,
+            rusqlite::params![line_item_id, file_name, mime_type, file_size, thumbnail, file_data],
+        )
+        .unwrap();
+        let att_id = conn.last_insert_rowid();
+
+        // Verify metadata
+        let (stored_name, stored_mime, stored_size): (String, String, i64) = conn
+            .query_row(
+                "SELECT file_name, mime_type, file_size FROM line_item_attachments WHERE attachment_id = ?",
+                [att_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+
+        assert_eq!(stored_name, "test_receipt.pdf");
+        assert_eq!(stored_mime, "application/pdf");
+        assert_eq!(stored_size, test_content.len() as i64);
+
+        // PDF should have no thumbnail
+        let stored_thumb: Option<Vec<u8>> = conn
+            .query_row(
+                "SELECT thumbnail FROM line_item_attachments WHERE attachment_id = ?",
+                [att_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(stored_thumb.is_none(), "PDF should not have a thumbnail");
+    }
+
+    #[test]
+    fn test_add_attachment_from_filesystem_image() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+
+        // Create a temp PNG file
+        let temp_dir = tempfile::tempdir().unwrap();
+        let test_file_path = temp_dir.path().join("photo.png");
+        let png_data = create_test_png_large(200, 150);
+        fs::write(&test_file_path, &png_data).unwrap();
+
+        // Simulate add_attachment_internal
+        let file_data = fs::read(&test_file_path).unwrap();
+        let file_name = "photo.png";
+        let mime_type = detect_mime_type(&file_data, file_name);
+        let thumbnail = generate_thumbnail(&file_data, &mime_type);
+        let file_size = file_data.len() as i64;
+
+        assert_eq!(mime_type, "image/png");
+        assert!(thumbnail.is_some(), "PNG should produce a thumbnail");
+
+        conn.execute(
+            r#"
+            INSERT INTO line_item_attachments
+                (line_item_id, file_name, mime_type, file_size, thumbnail, file_data)
+            VALUES (?, ?, ?, ?, ?, ?)
+            "#,
+            rusqlite::params![line_item_id, file_name, mime_type, file_size, thumbnail, file_data],
+        )
+        .unwrap();
+        let att_id = conn.last_insert_rowid();
+
+        // Verify thumbnail was stored
+        let stored_thumb: Option<Vec<u8>> = conn
+            .query_row(
+                "SELECT thumbnail FROM line_item_attachments WHERE attachment_id = ?",
+                [att_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(stored_thumb.is_some(), "Image attachment should have a stored thumbnail");
+
+        // Verify thumbnail is valid JPEG
+        let thumb_bytes = stored_thumb.unwrap();
+        assert_eq!(&thumb_bytes[0..2], &[0xFF, 0xD8], "Stored thumbnail should be JPEG");
+
+        // Verify thumbnail dimensions
+        let thumb_img = image::load_from_memory(&thumb_bytes).unwrap();
+        assert!(thumb_img.width() <= 120);
+        assert!(thumb_img.height() <= 120);
+    }
+
+    #[test]
+    fn test_list_attachments_empty() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT attachment_id, line_item_id, file_name, mime_type, file_size, created_at
+                FROM line_item_attachments
+                WHERE line_item_id = ? AND deleted_at IS NULL
+                ORDER BY created_at ASC
+                "#,
+            )
+            .unwrap();
+
+        let rows: Vec<i64> = stmt
+            .query_map([line_item_id], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert!(rows.is_empty(), "New line item should have no attachments");
+    }
+
+    #[test]
+    fn test_list_attachments_returns_metadata() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+
+        insert_test_attachment(&conn, line_item_id, "receipt.jpg", "image/jpeg", b"jpeg data");
+        insert_test_attachment(&conn, line_item_id, "invoice.pdf", "application/pdf", b"pdf data");
+
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT attachment_id, line_item_id, file_name, mime_type, file_size, created_at
+                FROM line_item_attachments
+                WHERE line_item_id = ? AND deleted_at IS NULL
+                ORDER BY created_at ASC
+                "#,
+            )
+            .unwrap();
+
+        let rows: Vec<(i64, String, String, i64)> = stmt
+            .query_map([line_item_id], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            })
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].1, "receipt.jpg");
+        assert_eq!(rows[0].2, "image/jpeg");
+        assert_eq!(rows[0].3, 9); // len("jpeg data")
+        assert_eq!(rows[1].1, "invoice.pdf");
+        assert_eq!(rows[1].2, "application/pdf");
+        assert_eq!(rows[1].3, 8); // len("pdf data")
+    }
+
+    #[test]
+    fn test_list_attachments_excludes_deleted() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+
+        let att1 = insert_test_attachment(&conn, line_item_id, "keep.jpg", "image/jpeg", b"keep");
+        let att2 = insert_test_attachment(&conn, line_item_id, "delete.jpg", "image/jpeg", b"del");
+
+        // Soft-delete one
+        conn.execute(
+            "UPDATE line_item_attachments SET deleted_at = datetime('now') WHERE attachment_id = ?",
+            [att2],
+        )
+        .unwrap();
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT attachment_id FROM line_item_attachments WHERE line_item_id = ? AND deleted_at IS NULL",
+            )
+            .unwrap();
+
+        let rows: Vec<i64> = stmt
+            .query_map([line_item_id], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0], att1);
+    }
+
+    #[test]
+    fn test_get_attachment_counts_batch() {
+        let (conn, line_item_id_1) = setup_attachment_test_db();
+
+        // Insert a second line item
+        let bic_id: i64 = conn
+            .query_row(
+                "SELECT budget_instance_category_id FROM category_line_items WHERE line_item_id = ?",
+                [line_item_id_1],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        conn.execute(
+            r#"
+            INSERT INTO category_line_items
+                (budget_instance_category_id, kind, occurred_at, amount, currency, is_template_default)
+            VALUES (?, 'spent', '2026-02-13T11:00:00', 10.00, 'CHF', 0)
+            "#,
+            [bic_id],
+        )
+        .unwrap();
+        let line_item_id_2 = conn.last_insert_rowid();
+
+        // Add 3 attachments to line_item_1, 1 to line_item_2
+        insert_test_attachment(&conn, line_item_id_1, "a.jpg", "image/jpeg", b"aaa");
+        insert_test_attachment(&conn, line_item_id_1, "b.jpg", "image/jpeg", b"bbb");
+        insert_test_attachment(&conn, line_item_id_1, "c.pdf", "application/pdf", b"ccc");
+        insert_test_attachment(&conn, line_item_id_2, "d.jpg", "image/jpeg", b"ddd");
+
+        // Build dynamic IN query (same pattern as get_attachment_counts_internal)
+        let ids = vec![line_item_id_1, line_item_id_2, 9999]; // 9999 = non-existent
+        let placeholders: Vec<String> = ids.iter().map(|_| "?".to_string()).collect();
+        let sql = format!(
+            "SELECT line_item_id, COUNT(*) as cnt FROM line_item_attachments WHERE line_item_id IN ({}) AND deleted_at IS NULL GROUP BY line_item_id",
+            placeholders.join(", ")
+        );
+
+        let mut stmt = conn.prepare(&sql).unwrap();
+        let params: Vec<Box<dyn rusqlite::types::ToSql>> = ids
+            .iter()
+            .map(|id| Box::new(*id) as Box<dyn rusqlite::types::ToSql>)
+            .collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+
+        let mut counts = HashMap::new();
+        let rows = stmt
+            .query_map(param_refs.as_slice(), |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+            })
+            .unwrap();
+        for row in rows {
+            let (lid, cnt) = row.unwrap();
+            counts.insert(lid, cnt);
+        }
+
+        assert_eq!(*counts.get(&line_item_id_1).unwrap(), 3);
+        assert_eq!(*counts.get(&line_item_id_2).unwrap(), 1);
+        assert!(
+            !counts.contains_key(&9999),
+            "Non-existent line item should not appear"
+        );
+    }
+
+    #[test]
+    fn test_get_attachment_counts_empty_input() {
+        // Empty input should return empty map without querying
+        let counts: HashMap<i64, i64> = HashMap::new();
+        assert!(counts.is_empty());
+    }
+
+    #[test]
+    fn test_delete_attachment_success() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+        let att_id = insert_test_attachment(&conn, line_item_id, "delete_me.jpg", "image/jpeg", b"data");
+
+        // Soft delete
+        let rows_affected = conn
+            .execute(
+                "UPDATE line_item_attachments SET deleted_at = datetime('now') WHERE attachment_id = ? AND deleted_at IS NULL",
+                [att_id],
+            )
+            .unwrap();
+        assert_eq!(rows_affected, 1);
+
+        // Verify deleted_at is set
+        let deleted_at: Option<String> = conn
+            .query_row(
+                "SELECT deleted_at FROM line_item_attachments WHERE attachment_id = ?",
+                [att_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(deleted_at.is_some(), "deleted_at should be set after soft delete");
+    }
+
+    #[test]
+    fn test_delete_attachment_already_deleted() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+        let att_id = insert_test_attachment(&conn, line_item_id, "gone.jpg", "image/jpeg", b"data");
+
+        // Delete once
+        conn.execute(
+            "UPDATE line_item_attachments SET deleted_at = datetime('now') WHERE attachment_id = ? AND deleted_at IS NULL",
+            [att_id],
+        )
+        .unwrap();
+
+        // Try to delete again — should affect 0 rows
+        let rows_affected = conn
+            .execute(
+                "UPDATE line_item_attachments SET deleted_at = datetime('now') WHERE attachment_id = ? AND deleted_at IS NULL",
+                [att_id],
+            )
+            .unwrap();
+        assert_eq!(
+            rows_affected, 0,
+            "Double-delete should affect 0 rows"
+        );
+    }
+
+    #[test]
+    fn test_delete_attachment_not_found() {
+        let (conn, _line_item_id) = setup_attachment_test_db();
+
+        let rows_affected = conn
+            .execute(
+                "UPDATE line_item_attachments SET deleted_at = datetime('now') WHERE attachment_id = ? AND deleted_at IS NULL",
+                [99999_i64],
+            )
+            .unwrap();
+        assert_eq!(rows_affected, 0, "Non-existent attachment should affect 0 rows");
+    }
+
+    #[test]
+    fn test_export_attachment_roundtrip() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+        let original_data = b"This is the original file content for roundtrip test";
+
+        let att_id = insert_test_attachment(
+            &conn,
+            line_item_id,
+            "roundtrip.txt",
+            "text/plain",
+            original_data,
+        );
+
+        // Read the BLOB back from DB
+        let file_data: Vec<u8> = conn
+            .query_row(
+                "SELECT file_data FROM line_item_attachments WHERE attachment_id = ? AND deleted_at IS NULL",
+                [att_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        // Write to temp file
+        let temp_dir = tempfile::tempdir().unwrap();
+        let export_path = temp_dir.path().join("exported.txt");
+        fs::write(&export_path, &file_data).unwrap();
+
+        // Read back and compare
+        let exported_data = fs::read(&export_path).unwrap();
+        assert_eq!(
+            exported_data, original_data,
+            "Exported file should match original byte-for-byte"
+        );
+    }
+
+    // ── get_attachment_data tests ─────────────────────────────────────────
+
+    #[test]
+    fn test_get_attachment_data_returns_base64_data_url() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+        let original_data = b"Hello, this is test file content!";
+
+        let att_id = insert_test_attachment(
+            &conn,
+            line_item_id,
+            "test.txt",
+            "text/plain",
+            original_data,
+        );
+
+        // Read file_data and mime_type from DB
+        let (file_data, mime_type): (Vec<u8>, String) = conn
+            .query_row(
+                "SELECT file_data, mime_type FROM line_item_attachments WHERE attachment_id = ? AND deleted_at IS NULL",
+                [att_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+
+        let encoded = BASE64_STANDARD.encode(&file_data);
+        let expected = format!("data:{};base64,{}", mime_type, encoded);
+
+        // Verify the data URL format
+        assert!(expected.starts_with("data:text/plain;base64,"));
+
+        // Decode back to verify round-trip
+        let base64_part = expected.strip_prefix("data:text/plain;base64,").unwrap();
+        let decoded = BASE64_STANDARD.decode(base64_part).unwrap();
+        assert_eq!(decoded, original_data, "Round-trip should preserve original data");
+    }
+
+    #[test]
+    fn test_get_attachment_data_deleted_returns_error() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+
+        let att_id = insert_test_attachment(
+            &conn,
+            line_item_id,
+            "deleted.txt",
+            "text/plain",
+            b"some content",
+        );
+
+        // Soft-delete the attachment
+        conn.execute(
+            "UPDATE line_item_attachments SET deleted_at = datetime('now') WHERE attachment_id = ?",
+            [att_id],
+        )
+        .unwrap();
+
+        // Attempt to read — should fail
+        let result: Result<(Vec<u8>, String), _> = conn.query_row(
+            "SELECT file_data, mime_type FROM line_item_attachments WHERE attachment_id = ? AND deleted_at IS NULL",
+            [att_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        );
+
+        assert!(
+            result.is_err(),
+            "Deleted attachment should not be returned"
+        );
+    }
+
+    #[test]
+    fn test_get_attachment_data_not_found() {
+        let (conn, _line_item_id) = setup_attachment_test_db();
+
+        let result: Result<(Vec<u8>, String), _> = conn.query_row(
+            "SELECT file_data, mime_type FROM line_item_attachments WHERE attachment_id = ? AND deleted_at IS NULL",
+            [99999],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        );
+
+        assert!(
+            result.is_err(),
+            "Non-existent attachment should return error"
+        );
+    }
+
+    #[test]
+    fn test_get_attachment_data_image_format() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+        let fake_image_data = b"\x89PNG\r\n\x1a\n fake png data";
+
+        let att_id = insert_test_attachment(
+            &conn,
+            line_item_id,
+            "photo.png",
+            "image/png",
+            fake_image_data,
+        );
+
+        let (file_data, mime_type): (Vec<u8>, String) = conn
+            .query_row(
+                "SELECT file_data, mime_type FROM line_item_attachments WHERE attachment_id = ? AND deleted_at IS NULL",
+                [att_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+
+        let encoded = BASE64_STANDARD.encode(&file_data);
+        let data_url = format!("data:{};base64,{}", mime_type, encoded);
+
+        assert!(
+            data_url.starts_with("data:image/png;base64,"),
+            "Image data URL should have correct MIME prefix"
+        );
+
+        // Verify round-trip
+        let base64_part = data_url.strip_prefix("data:image/png;base64,").unwrap();
+        let decoded = BASE64_STANDARD.decode(base64_part).unwrap();
+        assert_eq!(decoded, fake_image_data, "Round-trip should preserve binary data");
+    }
+
+    #[test]
+    fn test_attachment_fk_constraint() {
+        let (conn, _line_item_id) = setup_attachment_test_db();
+
+        // Enable FK enforcement
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+
+        // Try to insert with non-existent line_item_id
+        let result = conn.execute(
+            r#"
+            INSERT INTO line_item_attachments
+                (line_item_id, file_name, mime_type, file_size, file_data)
+            VALUES (99999, 'bad.jpg', 'image/jpeg', 5, X'DEADBEEF00')
+            "#,
+            [],
+        );
+
+        assert!(
+            result.is_err(),
+            "FK constraint should reject non-existent line_item_id"
+        );
+    }
+
+    // -- Attachment Summary Tests --
+
+    /// Helper: insert an attachment with an optional thumbnail via SQL.
+    fn insert_test_attachment_with_thumbnail(
+        conn: &Connection,
+        line_item_id: i64,
+        file_name: &str,
+        mime_type: &str,
+        file_data: &[u8],
+        thumbnail: Option<&[u8]>,
+    ) -> i64 {
+        conn.execute(
+            r#"
+            INSERT INTO line_item_attachments
+                (line_item_id, file_name, mime_type, file_size, file_data, thumbnail)
+            VALUES (?, ?, ?, ?, ?, ?)
+            "#,
+            rusqlite::params![
+                line_item_id,
+                file_name,
+                mime_type,
+                file_data.len() as i64,
+                file_data,
+                thumbnail
+            ],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
+    /// Helper: insert a second line item into the attachment test db.
+    fn insert_second_line_item(conn: &Connection) -> i64 {
+        let bic_id: i64 = conn
+            .query_row(
+                "SELECT budget_instance_category_id FROM budget_instance_categories LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        conn.execute(
+            r#"
+            INSERT INTO category_line_items
+                (budget_instance_category_id, kind, occurred_at, amount, currency, is_template_default)
+            VALUES (?, 'received', '2026-02-14T12:00:00', 100.00, 'CHF', 0)
+            "#,
+            [bic_id],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
+    /// Helper: run the same SQL as get_attachment_summaries_internal against a test Connection.
+    /// Returns HashMap<line_item_id, AttachmentSummary>.
+    fn query_attachment_summaries(
+        conn: &Connection,
+        line_item_ids: &[i64],
+    ) -> HashMap<i64, AttachmentSummary> {
+        if line_item_ids.is_empty() {
+            return HashMap::new();
+        }
+        let placeholders: Vec<String> = line_item_ids.iter().map(|_| "?".to_string()).collect();
+        let in_clause = placeholders.join(", ");
+        let sql = format!(
+            r#"
+            SELECT
+                a.line_item_id,
+                COUNT(*) AS cnt,
+                (SELECT sub.thumbnail
+                 FROM line_item_attachments sub
+                 WHERE sub.line_item_id = a.line_item_id AND sub.deleted_at IS NULL
+                 ORDER BY sub.created_at ASC LIMIT 1
+                ) AS first_thumbnail,
+                (SELECT sub2.mime_type
+                 FROM line_item_attachments sub2
+                 WHERE sub2.line_item_id = a.line_item_id AND sub2.deleted_at IS NULL
+                 ORDER BY sub2.created_at ASC LIMIT 1
+                ) AS first_mime_type
+            FROM line_item_attachments a
+            WHERE a.line_item_id IN ({})
+              AND a.deleted_at IS NULL
+            GROUP BY a.line_item_id
+            "#,
+            in_clause
+        );
+        let mut stmt = conn.prepare(&sql).unwrap();
+        let params: Vec<Box<dyn rusqlite::types::ToSql>> = line_item_ids
+            .iter()
+            .map(|id| Box::new(*id) as Box<dyn rusqlite::types::ToSql>)
+            .collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+
+        let rows = stmt
+            .query_map(param_refs.as_slice(), |row| {
+                let line_item_id: i64 = row.get(0)?;
+                let count: i64 = row.get(1)?;
+                let thumbnail_bytes: Option<Vec<u8>> = row.get(2)?;
+                let first_mime_type: Option<String> = row.get(3)?;
+                Ok((line_item_id, count, thumbnail_bytes, first_mime_type))
+            })
+            .unwrap();
+
+        let mut summaries = HashMap::new();
+        for row in rows {
+            let (line_item_id, count, thumbnail_bytes, first_mime_type) = row.unwrap();
+            let first_thumbnail = thumbnail_bytes
+                .filter(|b| !b.is_empty())
+                .map(|b| thumbnail_to_base64(&b));
+            summaries.insert(
+                line_item_id,
+                AttachmentSummary {
+                    count,
+                    first_thumbnail,
+                    first_mime_type,
+                },
+            );
+        }
+        summaries
+    }
+
+    #[test]
+    fn test_get_attachment_summaries_empty_input() {
+        let result = query_attachment_summaries(
+            &setup_attachment_test_db().0,
+            &[],
+        );
+        assert!(result.is_empty(), "Empty input should return empty map");
+    }
+
+    #[test]
+    fn test_get_attachment_summaries_no_attachments() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+        let result = query_attachment_summaries(&conn, &[line_item_id]);
+        assert!(
+            result.is_empty(),
+            "Line item with no attachments should be absent from result map"
+        );
+    }
+
+    #[test]
+    fn test_get_attachment_summaries_single_item_with_thumbnail() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+        let thumb = vec![0xFF, 0xD8, 0xFF, 0xE0]; // fake JPEG header
+        insert_test_attachment_with_thumbnail(
+            &conn,
+            line_item_id,
+            "receipt.jpg",
+            "image/jpeg",
+            &[1, 2, 3],
+            Some(&thumb),
+        );
+
+        let result = query_attachment_summaries(&conn, &[line_item_id]);
+
+        assert_eq!(result.len(), 1, "Should have exactly one summary");
+        let summary = result.get(&line_item_id).expect("Summary should exist");
+        assert_eq!(summary.count, 1);
+        assert!(summary.first_thumbnail.is_some(), "Should have thumbnail");
+        assert!(
+            summary.first_thumbnail.as_ref().unwrap().starts_with("data:image/jpeg;base64,"),
+            "Thumbnail should be a base64 data URL"
+        );
+        assert_eq!(summary.first_mime_type.as_deref(), Some("image/jpeg"));
+    }
+
+    #[test]
+    fn test_get_attachment_summaries_single_item_no_thumbnail() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+        insert_test_attachment(&conn, line_item_id, "doc.pdf", "application/pdf", &[1, 2, 3]);
+
+        let result = query_attachment_summaries(&conn, &[line_item_id]);
+
+        let summary = result.get(&line_item_id).expect("Summary should exist");
+        assert_eq!(summary.count, 1);
+        assert!(summary.first_thumbnail.is_none(), "PDF should not have thumbnail");
+        assert_eq!(summary.first_mime_type.as_deref(), Some("application/pdf"));
+    }
+
+    #[test]
+    fn test_get_attachment_summaries_multiple_attachments() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+        let thumb = vec![0xFF, 0xD8];
+        // First attachment (earliest created_at)
+        insert_test_attachment_with_thumbnail(
+            &conn,
+            line_item_id,
+            "first.jpg",
+            "image/jpeg",
+            &[1],
+            Some(&thumb),
+        );
+        // Second attachment
+        insert_test_attachment(&conn, line_item_id, "second.pdf", "application/pdf", &[2, 3]);
+        // Third attachment
+        insert_test_attachment(&conn, line_item_id, "third.png", "image/png", &[4, 5, 6]);
+
+        let result = query_attachment_summaries(&conn, &[line_item_id]);
+
+        let summary = result.get(&line_item_id).expect("Summary should exist");
+        assert_eq!(summary.count, 3, "Should count all 3 attachments");
+        assert!(summary.first_thumbnail.is_some(), "First attachment has thumbnail");
+        assert_eq!(summary.first_mime_type.as_deref(), Some("image/jpeg"));
+    }
+
+    #[test]
+    fn test_get_attachment_summaries_batch_multiple_line_items() {
+        let (conn, line_item_id_1) = setup_attachment_test_db();
+        let line_item_id_2 = insert_second_line_item(&conn);
+
+        // Attachments for line item 1
+        insert_test_attachment(&conn, line_item_id_1, "a.pdf", "application/pdf", &[1]);
+        insert_test_attachment(&conn, line_item_id_1, "b.pdf", "application/pdf", &[2]);
+
+        // Attachments for line item 2
+        let thumb = vec![0xFF, 0xD8];
+        insert_test_attachment_with_thumbnail(
+            &conn,
+            line_item_id_2,
+            "img.jpg",
+            "image/jpeg",
+            &[3],
+            Some(&thumb),
+        );
+
+        let result = query_attachment_summaries(
+            &conn,
+            &[line_item_id_1, line_item_id_2],
+        );
+
+        assert_eq!(result.len(), 2, "Should have summaries for both line items");
+
+        let s1 = result.get(&line_item_id_1).unwrap();
+        assert_eq!(s1.count, 2);
+        assert!(s1.first_thumbnail.is_none(), "PDF attachment has no thumbnail");
+        assert_eq!(s1.first_mime_type.as_deref(), Some("application/pdf"));
+
+        let s2 = result.get(&line_item_id_2).unwrap();
+        assert_eq!(s2.count, 1);
+        assert!(s2.first_thumbnail.is_some());
+        assert_eq!(s2.first_mime_type.as_deref(), Some("image/jpeg"));
+    }
+
+    #[test]
+    fn test_get_attachment_summaries_excludes_deleted() {
+        let (conn, line_item_id) = setup_attachment_test_db();
+        let attach_id = insert_test_attachment(
+            &conn,
+            line_item_id,
+            "deleted.pdf",
+            "application/pdf",
+            &[1],
+        );
+        // Soft-delete the attachment
+        conn.execute(
+            "UPDATE line_item_attachments SET deleted_at = datetime('now') WHERE attachment_id = ?",
+            [attach_id],
+        )
+        .unwrap();
+
+        let result = query_attachment_summaries(&conn, &[line_item_id]);
+        assert!(
+            result.is_empty(),
+            "Deleted attachments should be excluded from summaries"
+        );
     }
 }
