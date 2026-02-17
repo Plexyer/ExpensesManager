@@ -16,7 +16,7 @@ Design testing strategies, create test plans, and verify MVP features work corre
 ## Allowed Actions
 - ✅ **Read**: ANY repo files
 - ✅ **Write**: ONLY `.cursor/` documentation (test plans)
-- ✅ **Run tests**: If test infrastructure exists
+- ✅ **Run tests**: Via `npm test` (Vitest)
 
 ## Output Format
 
@@ -24,46 +24,53 @@ Design testing strategies, create test plans, and verify MVP features work corre
 Facts:
 ```
 CONFIRMED:
-- No test files found in repository
-- No test configuration in package.json
-- Manual testing required for MVP
+- Vitest configured in vite.config.ts (jsdom environment)
+- React Testing Library available (@testing-library/react, @testing-library/jest-dom)
+- renderWithProviders helper in src/test/test-utils.tsx (wraps Redux store + MemoryRouter)
+- Frontend test files in __tests__/ directories alongside components
+- Rust tests: inline #[cfg(test)] modules in src-tauri/src/*.rs
+- Test command: `npm test` (runs Vitest)
 ```
 
 ### INFERRED
 Assumptions:
 ```
 INFERRED:
-- Should test all MVP features manually
-- Should test error cases
-- Should test edge cases (empty data, large datasets)
+- New frontend tests should use renderWithProviders for Redux-connected components
+- Tauri invoke calls should be mocked in frontend tests
+- Tests should follow existing patterns in __tests__/ directories
 ```
 
 ### OPEN QUESTIONS
 Unknowns:
 ```
 OPEN QUESTIONS:
-- Should we set up automated tests for MVP?
-- What is test coverage target?
+- What is test coverage target for MVP?
+- Should Tauri commands be integration-tested via Rust tests?
 ```
 
 ### RECOMMENDATIONS
 Testing strategy:
 ```
 RECOMMENDATIONS:
-1. Create manual test plan for each MVP feature
-2. Test success cases and error cases
-3. Test on target platforms (Windows/macOS/Linux)
-4. Document test results
-5. Set up automated tests (future, post-MVP)
+1. Use Vitest + RTL for new frontend component tests
+2. Use renderWithProviders for Redux-connected components
+3. Mock Tauri invoke calls with vi.mock('@tauri-apps/api/core')
+4. Add inline #[cfg(test)] Rust tests for new commands
+5. Manual test plan for E2E flows (encryption, file operations)
+6. Test on target platforms (Windows/macOS/Linux)
 ```
 
 ### REFERENCES
 Files:
 ```
 REFERENCES:
-- .cursor/BACKLOG.md (acceptance criteria)
-- .cursor/PRODUCT_REQUIREMENTS.md (requirements)
-- .cursor/command_add_tests.md (test patterns)
+- vite.config.ts (Vitest configuration)
+- src/test/test-utils.tsx (renderWithProviders helper)
+- src/components/common/__tests__/ (example test files)
+- src/hooks/__tests__/ (hook test files)
+- src/services/__tests__/ (service test files)
+- .cursor/commands/command_add_tests.md (test patterns guide)
 ```
 
 ## Process
@@ -79,14 +86,50 @@ REFERENCES:
 - Edge cases
 - Performance cases
 
-### Step 3: Execute Tests
-- Manual testing
-- Document results
-- Report bugs
+### Step 3: Write / Execute Tests
+- Frontend: Vitest + RTL with renderWithProviders
+- Backend: Rust inline tests
+- Manual: E2E testing for Tauri-specific flows
+- Run: `npm test` for frontend, `cargo test` for backend
 
 ### Step 4: Verify Fixes
 - Retest after fixes
 - Verify acceptance criteria met
+
+## Test Infrastructure
+
+### Frontend (Vitest + RTL)
+```typescript
+import { renderWithProviders } from '@/test/test-utils';
+import { screen } from '@testing-library/react';
+
+describe('MyComponent', () => {
+  it('renders correctly', () => {
+    renderWithProviders(<MyComponent />);
+    expect(screen.getByText('Expected text')).toBeInTheDocument();
+  });
+});
+```
+
+### Mocking Tauri Invoke
+```typescript
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+}));
+```
+
+### Rust Backend Tests
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_my_function() {
+        // Test implementation
+    }
+}
+```
 
 ## Test Plan Template
 
@@ -108,7 +151,7 @@ REFERENCES:
 
 ## Definition of Done
 - ✅ Test plan created
-- ✅ Tests executed
+- ✅ Tests executed (automated + manual)
 - ✅ All acceptance criteria verified
 - ✅ Bugs documented (if any)
 - ✅ Test results documented
@@ -117,13 +160,14 @@ REFERENCES:
 - Testing MVP features
 - Creating test plans
 - Verifying acceptance criteria
+- Setting up test infrastructure
 
 ## When NOT to Use
 - Implementing features
 - Designing features
-- Writing code
+- Writing non-test code
 
 ## References
-- **command_add_tests.md**: Test checklist
-- **BACKLOG.md**: Acceptance criteria
-- **PRODUCT_REQUIREMENTS.md**: Requirements
+- **`.cursor/commands/command_add_tests.md`**: Test checklist and patterns
+- **GitHub Issues**: Acceptance criteria
+- **`src/test/test-utils.tsx`**: renderWithProviders helper

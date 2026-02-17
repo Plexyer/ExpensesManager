@@ -1,114 +1,106 @@
 # Skill: Grid UI Patterns
 
 ## Purpose
-How to implement Excel-like grid UI patterns for the **single-period main grid** (one period budget instance at a time).
+How to implement and extend the Excel-like grid UI for the **single-period main grid** (one period budget instance at a time).
 
 ## When to Use
-- Implementing the main budget grid
+- Modifying the main budget grid
 - Adding grid interactions (selection, navigation)
 - Optimizing grid performance
 
-## Grid Library Options
+## Grid Implementation: Custom PeriodGrid
 
-### Option 1: AG Grid (Currently Used)
-**Pros**:
-- ✅ Already in codebase (`ag-grid-community`, `ag-grid-react`)
-- ✅ Virtualization built-in
-- ✅ Excel-like features (selection, keyboard nav)
-- ✅ Frozen columns/rows support
+The budget grid is a **custom HTML table** styled with Tailwind CSS — no external grid library is used.
 
-**Cons**:
-- ❌ Large bundle size
-- ❌ Learning curve
-- ❌ May be overkill for MVP
+### Why Custom (not AG Grid)
+- Smaller bundle size
+- Full control over rendering and interactions
+- Tailored to envelope budgeting needs
+- Tailwind CSS integration
 
-**Usage**: Continue using AG Grid if already familiar, or switch to custom
+## Component Architecture
 
-### Option 2: Custom Grid (React)
-**Pros**:
-- ✅ Full control
-- ✅ Smaller bundle size
-- ✅ Tailored to needs
-
-**Cons**:
-- ❌ More code to write
-- ❌ Need to implement virtualization
-- ❌ Need to implement frozen columns
-
-**Usage**: Consider if AG Grid is too heavy or doesn't fit needs
-
-## Grid Architecture
-
-### Component Structure
+### Component Hierarchy
 ```
-BudgetInstanceGrid (container)
-├── GridHeader (column headers: Category / Received date / Received amount / Spent amount)
-└── GridBody (scrollable content area)
-    └── GridCell[] (row = category; col = field/rollup)
+PeriodGrid (container — loads data, manages layout)
+├── PeriodGridHeader (column headers: Category / Received / Spent / Remaining / Account)
+└── PeriodGridTable (scrollable table body)
+    └── PeriodGridCell[] (row = category; col = field/rollup)
+```
+
+### File Locations
+```
+src/components/features/BudgetGrid/
+├── PeriodGrid.tsx          (main grid container)
+├── PeriodGridHeader.tsx    (column header row)
+├── PeriodGridTable.tsx     (table body with category rows)
+├── PeriodGridCell.tsx      (individual cell rendering)
+├── CategoryLedgerModal.tsx (transaction modal — double-click opens)
+├── AttachmentIndicator.tsx (attachment icon in cells)
+├── AttachmentPopover.tsx   (attachment preview popup)
+└── AttachmentLightbox.tsx  (full-size attachment viewer)
 ```
 
 ### Data Flow
-1. Load grid data via `get_grid_data` command
-2. Store in Redux (`budget.gridData`)
+1. Load grid data via `get_grid_data` Tauri command (in `encrypted_db.rs`)
+2. Store in Redux (`budgetSlice`)
 3. Render grid with data
-4. Update on data changes
+4. Cell selection tracked in Redux (`budgetSlice.selectedCell`)
+5. Update on data changes (re-fetch after mutations)
 
 ## Key Patterns
 
-### Cell Selection
+### Cell Selection (Redux-managed)
 ```typescript
-const [selectedCell, setSelectedCell] = useState<{rowId: number; columnKey: string} | null>(null);
+// Selection is in Redux budgetSlice, NOT local useState
+const selectedCell = useAppSelector((state) => state.budget.selectedCell);
+const dispatch = useAppDispatch();
 
-const handleCellClick = (rowId: number, columnKey: string) => {
-  setSelectedCell({ rowId, columnKey });
-};
-
-const handleKeyDown = (e: KeyboardEvent) => {
-  if (e.key === 'ArrowRight') {
-    // Move to next column (field)
-  } else if (e.key === 'ArrowDown') {
-    // Move to next category row
-  }
+const handleCellClick = (categoryId: number, field: string) => {
+  dispatch(setSelectedCell({ categoryId, field }));
 };
 ```
 
 ### Double-Click to Open Modal
 ```typescript
-const handleCellDoubleClick = (rowId: number, columnKey: 'received' | 'spent') => {
+const handleCellDoubleClick = (categoryId: number, columnKey: 'received' | 'spent') => {
+  // Opens CategoryLedgerModal for the selected category + kind
   setLedgerModalOpen(true);
-  setSelectedRowId(rowId);
+  setSelectedCategoryId(categoryId);
   setSelectedKind(columnKey);
 };
 ```
 
 ### Frozen Columns/Rows
-- **AG Grid**: Use `pinned` property
-- **Custom**: Use CSS `position: sticky`
+- Use CSS `position: sticky` for the category name column and header row
+- No external library needed
 
-### Virtualization
-- **AG Grid**: Built-in (enable `rowBuffer`, `rowModelType: 'viewport'`)
-- **Custom**: Use `react-window` or `react-virtualized`
+```css
+/* Header row stays fixed at top */
+thead th { position: sticky; top: 0; z-index: 10; }
+/* Category column stays fixed at left */
+td:first-child { position: sticky; left: 0; z-index: 5; }
+```
 
 ## Performance Optimizations
 
 ### Lazy Loading
-- Load transaction data only when cell opened (modal)
-- Cache grid data in Redux
-- Refresh on data changes
-
-### Virtual Scrolling
-- Only render visible cells
-- Use windowing library if custom grid
+- Load transaction data only when modal opened (via `list_line_items` command)
+- Load attachment data only on demand (via `list_attachments`, `get_attachment_data`)
+- Cache grid data in Redux (refresh on changes)
 
 ### Memoization
 ```typescript
-const GridCell = React.memo(({ envelopeId, periodId, data }) => {
+const PeriodGridCell = React.memo<PeriodGridCellProps>(({ categoryId, field, value }) => {
   // Render cell
 }, (prev, next) => {
-  // Custom comparison
-  return prev.data === next.data;
+  return prev.value === next.value && prev.categoryId === next.categoryId;
 });
 ```
+
+### Virtual Scrolling (future)
+- Not implemented yet for MVP (category count is typically small)
+- Consider `react-window` if category lists grow beyond ~100 rows
 
 ## Cell Display Format
 
@@ -118,10 +110,11 @@ $150.00 / $50.00
 ```
 - Format: `spent / remaining`
 - Color: Green (remaining > 0), Yellow (remaining = 0), Red (remaining < 0)
+- Currency formatting via locale-aware `Intl.NumberFormat`
 
 ### Tooltip on Hover
-- Received/distributed date
 - Transaction count
+- Last transaction date
 - Detailed breakdown
 
 ## Keyboard Navigation
@@ -138,40 +131,64 @@ $150.00 / $50.00
 ```typescript
 useEffect(() => {
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'ArrowRight' && selectedCell) {
-      // Move to next column (field)
+    if (!selectedCell) return;
+    if (e.key === 'ArrowRight') {
+      dispatch(moveSelectedCell('right'));
+    } else if (e.key === 'ArrowDown') {
+      dispatch(moveSelectedCell('down'));
     }
     // ... other keys
   };
-  
+
   window.addEventListener('keydown', handleKeyDown);
   return () => window.removeEventListener('keydown', handleKeyDown);
-}, [selectedCell]);
+}, [selectedCell, dispatch]);
 ```
 
 ## Accessibility
 
 ### ARIA Roles
 ```tsx
-<div role="grid" aria-label="Budget grid">
-  <div role="row">
-    <div role="gridcell" aria-label="Groceries, Current period, Spent amount">
-      $150.00 / $50.00
-    </div>
-  </div>
-</div>
+<table role="grid" aria-label="Budget grid">
+  <thead>
+    <tr role="row">
+      <th role="columnheader">Category</th>
+      <th role="columnheader">Received</th>
+      <th role="columnheader">Spent</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr role="row">
+      <td role="gridcell" aria-label="Groceries, Spent amount">
+        $150.00 / $50.00
+      </td>
+    </tr>
+  </tbody>
+</table>
 ```
 
 ### Keyboard Navigation
 - All cells keyboard accessible
-- Focus indicators visible
+- Focus indicators visible (Tailwind `ring` utility)
 - Tab order logical
+- `aria-selected` on active cell
+
+## Tauri Commands Used by Grid
+| Command | Purpose |
+|---|---|
+| `get_grid_data` | Load full grid data for a period instance |
+| `list_line_items` | Load transactions for modal |
+| `create_line_item` | Add transaction from modal |
+| `update_line_item` | Edit transaction from modal |
+| `delete_line_item` | Remove transaction from modal |
+| `list_attachments` | Load attachments for a line item |
+| `add_attachment` | Upload attachment |
 
 ## References
-- **UX_INTERACTIONS.md**: Detailed interaction patterns
 - **UI_FLOWS.md**: User journey flows
-- **AG Grid Docs**: https://www.ag-grid.com/
-- **react-window**: https://github.com/bvaughn/react-window
+- **`src/components/features/BudgetGrid/`**: All grid components
+- **`src/store/slices/budgetSlice.ts`**: Grid state management
+- **react-window** (future): https://github.com/bvaughn/react-window
 
 ## Output
-Implement grid component following these patterns.
+Use these patterns when modifying or extending the budget grid.

@@ -2,14 +2,15 @@
 
 ## Grid Interactions (Excel-Like)
 
-### Cell Selection
-- **Click**: Select cell (highlight border)
-- **Double-click**: Open transaction modal
-- **Arrow keys**: Navigate to adjacent cell (up/down/left/right)
-- **Tab**: Move to next cell (right, wrap to next row)
-- **Shift+Tab**: Move to previous cell (left, wrap to previous row)
-- **Enter**: Move down (or open modal if double-clicked)
-- **Escape**: Deselect cell / close modal
+### Cell Selection (IMPLEMENTED)
+- **Click**: Select cell (blue focus ring: `ring-2 ring-inset ring-blue-500 bg-blue-500/10`)
+- **Double-click**: Open transaction modal (only for openable cells: received_amount, spent_amount)
+- **Arrow keys**: Navigate to adjacent cell (up/down/left/right), clamped to grid bounds
+- **Tab**: Move to next cell (right, wraps to first cell of next row)
+- **Shift+Tab**: Move to previous cell (left, wraps to last cell of previous row)
+- **Enter**: Open ledger modal for openable cells (received_amount, spent_amount)
+- **Escape**: Clear cell selection
+- **Openable cells**: Shown with `underline decoration-dotted`, tooltip "Double-click to view"
 
 ### Cell Editing (CONFIRMED - Modal Only)
 - **Double-click**: Opens transaction modal (CONFIRMED - no inline editing for MVP)
@@ -60,24 +61,254 @@
 
 ---
 
-## Keyboard Shortcuts (Global)
+## Attachment Interactions — IMPLEMENTED (Phase 11)
 
-### Navigation
+### AttachmentIndicator (on each line item row in CategoryLedgerModal)
+
+#### Visual States
+- **No attachments** (`count === 0`): Plus icon (slate-500), hover transitions to emerald-400
+- **Has image attachment**: Rounded thumbnail (w-5 h-5), hover shows emerald ring
+- **Has non-image attachment**: File icon (slate-400), hover transitions to emerald-400
+- **Count badge**: Emerald badge (top-right) when `count > 1`; shows "99+" if over 99
+
+#### Interactions
+- **Click**: Opens AttachmentPopover anchored to the indicator
+- **Keyboard**: Enter or Space triggers same click action (synthesizes mouse event from keyboard target)
+- **Hover**: Color transitions (slate to emerald), ring on image thumbnails
+
+#### Accessibility
+- `aria-label`: "Attach file" when no attachments; "View X attachments" when present
+- `tabIndex={0}`: Keyboard focusable
+- `aria-hidden="true"` on decorative icons/images
+
+---
+
+### AttachmentPopover (floating dialog)
+
+#### Opening & Positioning
+- Triggered by clicking the AttachmentIndicator
+- Fixed positioning relative to anchor element
+- Default: below and left-aligned to anchor
+- Clamps to viewport edges (8px gap); flips above if insufficient space below
+- Width: 320px; max-height: 400px with scroll
+
+#### Content
+- List of attachments, each showing: thumbnail (or file icon), filename (truncated), file size, action buttons
+- Loading state: skeleton rows (3 items, pulse animation)
+- Empty state: camera icon with "Add files" prompt
+
+#### Actions
+- **View** (eye icon): Opens lightbox for images; opens system app for non-images
+- **Export** (download icon): Opens native save dialog with original filename
+- **Delete** (trash icon): Shows inline confirmation (Yes/No buttons within the row)
+- **Add** (plus button): Opens native file picker (multi-select enabled), file filters: Images, Documents, All Files
+
+#### Closing
+- Click outside the popover
+- Press Escape (or cancels inline delete confirmation if active)
+
+#### Keyboard
+- Escape: Closes popover, or cancels active delete confirmation
+- Tab: Navigates through action buttons within the popover
+- All action buttons have `tabIndex={0}`
+
+#### Accessibility
+- `role="dialog"`, `aria-modal="false"`
+- `aria-label`: "X attachments"
+- `role="list"` on attachment list
+
+---
+
+### AttachmentLightbox (full-screen gallery)
+
+#### Opening
+- Triggered by clicking "View" on an image attachment in the popover
+- Library: `yet-another-react-lightbox` with Zoom and Thumbnails plugins
+
+#### Navigation
+- **Arrow Left/Right keys**: Navigate between attachments
+- **Thumbnail strip** at bottom (80x60px, 8px gap, emerald border on active slide)
+- **Thumbnail toggle button**: Show/hide the strip
+
+#### Zoom
+- **Mouse wheel**: Scroll-to-zoom (enabled, `scrollToZoom: true`)
+- **Max zoom**: 5x pixel ratio (`maxZoomPixelRatio: 5`)
+
+#### Non-Image Files
+- Custom slide renderer with large file icon
+- "Open in system app" button (emerald) and "Save to disk" button (slate)
+- Displays filename, MIME type, and file size
+
+#### Toolbar
+- Export button (saves current slide to disk via native save dialog)
+- Close button (built-in)
+- Labels are internationalized
+
+#### Closing
+- Escape key
+- Close button in toolbar
+
+#### Visual Feedback
+- Slide info bar: filename + file size at top (semi-transparent black background)
+- Dark slate background (`rgba(15, 23, 42, 0.97)`)
+
+#### Accessibility
+- All buttons have `aria-label` with filename context
+- `tabIndex={0}` on action buttons
+- `aria-hidden="true"` on decorative icons
+
+---
+
+### File Size Warning Dialog
+
+#### Trigger
+- Shown when a selected file exceeds 25 MB soft limit
+- Files are checked sequentially; each large file prompts individually
+
+#### Content
+- Amber warning icon (triangle SVG)
+- Filename and formatted file size displayed
+- Note about the 25 MB soft limit
+
+#### Actions
+- **"Upload Anyway"** (emerald button): Proceeds with upload (no hard limit enforced)
+- **"Cancel"** (slate button): Skips this file, moves to next
+
+#### Keyboard
+- Escape: Triggers Cancel action
+- Focus trap: Dialog captures focus on open
+
+#### Accessibility
+- `role="alertdialog"`, `aria-modal="true"`
+- `aria-labelledby` and `aria-describedby` for title and description
+- Click outside (backdrop) also closes dialog
+
+---
+
+## Column Resize Interactions — IMPLEMENTED (Phase 10, Bug Fixes #81–85)
+
+### Resizable Columns
+- Only **Received Amount** and **Spent Amount** columns are resizable (`resizable: true` in `GridColumnConfig`)
+- **Frozen columns** (Category, Received Date): auto-sized, non-resizable, no resize handles
+- **Remaining column**: auto-sized to fill, non-resizable, fixed-width
+
+### Paired Resize Behavior (Excel-Style)
+- Resizing one column adjusts its neighbor — total width is preserved (zero-sum)
+- A single resize handle exists between "Received Amount" (col 2) and "Spent Amount" (col 3)
+- Minimum column width: 60px (`MIN_COLUMN_WIDTH`) — each column clamped to this minimum
+- Right column computed as: `totalWidth - leftWidth`
+
+### Mouse Interaction
+- **Mousedown** on resize handle: Starts drag
+- **Mousemove** on document: Updates both column widths in real-time
+- **Mouseup** on document: Ends drag, persists new widths to database via `settingsService`
+- Cursor changes to `col-resize` during drag
+- `user-select: none` applied during drag to prevent text selection
+
+### Keyboard Interaction
+- **ArrowLeft/ArrowRight** on focused resize handle: Adjusts width by 10px steps
+- Same paired resize logic as mouse (both columns adjust)
+- Widths persist to database immediately on key press
+
+### Snap-to-Content
+- Magnetic snap threshold: 8px from optimal content width
+- Snaps to `optimalWidth` when within threshold (stored in Redux `optimalWidths`)
+- Priority: left column snaps first, then right if left didn't snap
+
+### Scale Factor Correction
+- Accounts for CSS width vs rendered width mismatch (`scaleFactor = tableRenderedWidth / totalCssWidth`)
+- Mouse delta divided by scale factor for accurate 1:1 mouse-to-column movement
+- Fixes amplified resize bug (#84)
+
+### Visual Feedback
+- Handle: `w-1 h-full` absolute positioned at column right edge
+- Hover: `bg-blue-500/60`
+- Active (dragging): `bg-blue-500/80`
+- Transition: `transition-colors`
+
+### Accessibility
+- `role="separator"`, `aria-orientation="vertical"`
+- `aria-label="Resize column border"`
+- `tabIndex={0}`: Keyboard focusable
+
+---
+
+## Template Drag-and-Drop — IMPLEMENTED (Phase 3)
+
+### Library
+- `@hello-pangea/dnd` (react-beautiful-dnd fork)
+- `DragDropContext` wraps category list; each item is a `Draggable` inside a `Droppable`
+
+### Drag Handle
+- 6-dot grip icon (SVG) on each category item
+- `cursor-grab` at rest; `active:cursor-grabbing` during drag
+- Color: `text-slate-500`, hover: `text-slate-300`
+
+### Drag Behavior
+- Drag handle only — cannot drag from other parts of the row
+- `provided.placeholder` renders at the drop target location during drag
+- `snapshot.isDragging` drives visual feedback on the dragged item
+
+### Visual Feedback During Drag
+- Dragged item: `shadow-lg shadow-black/30`, `border-blue-500/50`, `bg-slate-700`
+- Transition: `transition-shadow`
+- Drop placeholder shown at target position
+
+### Drop Behavior
+- Dropped outside list: no-op (drag cancelled)
+- Dropped at same position: no-op
+- Dropped at new position: array reordered via `splice()`, new order persists to database
+
+### Other Row Interactions
+- **Amount editing**: Click edit icon opens inline number input; Enter saves, Escape cancels
+- **Remove category**: Click X icon removes category from template
+- All buttons have hover states and `aria-label`
+
+### Empty State
+- "No categories yet" message if list is empty
+
+### Accessibility
+- Drag handle: `aria-label` with category name context
+- Edit/Remove buttons: descriptive `aria-label`
+- Input: `aria-label` for amount editing
+
+---
+
+## Keyboard Shortcuts
+
+### Grid Navigation (IMPLEMENTED)
+- **Arrow keys**: Move selection to adjacent cell (up/down/left/right)
+- **Tab / Shift+Tab**: Move to next/previous cell (wraps to next/previous row)
+- **Home / End**: Move to first/last column in current row
+- **Ctrl+Home / Ctrl+End**: Move to first/last cell in grid
+- **Enter**: Open ledger modal for openable cells (received_amount, spent_amount)
+- **Escape**: Clear cell selection
+
+### Modal (IMPLEMENTED)
+- **Enter**: Submit form / Save transaction
+- **Escape**: Close modal / Cancel
+- **Tab / Shift+Tab**: Navigate between form fields
+
+### Attachment Shortcuts (IMPLEMENTED)
+- **Enter / Space** on AttachmentIndicator: Open popover
+- **Escape** in AttachmentPopover: Close popover (or cancel delete confirmation)
+- **Arrow Left/Right** in AttachmentLightbox: Navigate between slides
+- **Escape** in AttachmentLightbox: Close gallery
+- **Mouse wheel** in AttachmentLightbox: Zoom in/out
+
+### Column Resize (IMPLEMENTED)
+- **ArrowLeft / ArrowRight** on focused resize handle: Adjust column width by 10px
+
+### Global Shortcuts (PLANNED — not yet implemented)
+> The following shortcuts are planned for future implementation but are NOT currently wired up in the application:
+
 - `Ctrl+N`: Create new period budget instance
 - `Ctrl+T`: Create new template
 - `Ctrl+O`: Open finance file
-- `Ctrl+S`: Save (if applicable, or export)
+- `Ctrl+S`: Save / export
 - `Ctrl+E`: Export CSV
-
-### Grid
-- `Ctrl+F`: Focus search/filter (if implemented)
-- `Ctrl+G`: Go to cell (if implemented)
-
-### Modal
-- `Enter`: Submit form / Save transaction
-- `Escape`: Close modal / Cancel
-- `Tab`: Next field
-- `Shift+Tab`: Previous field
+- `Ctrl+F`: Focus search/filter
+- `Ctrl+G`: Go to cell
 
 ---
 
@@ -177,9 +408,13 @@
 ### Screen Reader Support
 - **Labels**: All inputs have `aria-label` or associated `<label>`
 - **Roles**: 
-  - Grid: `role="grid"`
-  - Cells: `role="gridcell"`
+  - Grid: `role="grid"` (table wrapper: `role="region"`)
+  - Cells: `role="gridcell"` with `aria-selected`
   - Modal: `role="dialog"`
+  - Attachment popover: `role="dialog"` with `aria-label`
+  - File size warning: `role="alertdialog"` with `aria-modal="true"`
+  - Column resize handle: `role="separator"` with `aria-orientation="vertical"`
+  - Attachment list: `role="list"`
 - **Announcements**: 
   - "Transaction added: $50.00"
   - "Cell selected: Groceries, March 2025"
@@ -245,9 +480,9 @@
 - **Not in MVP**: No copy/paste support
 - **Future**: Copy cell value, paste into other cells
 
-### Drag & Drop
-- **Not in MVP**: No drag & drop
-- **Future**: Reorder categories by dragging (within a period budget instance)
+### Drag & Drop (Grid-Level)
+- **Template categories**: IMPLEMENTED — drag-and-drop reordering via `@hello-pangea/dnd` (see Template Drag-and-Drop section above)
+- **Grid-level reorder**: Not in MVP — reordering categories within a period budget instance grid is a future enhancement
 
 ### Formulas
 - **Not in MVP**: No formula support
@@ -261,6 +496,9 @@
 
 ## References
 
-- See **UI_FLOWS.md** for user journey flows
-- See **PRODUCT_REQUIREMENTS.md** for requirements
+- See **UI_FLOWS.md** for user journey flows (Flows 13–15 for attachment journeys)
+- See **PRODUCT_REQUIREMENTS.md** for requirements (US-9 through US-12 for attachments)
 - See **MVP_PLAN.md** for implementation roadmap
+- See **TEST_PLAN.md** for manual and automated test coverage
+- See **GRID_ARCHITECTURE.md** for grid component hierarchy
+- See **COLUMN_RESIZE_SPEC.md** for column resize specification details

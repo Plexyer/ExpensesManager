@@ -174,13 +174,7 @@
     "preview": "Vorschau",
     "previewOn": "CHF -125.00",
     "previewOff": "CHF 125.00",
-    "attachments": "Anhänge",
-    "attachmentsDesc": "Wählen Sie, wie angehängte Dateien beim Anzeigen von Transaktionsanhängen dargestellt werden.",
-    "attachmentViewMode": "Anhang-Ansichtsmodus",
-    "attachmentPopover": "Kompaktes Popup",
-    "attachmentPopoverDesc": "Anhänge in einem kompakten Popup neben der Transaktionszeile anzeigen. Ideal zum schnellen Durchblättern.",
-    "attachmentLightbox": "Vollbild-Galerie",
-    "attachmentLightboxDesc": "Anhänge in einer Vollbild-Galerie mit Zoom und Navigation anzeigen. Ideal für detaillierte Ansicht."
+    "attachments": "Anhänge"
   },
   "export": {
     "title": "Export",

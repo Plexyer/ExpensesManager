@@ -12,7 +12,7 @@ Turn one MVP step from MVP_PLAN.md into a detailed implementation plan.
 
 ### Step 1: Read MVP Step
 1. Read MVP_PLAN.md for step description
-2. Read related PRODUCT_REQUIREMENTS.md sections
+2. Read the relevant GitHub Issues for the phase
 3. Read related UI_FLOWS.md sections
 4. Understand acceptance criteria
 
@@ -23,10 +23,10 @@ Turn one MVP step from MVP_PLAN.md into a detailed implementation plan.
 4. **Integration**: How do components connect?
 
 ### Step 3: Break into Tasks
-Use skill_mvp_decomposition.md to break into tasks:
-- Create tasks following BACKLOG.md format
-- Identify dependencies
-- Estimate complexity
+Use `.cursor/skills/mvp-decomposition/SKILL.md` to break into tasks:
+- Create tasks as GitHub Issues (labeled `mvp` + `enhancement`)
+- Identify dependencies between issues
+- Estimate complexity (S / M / L)
 
 ### Step 4: Create Implementation Plan
 Document:
@@ -74,15 +74,16 @@ Document:
 2. TASK-6.2: Implement Period Creation Backend
 3. TASK-6.3: Update Grid to Show New Period
 
-**Data Model**: Periods table exists (from Phase 2)
+**Data Model**: `period_budget_instances` and `budget_instance_categories` tables exist (schema v5)
 
-**Backend**: `create_period` command
+**Backend**: `create_period_from_template` command in `src-tauri/src/encrypted_db.rs`
 
-**Frontend**: `CreatePeriodForm.tsx` component
+**Frontend**: `CreatePeriodForm.tsx` component using Tailwind CSS and `useAppDispatch`/`useAppSelector`
 
-**Testing**: Create period, verify envelopes copied, verify grid updates
+**Testing**: Create period, verify categories copied from template, verify PeriodGrid updates
 
 ## References
-- **MVP_PLAN.md**: MVP steps
-- **BACKLOG.md**: Task breakdown
-- **skill_mvp_decomposition.md**: Task decomposition guide
+- **MVP_PLAN.md**: MVP steps and phase descriptions
+- **GitHub Issues**: Task tracking (labeled `mvp` + `enhancement`)
+- **`.cursor/skills/mvp-decomposition/SKILL.md`**: Task decomposition guide
+- **`.cursor/agents.md`**: Task picking flow and conventions

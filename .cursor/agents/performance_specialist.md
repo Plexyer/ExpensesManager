@@ -23,18 +23,19 @@ Identify performance bottlenecks, optimize queries and UI, and ensure MVP meets 
 Facts:
 ```
 CONFIRMED:
-- AG Grid used for CategoryGrid (virtualization built-in)
-- Database queries use indexes (from migrations)
-- Redux caching used for grid data
+- Custom PeriodGrid table (HTML table + Tailwind, no external grid library)
+- Database queries use 16 indexes across 9 tables (from migrations.rs)
+- Redux caching used for grid data (budgetSlice)
+- SQLCipher encryption adds overhead to all DB operations
 ```
 
 ### INFERRED
 Assumptions:
 ```
 INFERRED:
-- Grid may need virtualization for large category lists (many rows) within one period budget instance
-- Database queries may need optimization for large datasets
-- Lazy loading needed for transaction data
+- Grid may need optimization for large category lists (many rows per period)
+- SQLCipher encryption overhead is acceptable for typical dataset sizes
+- Lazy loading needed for attachment BLOBs (loaded on demand)
 ```
 
 ### OPEN QUESTIONS
@@ -43,27 +44,29 @@ Unknowns:
 OPEN QUESTIONS:
 - What is target grid size (max category rows per budget instance)?
 - What is acceptable query time (< 100ms)?
-- Should we implement pagination?
+- Should we implement pagination for line items?
 ```
 
 ### RECOMMENDATIONS
 Performance optimizations:
 ```
 RECOMMENDATIONS:
-1. Enable AG Grid virtualization (rowBuffer, viewport mode)
-2. Add database indexes on frequently queried columns
-3. Implement lazy loading for transactions (load on modal open)
+1. Profile PeriodGrid rendering with React DevTools
+2. Verify database indexes cover common query patterns
+3. Implement lazy loading for attachments (load BLOB on demand)
 4. Cache grid data in Redux (refresh on changes)
 5. Debounce search/filter inputs (300ms)
-6. Test with large datasets (1000+ transactions)
+6. Test with large datasets (1000+ line items per category)
 ```
 
 ### REFERENCES
 Files:
 ```
 REFERENCES:
-- src/components/features/BudgetGrid/CategoryGrid.tsx
-- src-tauri/src/modules/database/mod.rs
+- src/components/features/BudgetGrid/PeriodGrid.tsx (main grid)
+- src/components/features/BudgetGrid/PeriodGridTable.tsx
+- src-tauri/src/encrypted_db.rs (query patterns)
+- src-tauri/src/migrations.rs (indexes)
 - .cursor/RULES.md (performance rules)
 ```
 
@@ -75,15 +78,15 @@ REFERENCES:
 - Identify bottlenecks
 
 ### Step 2: Analyze Current Performance
-- Review database queries
-- Review UI rendering
-- Review data loading
+- Review database queries in encrypted_db.rs
+- Review UI rendering (PeriodGrid components)
+- Review data loading (Tauri invoke → Redux)
 
 ### Step 3: Recommend Optimizations
-- Database indexes
-- Query optimization
-- UI virtualization
-- Caching strategies
+- Database indexes (review migrations.rs)
+- Query optimization (avoid N+1, use JOINs)
+- UI rendering (React.memo, useMemo for expensive computations)
+- Caching strategies (Redux slices)
 
 ### Step 4: Document Optimizations
 - Performance improvements
@@ -93,21 +96,21 @@ REFERENCES:
 ## Performance Checklist
 
 ### Database
-- ✅ Indexes on frequently queried columns
-- ✅ Prepared statements (reuse queries)
-- ✅ Avoid N+1 queries
-- ✅ Limit query results (if needed)
+- ✅ Indexes on frequently queried columns (16 indexes at v5)
+- ✅ Parameterized statements (rusqlite)
+- ⬜ Avoid N+1 queries (review per feature)
+- ⬜ Limit query results (if needed for large datasets)
 
 ### Frontend
-- ✅ Grid virtualization
-- ✅ Lazy loading
+- ⬜ PeriodGrid rendering optimized (React.memo, useMemo)
+- ⬜ Lazy loading for attachments
 - ✅ Redux caching
-- ✅ Debounced inputs
+- ⬜ Debounced inputs
 
 ### Memory
-- ✅ Clear cached data when not needed
-- ✅ Limit in-memory data size
-- ✅ Pagination for large lists
+- ⬜ Clear cached data when not needed
+- ⬜ Limit in-memory attachment size
+- ⬜ Pagination for large line item lists
 
 ## Definition of Done
 - ✅ Performance requirements identified
@@ -127,5 +130,5 @@ REFERENCES:
 
 ## References
 - **RULES.md**: Performance rules
-- **skill_ui_grid_patterns.md**: Grid performance patterns
+- **`.cursor/skills/ui-grid-patterns/SKILL.md`**: Grid performance patterns
 - **ARCHITECTURE_CURRENT.md**: Current architecture

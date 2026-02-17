@@ -9,7 +9,7 @@
 - ✅ Offline-first operation
 
 ### Encrypted Finance Files
-- ✅ Each finance file is encrypted (SQLCipher or app-level)
+- ✅ Each finance file is encrypted (SQLCipher with Argon2id key derivation)
 - ✅ Master password required to unlock
 - ✅ No password recovery (by design for database password)
 - ✅ Password hint optional (for user convenience, not security)
@@ -38,14 +38,14 @@
 ### No Guessing Policy
 - ✅ Only implement what's confirmed in requirements
 - ✅ Document assumptions as INFERRED (not CONFIRMED)
-- ✅ Ask questions in QUESTIONS_FOR_USER.md if unclear
+- ✅ Ask questions directly in chat if unclear
 - ✅ Don't make up requirements
 
 ### Small PR-Sized Tasks
 - ✅ Break work into small, focused tasks
 - ✅ Each task should be completable in 1-5 days
 - ✅ Tasks should be independently testable
-- ✅ Follow BACKLOG.md task structure
+- ✅ Follow GitHub Issues task structure
 
 ---
 
@@ -60,21 +60,21 @@
 - Use descriptive component names (PascalCase)
 
 #### State Management
-- Use Redux Toolkit for global state (budgets, expenses, auth)
-- Use React Context for app-wide settings (timezone)
+- Use Redux Toolkit for global state (4 slices: `fileSlice`, `budgetSlice`, `categorySlice`, `templateSlice`)
+- Use `ui_settings` table + `settingsService` for persistent user preferences
 - Use local state for UI-only state (modals, forms)
 
 #### Styling
-- Use Tailwind CSS utility classes (CONFIRMED)
+- Use Tailwind CSS v4 utility classes (CONFIRMED)
 - Avoid inline styles
-- Use Headless UI for accessible components
+- Use custom accessible components (no Headless UI dependency)
 - Follow existing Tailwind patterns in codebase
 
 #### Naming Conventions
-- **Components**: PascalCase (`BudgetGrid.tsx`)
-- **Functions**: camelCase (`createMonthlyBudget`)
+- **Components**: PascalCase (`PeriodGrid.tsx`, `CategoryLedgerModal.tsx`)
+- **Functions**: camelCase (`createPeriod`, `getCategories`)
 - **Constants**: UPPER_SNAKE_CASE or camelCase
-- **Types/Interfaces**: PascalCase (`Budget`, `Expense`)
+- **Types/Interfaces**: PascalCase (`Period`, `Category`, `LineItem`, `Attachment`)
 
 #### File Organization
 - Group by feature (`features/BudgetGrid/`)
@@ -86,10 +86,11 @@
 ### Rust/Tauri (CONFIRMED from repo)
 
 #### Command Pattern
-- Commands in `src-tauri/src/modules/commands/`
-- Each command module in separate file (`budget.rs`, `expense.rs`)
+- All Tauri commands are in `src-tauri/src/encrypted_db.rs`
+- Supporting modules: `kdf.rs` (key derivation), `file_header.rs` (file format), `migrations.rs` (schema upgrades)
 - Commands return `Result<T, String>` for errors
-- Use `State<DbState>` for database access
+- Use `State<Mutex<Option<OpenFileState>>>` for database access
+- Frontend invokes commands via `@tauri-apps/api` `invoke()` function
 
 #### Error Handling
 - Use `thiserror` for error types (CONFIRMED)
@@ -98,14 +99,15 @@
 
 #### Database Access
 - All DB operations in Rust backend
-- Use `rusqlite` for SQLite access
+- Use `rusqlite` with SQLCipher (`bundled-sqlcipher` feature) for encrypted SQLite access
 - Use prepared statements for queries
 - Enable foreign keys: `PRAGMA foreign_keys = ON`
+- Key derivation: Argon2id → raw hex key via `PRAGMA key = "x'hex'"`
 
 #### Naming Conventions
-- **Functions**: snake_case (`create_monthly_budget`)
-- **Structs**: PascalCase (`CreateBudgetArgs`)
-- **Modules**: snake_case (`budget.rs`)
+- **Functions**: snake_case (`create_finance_file`, `get_categories`)
+- **Structs**: PascalCase (`OpenFileState`, `CreateFileArgs`)
+- **Modules**: snake_case (`encrypted_db.rs`, `kdf.rs`, `file_header.rs`, `migrations.rs`)
 
 ---
 
@@ -118,8 +120,8 @@
 - ✅ Rate limit password attempts (max 5, then lockout)
 
 ### Encryption
-- ✅ Encrypt database files (SQLCipher preferred)
-- ✅ Derive encryption key from password (Argon2id KDF)
+- ✅ Encrypt database files (SQLCipher -- implemented)
+- ✅ Derive encryption key from password (Argon2id KDF -- implemented)
 - ✅ Store salt + KDF params in file header (plaintext OK)
 - ✅ Never store encryption key on disk
 
@@ -159,16 +161,18 @@
 
 ## Testing Rules
 
-### Test Coverage (Future)
-- Unit tests for business logic
-- Integration tests for Tauri commands
-- E2E tests for critical user flows
+### Automated Tests (CONFIRMED -- Vitest)
+- ✅ Unit tests for utility functions and business logic (Vitest + jsdom)
+- ✅ Component tests with `@testing-library/react` and `renderWithProviders` helper
+- ✅ Test files use `__tests__/` convention: `src/**/__tests__/*.test.{ts,tsx}`
+- ✅ Run with `npm run test` (once) or `npm run test:watch` (watch mode)
+- Future: Integration tests for Tauri commands, E2E tests for critical user flows
 
 ### Manual Testing
 - ✅ Test all MVP features before marking complete
 - ✅ Test error cases (wrong password, corrupted file)
 - ✅ Test edge cases (empty data, large datasets)
-- ✅ Test on target platforms (Windows/macOS/Linux)
+- ✅ Test on target platform (Windows 11 for MVP)
 
 ---
 
@@ -185,8 +189,8 @@
 - ✅ Document design decisions in code comments
 
 ### Task Documentation
-- ✅ Update BACKLOG.md when tasks complete
-- ✅ Document blockers in QUESTIONS_FOR_USER.md
+- ✅ Close GitHub Issues when tasks complete
+- ✅ Document blockers as comments on the GitHub Issue
 - ✅ Update MVP_PLAN.md if plan changes
 
 ---
@@ -243,14 +247,16 @@
 ### MVP Languages
 - ✅ English (EN) - default
 - ✅ German (DE)
+- ✅ Hungarian (HU)
 
 ### Currency Support
 - ✅ CHF (Swiss Franc)
 - ✅ EUR (Euro)
 
-### Implementation
-- Use react-i18next or similar
-- Store translations in `src/i18n/`
+### Implementation (CONFIRMED)
+- Uses `react-i18next` + `i18next` for translations
+- Translation files in `src/i18n/` (`en.json`, `de.json`, `hu.json`)
+- Language stored in app settings (localStorage), not in the finance file
 - Format currency based on locale
 
 ---
@@ -318,7 +324,7 @@ These rules MUST be followed by all agents working on licensing-related features
 ## References
 
 - See **PRODUCT_REQUIREMENTS.md** for MVP scope
-- See **BACKLOG.md** for task breakdown
+- See **GitHub Issues** for task breakdown
 - See **ARCHITECTURE_CURRENT.md** for current architecture
 - See **LICENSING.md** for authoritative licensing spec
 - See **LICENSING_SUMMARY.md** for structured licensing summary

@@ -1,20 +1,26 @@
 # Skill: CSV Export Implementation
 
 ## Purpose
-How to implement CSV export functionality for finance data.
+How to implement and extend CSV export functionality for finance data.
+
+## Implementation Status
+Two export commands already exist in `src-tauri/src/encrypted_db.rs`:
+- `export_to_csv` — returns CSV string
+- `export_csv_to_file` — writes CSV directly to a file path
 
 ## When to Use
-- Implementing CSV export feature
-- Exporting budget instances, categories, and line items
+- Extending CSV export feature
+- Modifying export format or columns
 - Testing CSV format compatibility
 
 ## Export Scope (MVP)
 
-### Data to Export
-1. **Budget instances**: budget_instance_id, cadence, start_date, end_date, template_id
-2. **Global categories**: global_category_id, name, description
-3. **Budget instance categories**: budget_instance_id, global_category_id, received_date, default_amount
-4. **Line items**: line_item_id, budget_instance_category_id, kind(received/spent), occurred_at, description, amount, notes
+### Data to Export (from schema v5)
+1. **Period budget instances** (`period_budget_instances`): id, template_id, cadence, start_date, end_date, name
+2. **Global categories** (`global_categories`): id, name, sort_order
+3. **Budget instance categories** (`budget_instance_categories`): id, instance_id, global_category_id, default_amount
+4. **Line items** (`category_line_items`): id, category_id, kind (received/spent), amount, description, occurred_at, notes
+5. **Attachments metadata** (`line_item_attachments`): id, line_item_id, filename, mime_type, size_bytes (binary data excluded)
 
 ### Format
 - CSV with headers
@@ -26,58 +32,37 @@ How to implement CSV export functionality for finance data.
 
 ### Backend: Generate CSV
 
-#### Option 1: Generate CSV in Rust
+#### Existing Commands (in `src-tauri/src/encrypted_db.rs`)
 ```rust
 #[tauri::command]
-pub fn export_to_csv(db: State<DbState>) -> Result<String, String> {
-    let conn = db.get_conn()?;
-    
-    // Query data
-    let budget_instances = get_all_budget_instances(&conn)?;
-    let global_categories = get_all_global_categories(&conn)?;
-    let instance_categories = get_all_budget_instance_categories(&conn)?;
-    let line_items = get_all_line_items(&conn)?;
-    
-    // Generate CSV
-    let mut csv = String::new();
-    csv.push_str("BudgetInstances\n");
-    csv.push_str("budget_instance_id,cadence,start_date,end_date,template_id\n");
-    for period in budget_instances {
-        csv.push_str(&format!("{},{},{},{},{}\n", 
-            period.id, period.cadence, period.start_date, 
-            period.end_date.unwrap_or_default(), period.template_id));
-    }
-    
-    csv.push_str("\nGlobalCategories\n");
-    csv.push_str("global_category_id,name,description\n");
-    // ... add global category rows
-    
-    csv.push_str("\nBudgetInstanceCategories\n");
-    csv.push_str("budget_instance_id,global_category_id,received_date,default_amount\n");
-    // ... add per-instance category rows
-    
-    csv.push_str("\nLineItems\n");
-    csv.push_str("line_item_id,budget_instance_category_id,kind,occurred_at,description,amount,notes\n");
-    // ... add line item rows
-    
+pub fn export_to_csv(db_state: State<DbState>) -> Result<String, String> {
+    let binding = db_state.0.lock().unwrap();
+    let conn = binding.as_ref().ok_or("No database open")?;
+    // Query all tables and generate CSV string
+    // Returns the CSV as a String
     Ok(csv)
+}
+
+#[tauri::command]
+pub fn export_csv_to_file(path: String, db_state: State<DbState>) -> Result<(), String> {
+    let csv = export_to_csv_internal(db_state)?;
+    std::fs::write(&path, csv).map_err(|e| format!("Failed to write file: {}", e))?;
+    Ok(())
 }
 ```
 
-#### Option 2: Use CSV Crate
-```toml
-# Cargo.toml
-[dependencies]
-csv = "1.3"
-```
-
+#### CSV Generation Pattern
 ```rust
-use csv::Writer;
-
-let mut wtr = Writer::from_writer(vec![]);
-wtr.write_record(&["period_id", "cadence", "start_date"])?;
-wtr.write_record(&[period.id.to_string(), period.cadence, period.start_date])?;
-let data = String::from_utf8(wtr.into_inner()?)?;
+let mut csv = String::new();
+csv.push_str("PeriodBudgetInstances\n");
+csv.push_str("id,template_id,cadence,start_date,end_date,name\n");
+for instance in &instances {
+    csv.push_str(&format!("{},{},{},{},{},{}\n",
+        instance.id, instance.template_id, instance.cadence,
+        instance.start_date, instance.end_date.as_deref().unwrap_or(""),
+        instance.name));
+}
+// ... repeat for other tables
 ```
 
 ### Frontend: Save CSV File
@@ -106,7 +91,7 @@ const handleExportCSV = async () => {
 ## CSV Format Considerations
 
 ### Headers
-- Include section headers (BudgetInstances, GlobalCategories, BudgetInstanceCategories, LineItems)
+- Include section headers (PeriodBudgetInstances, GlobalCategories, BudgetInstanceCategories, CategoryLineItems)
 - Column headers for each section
 - Clear separation between sections
 
@@ -118,25 +103,25 @@ const handleExportCSV = async () => {
 
 ### Example CSV
 ```csv
-BudgetInstances
-budget_instance_id,cadence,start_date,end_date,template_id
-1,monthly,2025-03-01,,1
-2,biweekly,2025-03-15,2025-03-29,1
+PeriodBudgetInstances
+id,template_id,cadence,start_date,end_date,name
+1,1,monthly,2025-03-01,,March 2025
+2,1,biweekly,2025-03-15,2025-03-29,Late March
 
 GlobalCategories
-global_category_id,name,description
-1,Groceries,Food and household items
-2,Rent/Mortgage,Monthly housing payment
+id,name,sort_order
+1,Groceries,0
+2,Rent/Mortgage,1
 
 BudgetInstanceCategories
-budget_instance_id,global_category_id,received_date,default_amount
-1,1,2025-03-01,500.00
-1,2,2025-03-01,1200.00
+id,instance_id,global_category_id,default_amount
+1,1,1,500.00
+2,1,2,1200.00
 
-LineItems
-line_item_id,budget_instance_category_id,kind,occurred_at,description,amount,notes
-1,1,spent,2025-03-05,Grocery shopping,150.50,Weekly groceries
-2,1,spent,2025-03-06,Coffee,5.00,
+CategoryLineItems
+id,category_id,kind,amount,description,occurred_at,notes
+1,1,spent,150.50,Grocery shopping,2025-03-05,Weekly groceries
+2,1,spent,5.00,Coffee,2025-03-06,
 ```
 
 ## Testing
@@ -178,9 +163,10 @@ line_item_id,budget_instance_category_id,kind,occurred_at,description,amount,not
 - Don't load all data into memory at once
 
 ## References
-- **Rust CSV crate**: https://docs.rs/csv/
-- **Tauri file dialog**: https://tauri.app/api/js/dialog/
+- **`src-tauri/src/encrypted_db.rs`**: `export_to_csv` and `export_csv_to_file` commands
+- **Tauri file dialog**: `@tauri-apps/plugin-dialog` (save dialog for file path)
 - **PRODUCT_REQUIREMENTS.md**: Export requirements
+- **DATA_MODEL.md**: Schema reference for export columns
 
 ## Output
-Implement CSV export following this pattern.
+Use these patterns when extending CSV export or modifying the export format.

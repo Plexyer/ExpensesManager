@@ -24,25 +24,26 @@ Design and implement CSV export functionality for finance data.
 Facts:
 ```
 CONFIRMED:
-- No CSV export exists (searched codebase)
-- Tauri file dialog API available (from `package.json`: @tauri-apps/api)
-- Database queries exist for periods, envelopes, transactions
+- No CSV export command exists yet in encrypted_db.rs
+- Tauri file dialog API available (@tauri-apps/api)
+- Database queries exist for periods, categories, line items in encrypted_db.rs
+- 9 tables available for export (see DATA_MODEL.md)
 ```
 
 ### INFERRED
 Assumptions:
 ```
 INFERRED:
-- Should export all periods, envelopes, transactions
-- CSV format: sections with headers (Periods, Envelopes, Transactions)
-- Should use Rust CSV crate or manual formatting
+- Should export period instances, categories, line items, attachments metadata
+- CSV format: sections with headers
+- Rust-side formatting preferred for performance
 ```
 
 ### OPEN QUESTIONS
 Unknowns:
 ```
 OPEN QUESTIONS:
-- Should CSV include deleted transactions?
+- Should CSV include attachment binary data (or just metadata)?
 - What date format (ISO or locale-specific)?
 - Should export be streaming (for large datasets)?
 ```
@@ -51,9 +52,9 @@ OPEN QUESTIONS:
 Export design:
 ```
 RECOMMENDATIONS:
-1. Create `export_to_csv` command in `src-tauri/src/modules/commands/export.rs`
-2. Query all periods, envelopes, transactions
-3. Format as CSV with sections (Periods, Envelopes, Transactions)
+1. Add `export_to_csv` command in `src-tauri/src/encrypted_db.rs`
+2. Query all period instances, categories, line items
+3. Format as CSV with sections
 4. Return CSV string from command
 5. Frontend saves to file via Tauri file dialog
 6. Test with Excel compatibility
@@ -63,27 +64,27 @@ RECOMMENDATIONS:
 Files:
 ```
 REFERENCES:
-- .cursor/skills/skill_export_csv.md
-- src-tauri/src/modules/commands/budget.rs (query patterns)
-- PRODUCT_REQUIREMENTS.md (export requirements)
+- .cursor/skills/export-csv/SKILL.md (CSV export implementation guide)
+- src-tauri/src/encrypted_db.rs (existing query patterns for all entities)
+- src-tauri/src/migrations.rs (schema reference for export columns)
 ```
 
 ## Process
 
 ### Step 1: Understand Requirements
-- Read PRODUCT_REQUIREMENTS.md for export scope
-- Read skill_export_csv.md for implementation guide
-- Identify data to export
+- Read export-related GitHub issues for scope
+- Read `.cursor/skills/export-csv/SKILL.md` for implementation guide
+- Identify data to export from schema (DATA_MODEL.md)
 
 ### Step 2: Design Export Format
 - CSV structure (sections, headers)
-- Data formatting (dates, amounts)
-- Special character handling
+- Data formatting (dates, amounts, locale-aware currency)
+- Special character handling (escaping commas, quotes)
 
 ### Step 3: Design Implementation
-- Backend command (generate CSV)
-- Frontend UI (export button, file picker)
-- Error handling
+- Backend command in `encrypted_db.rs` (generate CSV string)
+- Frontend UI (export button, Tauri file dialog for save location)
+- Error handling (empty data, large datasets)
 
 ### Step 4: Document Design
 - CSV format specification
@@ -108,6 +109,6 @@ REFERENCES:
 - Other export formats (PDF, JSON)
 
 ## References
-- **skill_export_csv.md**: CSV export implementation guide
-- **PRODUCT_REQUIREMENTS.md**: Export requirements
-- **BACKLOG.md**: Export tasks (TASK-7.1, TASK-7.2)
+- **`.cursor/skills/export-csv/SKILL.md`**: CSV export implementation guide
+- **GitHub Issues**: Export tasks
+- **`src-tauri/src/encrypted_db.rs`**: Query patterns for all entities

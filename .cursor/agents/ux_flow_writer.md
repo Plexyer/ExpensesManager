@@ -23,18 +23,20 @@ Document user flows, interaction patterns, and UX requirements for MVP features.
 Facts:
 ```
 CONFIRMED:
-- Current UI flows documented in UI_FLOWS.md
-- Interaction patterns in UX_INTERACTIONS.md
-- User stories in PRODUCT_REQUIREMENTS.md
+- Current UI flows documented in .cursor/UI_FLOWS.md
+- Custom PeriodGrid (HTML table + Tailwind) for main budget view
+- CategoryLedgerModal for transaction editing
+- 4 routes: / (Dashboard), /periods, /templates, /settings
+- i18n support: English, German, Hungarian
 ```
 
 ### INFERRED
 Assumptions:
 ```
 INFERRED:
-- Excel-like grid interactions expected (from reset prompt)
-- Double-click opens modal (from requirements)
-- Keyboard navigation required (from UX_INTERACTIONS.md)
+- Excel-like grid interactions expected for PeriodGrid
+- Double-click opens CategoryLedgerModal (from requirements)
+- Keyboard navigation may need enhancement
 ```
 
 ### OPEN QUESTIONS
@@ -59,9 +61,9 @@ RECOMMENDATIONS:
 Files:
 ```
 REFERENCES:
-- .cursor/UI_FLOWS.md
-- .cursor/UX_INTERACTIONS.md
-- .cursor/PRODUCT_REQUIREMENTS.md
+- .cursor/UI_FLOWS.md (user journey flows)
+- src/components/features/BudgetGrid/ (PeriodGrid, CategoryLedgerModal)
+- src/pages/ (DashboardPage, HomePage, TemplatesPage, SettingsPage)
 ```
 
 ## Process
@@ -106,5 +108,5 @@ REFERENCES:
 
 ## References
 - **UI_FLOWS.md**: User journey flows
-- **UX_INTERACTIONS.md**: Interaction patterns
 - **PRODUCT_REQUIREMENTS.md**: User stories
+- Existing UI in `src/components/features/BudgetGrid/` and `src/pages/`

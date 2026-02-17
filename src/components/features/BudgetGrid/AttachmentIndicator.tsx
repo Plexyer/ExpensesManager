@@ -32,8 +32,8 @@ const isImageMimeType = (mimeType: string | null): boolean => {
 // Sub-components (SVG icons)
 // ============================================================================
 
-/** Camera icon — shown when there are no attachments. */
-const CameraIcon = () => (
+/** Plus icon — shown when there are no attachments. */
+const PlusIcon = () => (
   <svg
     className="w-3.5 h-3.5"
     fill="none"
@@ -45,13 +45,7 @@ const CameraIcon = () => (
       strokeLinecap="round"
       strokeLinejoin="round"
       strokeWidth={2}
-      d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
-    />
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+      d="M12 4.5v15m7.5-7.5h-15"
     />
   </svg>
 );
@@ -92,7 +86,7 @@ const CountBadge = ({ count }: { count: number }) => (
  * Compact attachment indicator for each transaction row.
  *
  * Visual states:
- * 1. No attachments (count === 0): Camera icon
+ * 1. No attachments (count === 0): Plus icon
  * 2. Image attachment(s) with thumbnail: Rounded thumbnail image
  * 3. Non-image attachment(s) or no thumbnail: File/document icon
  *
@@ -130,7 +124,7 @@ const AttachmentIndicator = ({
     ? t("attachments.ariaViewCount", { count: attachmentCount })
     : t("attachments.ariaAttach");
 
-  // ── No attachments: camera icon ──
+  // ── No attachments: plus icon ──
   if (!hasAttachments) {
     return (
       <button
@@ -143,7 +137,7 @@ const AttachmentIndicator = ({
         tabIndex={0}
         data-line-item-id={lineItemId}
       >
-        <CameraIcon />
+        <PlusIcon />
       </button>
     );
   }

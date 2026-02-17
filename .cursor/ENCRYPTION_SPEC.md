@@ -1,34 +1,18 @@
-# Encryption Specification (CONFIRMED)
+# Encryption Specification — IMPLEMENTED
 
-## Status: CONFIRMED
+## Status: IMPLEMENTED
 
-Key decisions from user answers:
-- **Encryption**: Use rusqlite + SQLCipher (CONFIRMED)
-- **Password Hashing**: Use Argon2id exclusively (CONFIRMED - no backward compatibility with SHA256)
-- **Target Platform**: Windows 11 only for MVP (CONFIRMED - MacOS/Linux deferred to post-MVP)
-
----
-
-## ⚠️ Temporary Stub Format (MVP Testing)
-
-Before SQLCipher is implemented, we use a **temporary plaintext JSON stub file** to enable testing of the create/open/unlock UI flows.
-
-**See**: `.cursor/FINANCEDB_STUB_SPEC.md` for the stub file specification.
-
-| Aspect | Stub (Current) | SQLCipher (Target) |
-|--------|----------------|-------------------|
-| Format | JSON text | SQLite binary |
-| Password | Stored in plaintext | Not stored (implicit) |
-| Encryption | None | AES-256 via SQLCipher |
-| Purpose | UI testing | Production |
-
-**When SQLCipher is ready**, the stub format will be replaced. Stub files contain no financial data, so no migration is needed.
+All encryption features are fully implemented and working:
+- **Encryption**: rusqlite + SQLCipher (`bundled-sqlcipher` feature) — IMPLEMENTED
+- **Password Hashing**: Argon2id exclusively (no SHA256) — IMPLEMENTED
+- **Target Platform**: Windows 11 only for MVP (MacOS/Linux deferred to post-MVP)
+- **Implementation Files**: `src-tauri/src/kdf.rs`, `src-tauri/src/file_header.rs`, `src-tauri/src/encrypted_db.rs`
 
 ---
 
 ## Overview
 
-The MVP requires encrypted portable finance files. This document outlines the encryption strategy, threat model, and implementation approach.
+The MVP uses encrypted portable finance files (`.financedb`). Each file contains a plaintext header (magic bytes, salt, KDF params, optional password hint) followed by a SQLCipher-encrypted SQLite database.
 
 ---
 
@@ -56,230 +40,110 @@ The MVP requires encrypted portable finance files. This document outlines the en
 
 ---
 
-## Encryption Strategy
+## Encryption Implementation
 
-### Option 1: SQLCipher (Preferred)
+### SQLCipher via rusqlite
 
-#### Overview
-SQLCipher is an SQLite extension that provides transparent 256-bit AES encryption.
-
-#### Advantages
-- ✅ Transparent to application code (same SQL interface)
-- ✅ Industry standard (used by Signal, WhatsApp, etc.)
-- ✅ Good performance
-- ✅ Well-maintained
-
-#### Disadvantages
-- ❌ Requires SQLCipher library integration
-- ❌ May need custom Rust bindings
-- ❌ Larger binary size
-
-#### Implementation Approach
-1. **Key Derivation**: Use Argon2id to derive encryption key from master password
-2. **Key Storage**: Store salt + KDF params in file metadata (not in database)
-3. **Database Encryption**: SQLCipher encrypts entire database file
-4. **Key Management**: Keep encryption key in memory only, clear on app close
-
-#### Rust Integration (CONFIRMED - from TASK-1.4 Research)
-
-**Recommended Approach**: Use `rusqlite` with `bundled-sqlcipher-vendored-openssl` feature.
+SQLCipher is an SQLite extension providing transparent AES-256 encryption, used by Signal, WhatsApp, and similar. The app uses `rusqlite` with the `bundled-sqlcipher` feature.
 
 ```toml
-# Cargo.toml
+# Actual Cargo.toml dependencies
 [dependencies]
-rusqlite = { version = "0.38", features = ["bundled-sqlcipher-vendored-openssl"] }
+rusqlite = { version = "0.35", features = ["bundled-sqlcipher"] }
 argon2 = "0.5"           # Argon2id key derivation
 hex = "0.4"              # Hex encoding for raw keys
-rand = "0.8"             # Secure random for salt generation
+rand = "0.9"             # Secure random for salt generation
 ```
 
-**Why this approach**:
-- ✅ Bundles SQLCipher + OpenSSL from source (no external dependencies)
-- ✅ Eliminates Windows OpenSSL installation issues
-- ✅ Actively maintained (rusqlite 0.38.0)
-- ✅ Compatible with Tauri 2
-- ⚠️ First build takes +5-15 minutes (cached thereafter)
-- ⚠️ Binary size increases ~5-10 MB (acceptable for desktop)
-
-**Alternative crates NOT recommended**:
-- `rusqlcipher` crate exists but is **outdated (7+ years)** - do not use
-- Non-bundled `sqlcipher` feature requires manual SQLCipher installation
+**Key points**:
+- Bundles SQLCipher from source (no external dependencies on Windows)
+- First build takes +5–15 minutes (cached thereafter)
+- Binary size increases ~5–10 MB (acceptable for desktop)
+- `rusqlcipher` crate is outdated — do not use
 
 **Build Requirements (Windows 11)**:
 - Rust toolchain (rustup)
 - MSVC C++ compiler (Visual Studio Build Tools)
 
-#### Key Derivation Function (KDF)
+### Key Derivation Function (KDF)
 
-**Important**: SQLCipher uses PBKDF2 by default, but we bypass it using the raw hex key format to use Argon2id instead.
+**Implementation file**: `src-tauri/src/kdf.rs`
 
-```rust
-use argon2::{Argon2, Algorithm, Version, Params};
-
-fn derive_key(password: &str, salt: &[u8]) -> Result<Vec<u8>, argon2::Error> {
-    let params = Params::new(
-        65536,  // memory_cost (64 MB)
-        3,      // time_cost (3 iterations)
-        4,      // parallelism (4 threads)
-        Some(32), // output_length (32 bytes = 256 bits)
-    )?;
-    
-    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
-    
-    let mut key = vec![0u8; 32];
-    argon2.hash_password_into(password.as_bytes(), salt, &mut key)?;
-    Ok(key)
-}
-```
-
-#### SQLCipher Key Setting Pattern (CONFIRMED - from TASK-1.4 Research)
-
-**Critical**: Use raw hex key format (`x'hex'`) to bypass SQLCipher's internal PBKDF2 and use our Argon2id-derived key directly.
+SQLCipher uses PBKDF2 by default, but the app bypasses it using the raw hex key format to use Argon2id instead.
 
 ```rust
-use rusqlite::Connection;
-
-fn open_encrypted_db(path: &str, derived_key: &[u8]) -> rusqlite::Result<Connection> {
-    let conn = Connection::open(path)?;
-    
-    // Convert 32-byte key to hex and set as raw key (bypasses SQLCipher PBKDF2)
-    let key_hex = hex::encode(derived_key);
-    conn.execute(&format!("PRAGMA key = \"x'{}'\"", key_hex), [])?;
-    
-    // Verify key works (will error if wrong password)
-    conn.execute("SELECT count(*) FROM sqlite_master", [])?;
-    
-    Ok(conn)
-}
+// src-tauri/src/kdf.rs — actual constants
+pub const MEMORY_COST_KIB: u32 = 65_536; // 64 MB
+pub const TIME_COST: u32 = 3;             // 3 iterations
+pub const PARALLELISM: u32 = 4;           // 4 threads
+pub const OUTPUT_LENGTH: usize = 32;      // 32 bytes = 256 bits (AES-256)
+pub const SALT_LENGTH: usize = 32;        // 32 bytes from OS CSPRNG
 ```
 
-**Key Points**:
+### SQLCipher Key Setting
+
+**Critical**: The app uses raw hex key format (`x'hex'`) to bypass SQLCipher's internal PBKDF2 and use the Argon2id-derived key directly.
+
+```rust
+// Simplified pattern from src-tauri/src/encrypted_db.rs
+let key_hex = hex::encode(derived_key);
+conn.pragma_update(None, "key", format!("x'{}'", key_hex))?;
+// Verify key works (will error if wrong password)
+conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(()))?;
+```
+
 - The `x'...'` syntax tells SQLCipher to use the bytes directly as the encryption key
 - No PBKDF2 is performed by SQLCipher when using this format
 - Key must be exactly 32 bytes (256 bits) for AES-256
 - The `SELECT count(*) FROM sqlite_master` query verifies decryption succeeded
 
-#### File Structure
-```
-finance_file.encrypted
-├── Header (plaintext metadata)
-│   ├── Magic number (identifies file format)
-│   ├── Version (file format version)
-│   ├── Salt (32 bytes, random)
-│   ├── KDF params (memory_cost, time_cost, parallelism)
-│   └── Password hint (optional, encrypted or plaintext)
-└── Database (encrypted SQLite via SQLCipher)
-    └── All tables encrypted with AES-256
-```
-
 ---
 
-### Option 2: App-Level Encryption (Fallback)
+## File Format Specification (Implemented)
 
-#### Overview
-Encrypt database file at application level before writing to disk.
+**Implementation file**: `src-tauri/src/file_header.rs`
 
-#### Advantages
-- ✅ No external dependencies
-- ✅ Full control over encryption
-- ✅ Works with standard SQLite
+### File Header (plaintext, before the encrypted SQLite data)
 
-#### Disadvantages
-- ❌ More complex implementation
-- ❌ Performance overhead (encrypt/decrypt on every write/read)
-- ❌ Need to handle partial writes
-
-#### Implementation Approach
-1. **Key Derivation**: Same as SQLCipher (Argon2id)
-2. **Encryption**: Use AES-256-GCM for authenticated encryption
-3. **File Format**: Encrypted blob containing SQLite database
-4. **Caching**: Keep decrypted database in memory, encrypt on save
-
-#### Rust Implementation
 ```rust
-use aes_gcm::{
-    aead::{Aead, KeyInit},
-    Aes256Gcm, Nonce
-};
+// src-tauri/src/file_header.rs — actual constants
+pub const MAGIC: &[u8; 4] = b"EFM1";       // ExpensesManager File v1
+pub const VERSION: u8 = 1;                   // File format version
+pub const MAX_HINT_LENGTH: usize = 255;      // Max password hint bytes
+pub const FIXED_HEADER_SIZE: usize = 50;     // Fixed portion size
+```
 
-fn encrypt_database(db_bytes: &[u8], key: &[u8]) -> Vec<u8> {
-    let cipher = Aes256Gcm::new_from_slice(key).unwrap();
-    let nonce = generate_nonce(); // 12 bytes for GCM
-    let ciphertext = cipher.encrypt(&nonce, db_bytes).unwrap();
-    // Prepend nonce to ciphertext
-    [nonce.as_slice(), ciphertext.as_slice()].concat()
-}
+### Binary Layout
 
-fn decrypt_database(encrypted: &[u8], key: &[u8]) -> Vec<u8> {
-    let cipher = Aes256Gcm::new_from_slice(key).unwrap();
-    let nonce = &encrypted[0..12];
-    let ciphertext = &encrypted[12..];
-    cipher.decrypt(nonce.into(), ciphertext).unwrap()
+```
+Offset  Size     Field
+------  -------  ---------------------------------
+0       4        Magic bytes: b"EFM1"
+4       1        Version: 1
+5       32       Salt (random, from OS CSPRNG)
+37      4        memory_cost (u32 LE) = 65536
+41      4        time_cost (u32 LE) = 3
+45      4        parallelism (u32 LE) = 4
+49      1        hint_length (u8, 0–255)
+50      0–255    password_hint (UTF-8, optional)
+50+N    ...      SQLCipher-encrypted SQLite database
+```
+
+### FileHeader Struct
+
+```rust
+pub struct FileHeader {
+    pub salt: [u8; 32],
+    pub memory_cost: u32,
+    pub time_cost: u32,
+    pub parallelism: u32,
+    pub password_hint: Option<String>,  // None if hint_length == 0
 }
 ```
 
----
-
-## Confirmed Approach: SQLCipher (CONFIRMED)
-
-### Rationale
-- Industry standard for encrypted SQLite
-- Better performance (encryption at SQLite level)
-- Less application code complexity
-- Well-tested and secure
-
-### Implementation Steps (CONFIRMED - from TASK-1.4 Research)
-
-| Step | Task | Status |
-|------|------|--------|
-| 1 | Add dependencies to `src-tauri/Cargo.toml` | TASK-1.5 |
-| 2 | Implement Argon2id key derivation | TASK-1.5 |
-| 3 | Design file header format (magic, salt, KDF params) | TASK-1.6 |
-| 4 | Integrate SQLCipher with `DbState` | TASK-1.6 |
-| 5 | Test encryption/decryption, wrong password | TASK-1.6 |
-
-**Cargo.toml Configuration (Ready to Apply)**:
-```toml
-[dependencies]
-rusqlite = { version = "0.38", features = ["bundled-sqlcipher-vendored-openssl"] }
-argon2 = "0.5"
-hex = "0.4"
-rand = "0.8"
-```
-
-**Implementation Order**:
-1. **TASK-1.5**: Add dependencies, implement `derive_key()` function, add unit tests
-2. **TASK-1.6**: Implement `open_encrypted_db()`, file header, replace stub format
-
-### Platform Support (CONFIRMED)
+### Platform Support
 - **MVP**: Windows 11 only
-- **Post-MVP**: MacOS and Linux support can be added later
-
-### Fallback Plan (CONFIRMED - from TASK-1.4 Research)
-
-If SQLCipher integration encounters issues on Windows 11:
-
-**Alternative Dependencies**:
-```toml
-[dependencies]
-rusqlite = { version = "0.38", features = ["bundled"] }  # Standard SQLite (no SQLCipher)
-aes-gcm = "0.10"         # AES-256-GCM encryption (security audited by NCC Group)
-argon2 = "0.5"
-hex = "0.4"
-rand = "0.8"
-```
-
-**App-Level Encryption Pattern**:
-1. Keep decrypted SQLite database in memory (or temp file)
-2. On save: encrypt entire database with AES-256-GCM, write to disk
-3. On load: read from disk, decrypt, load into memory
-4. Delete temp files securely on app close
-
-**Trade-offs**:
-- ⚠️ Higher memory usage (entire DB in memory)
-- ⚠️ More complex implementation
-- ✅ Full control over encryption
-- ✅ No external library compilation issues
+- **Post-MVP**: MacOS and Linux can be added later (SQLCipher is cross-platform)
 
 ---
 
@@ -323,81 +187,34 @@ rand = "0.8"
 
 ---
 
-## KDF Parameters (Recommended)
+## KDF Parameters (Implemented)
 
 ### Argon2id Parameters
 - **Algorithm**: Argon2id (resistant to both GPU and side-channel attacks)
-- **Memory Cost**: 65536 KB (64 MB) - adjust based on system capabilities
-- **Time Cost**: 3 iterations - balance between security and performance
-- **Parallelism**: 4 threads - adjust based on CPU cores
+- **Memory Cost**: 65,536 KiB (64 MB)
+- **Time Cost**: 3 iterations
+- **Parallelism**: 4 threads
 - **Output Length**: 32 bytes (256 bits for AES-256)
-
-### Salt Generation
-- **Length**: 32 bytes (256 bits)
-- **Source**: Cryptographically secure random number generator (OS CSPRNG)
-- **Storage**: Stored in file header (plaintext, OK to be public)
-
-### KDF Params Storage
-Store in file header (plaintext):
-```rust
-struct FileHeader {
-    magic: [u8; 4],           // "EFM1" (ExpensesManager File v1)
-    version: u8,               // File format version
-    salt: [u8; 32],           // Random salt
-    memory_cost: u32,         // Argon2id memory cost
-    time_cost: u32,           // Argon2id time cost
-    parallelism: u32,        // Argon2id parallelism
-    password_hint: String,    // Optional hint (plaintext or encrypted)
-}
-```
+- **Salt Length**: 32 bytes from OS CSPRNG (stored plaintext in file header)
 
 ---
 
-## File Format Specification
-
-### File Structure
-```
-[Header] (plaintext, fixed size ~100 bytes)
-  - Magic number: "EFM1" (4 bytes)
-  - Version: 1 (1 byte)
-  - Salt: 32 bytes
-  - KDF params: 12 bytes (memory_cost, time_cost, parallelism)
-  - Password hint length: 1 byte (0-255)
-  - Password hint: variable length (0-255 bytes)
-
-[Database] (encrypted SQLite via SQLCipher)
-  - Entire SQLite database encrypted with AES-256
-  - Key derived from master password + salt + KDF params
-```
-
-### Magic Number
-- **Value**: `"EFM1"` (ExpensesManager File v1)
-- **Purpose**: Identify file format
-- **Location**: First 4 bytes of file
-
-### Version
-- **Value**: `1` (for MVP)
-- **Purpose**: File format versioning (for future migrations)
-- **Location**: Byte 5
-
----
-
-## Implementation Notes
+## UX Details (Implemented)
 
 ### Password Strength
 - **Minimum length**: 8 characters (recommended: 12+)
-- **Strength indicator**: Show password strength (weak/medium/strong)
+- **Strength indicator**: `zxcvbn` library shows password strength (weak/medium/strong) in real time
 - **Recommendations**: Mix of uppercase, lowercase, numbers, symbols
 
 ### Password Hint
-- **Optional**: User can provide hint
-- **Storage**: Plaintext in file header (or encrypted with separate key)
-- **Purpose**: Help user remember password (not for security)
+- **Optional**: User can provide a hint during file creation
+- **Storage**: Plaintext in file header (max 255 bytes UTF-8)
+- **Display**: Shown alongside "Incorrect password" error on unlock
 
 ### Error Handling
-- **Wrong password**: Generic error, don't reveal if file is encrypted
-- **Corrupted file**: Show error with recovery guidance
-- **Locked file**: Show error if file is locked by another instance
+- **Wrong password**: "Incorrect password" error with optional hint shown, allows retry
+- **Corrupted/invalid file**: "Invalid file format" error with guidance
+- **Non-EFM1 file**: Magic-byte check rejects non-finance files immediately
 
 ---
 
@@ -421,23 +238,7 @@ struct FileHeader {
 
 ---
 
-## Migration from Unencrypted
-
-### Strategy
-1. **Option 1**: Create new encrypted file, export/import data
-2. **Option 2**: In-place encryption (encrypt existing database file)
-3. **Option 3**: One-time migration tool
-
-### Recommended: Option 1
-- User creates new encrypted file
-- User sets master password
-- System exports data from old file (if exists)
-- System imports data into new encrypted file
-- User deletes old unencrypted file
-
----
-
-## OS Secure Storage / Keychain (CONFIRMED from LICENSING.md)
+## OS Secure Storage / Keychain (Post-MVP)
 
 ### Purpose
 - Store database password for "Remember password on this device" feature
@@ -498,17 +299,16 @@ struct FileHeader {
 
 ---
 
-## Resolved Questions (CONFIRMED)
+## Resolved Questions
 
-1. **SQLCipher Rust bindings**: Use `rusqlite` with `bundled-sqlcipher-vendored-openssl` feature (CONFIRMED - TASK-1.4)
-2. **Password Hashing**: Use Argon2id exclusively - no SHA256 backward compatibility (CONFIRMED)
-3. **Target Platform**: Windows 11 only for MVP (CONFIRMED)
-4. **Cross-platform**: MacOS/Linux support deferred to post-MVP (CONFIRMED)
-5. **Bypassing SQLCipher KDF**: Use `PRAGMA key = "x'hex'"` raw key format (CONFIRMED - TASK-1.4)
-6. **Alternative crates**: `rusqlcipher` is outdated (7+ years) - do not use (CONFIRMED - TASK-1.4)
-7. **Fallback approach**: `aes-gcm` crate for app-level encryption if needed (CONFIRMED - TASK-1.4)
-8. **Build requirements**: Rust + MSVC C++ compiler on Windows (CONFIRMED - TASK-1.4)
+1. **SQLCipher Rust bindings**: `rusqlite` with `bundled-sqlcipher` feature — IMPLEMENTED
+2. **Password Hashing**: Argon2id exclusively, no SHA256 — IMPLEMENTED
+3. **Target Platform**: Windows 11 only for MVP — IMPLEMENTED
+4. **Cross-platform**: MacOS/Linux deferred to post-MVP
+5. **Bypassing SQLCipher KDF**: Raw hex key format `PRAGMA key = "x'hex'"` — IMPLEMENTED
+6. **Alternative crates**: `rusqlcipher` is outdated (7+ years) — confirmed, not used
+7. **Build requirements**: Rust + MSVC C++ compiler on Windows
 
-**Research Document**: See `.cursor/TASK-1.4_SQLCIPHER_RESEARCH.md` for full details.
+**Research Document**: See `.cursor/archive/TASK-1.4_SQLCIPHER_RESEARCH.md` for historical details.
 
-**Status**: CONFIRMED - Ready for implementation (TASK-1.5, TASK-1.6)
+**Database Schema**: Migrations v1–v5 implemented in `src-tauri/src/migrations.rs` (see `DATA_MODEL.md` for details).

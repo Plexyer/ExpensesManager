@@ -24,22 +24,14 @@
 3. User enters password twice
 4. User clicks "Create File"
 
-### Step 4: File Creation
-
-#### MVP Stub Version (Temporary)
-1. System writes JSON stub file to chosen location
-2. Stub contains: format, version, created_at, master_password (plaintext), password_hint
-3. System marks file as "open" in app state
-4. **Screen**: Main grid (empty state)
-
-> **⚠️ MVP STUB ONLY**: The stub format stores passwords in plaintext for testing. See `.cursor/FINANCEDB_STUB_SPEC.md`.
-
-#### Final Version (SQLCipher - Future)
-1. System creates encrypted SQLite file at chosen location
-2. System initializes database schema
-3. System derives encryption key from password (Argon2id)
-4. Password NOT stored (implicit in encryption)
-5. **Screen**: Main grid (empty state)
+### Step 4: File Creation (IMPLEMENTED — SQLCipher)
+1. System creates encrypted SQLite file (`.financedb`) at chosen location
+2. System writes custom file header (magic bytes `EFM1`, random salt, Argon2id KDF params, password hint)
+3. System derives 256-bit encryption key from password via Argon2id (64 MB memory, 3 iterations, 4 threads)
+4. System initializes database schema (migrations v1–v5) inside the encrypted SQLCipher database
+5. Password is NOT stored — it is implicit in the encryption key
+6. System marks file as "open" in app state
+7. **Screen**: Main grid (empty state — no periods yet)
 
 ---
 
@@ -56,17 +48,10 @@
 3. User selects `.financedb` file
 4. User clicks "Open"
 
-### Step 3: Read File & Show Unlock Modal
-
-#### MVP Stub Version (Temporary)
-1. System reads JSON stub file
-2. System validates format field is `"financedb_stub"`
-3. System extracts `password_hint` (if present)
-4. **Screen**: Password unlock modal (with hint available)
-
-#### Final Version (SQLCipher - Future)
-1. System reads file header (salt, KDF params, hint)
-2. **Screen**: Password unlock modal (with hint available)
+### Step 3: Read File & Show Unlock Modal (IMPLEMENTED)
+1. System reads the custom file header from the `.financedb` file (magic bytes, salt, KDF params, hint)
+2. System extracts password hint (if present)
+3. **Screen**: Password unlock modal (with hint available via "Show Hint" button)
 
 ### Step 4: Unlock File
 1. **Screen**: Password unlock modal
@@ -77,26 +62,17 @@
 3. User enters password
 4. User clicks "Unlock"
 
-### Step 5: Verify Password & Open
-
-#### MVP Stub Version (Temporary)
-1. System compares entered password to `master_password` field in stub
-2. If match → file marked as "open" in app state
-3. If mismatch → show error, allow retry
-4. **Screen**: Main grid (empty for stub - no data storage yet)
-
-#### Final Version (SQLCipher - Future)
-1. System derives key from password (Argon2id)
-2. System attempts to decrypt database
-3. If success → file unlocked, data loaded
+### Step 5: Verify Password & Open (IMPLEMENTED)
+1. System derives encryption key from password using Argon2id (with salt and KDF params from file header)
+2. System attempts to decrypt and open the SQLCipher database
+3. If success → file unlocked, data loaded, app navigates to main grid
 4. If failure → show error, allow retry
-5. **Screen**: Main grid (with existing periods if any)
+5. **Screen**: Main grid (with existing periods if any, or empty state)
 
 ### Error Cases
 - **Wrong password**: Show error "Incorrect password. Please try again."
-- **Invalid JSON (stub)**: Show error "Unable to read file. The file may be corrupted."
-- **Wrong format (stub)**: Show error "This file is not a valid finance file."
-- **File corrupted**: Show error "File is corrupted. Please restore from backup."
+- **File corrupted / invalid header**: Show error "Unable to read file. The file may be corrupted."
+- **Not a valid finance file**: Show error "This file is not a valid finance file."
 - **Too many attempts**: After 5 failures, show lockout message (session-based)
 
 ---
@@ -118,13 +94,21 @@
 
 ### Step 3: Add Envelopes
 1. User clicks "Add Category" button
-2. **Screen**: Category row form (inline or modal)
+2. **Screen**: Category row form (inline)
 3. **Fields**:
    - "Global Category" (dropdown/search, required)
    - "Default Amount" (number input, required)
 4. User clicks "Add"
 5. Category appears in list
 6. Repeat for each category
+
+### Step 3b: Reorder Categories (Drag-and-Drop)
+1. User grabs the drag handle on any category item
+2. User drags the item to a new position in the list
+3. Visual feedback shows the drop target location
+4. User releases — category order updates immediately
+5. New order persists to database
+6. **Library**: `@hello-pangea/dnd` (implemented in `TemplateCategoryList.tsx`)
 
 ### Step 4: Save Template
 1. User clicks "Save Template"
@@ -225,16 +209,17 @@
 
 ### Step 2: View Existing Transactions (CONFIRMED)
 1. **Table columns**:
-   - Date (required, ISO format)
-   - Time (optional, defaults to 00:00:00 if not provided) (CONFIRMED)
+   - Date (required, locale-formatted)
    - Description
    - Amount
    - Currency (CHF/EUR for MVP) (CONFIRMED)
+   - Attachment indicator (shows count badge / "+" icon for each line item)
    - Actions (Edit/Delete)
 2. **For Received amount modal** (CONFIRMED):
    - First row is auto-created from template default amount (marked as template default)
    - Each subsequent row represents money received from various sources
 3. User can scroll if many transactions (virtualization for large lists) (CONFIRMED)
+4. **Attachment indicator** on each row: see **Flow 13–15** for attachment workflows
 
 ### Step 3: Add Transaction
 1. User clicks "Add Transaction" button
@@ -310,9 +295,10 @@
 1. **Screen**: Backup section
 2. **Content**:
    - Heading: "Backup Your Finance File"
-   - Instructions: "To backup your data, copy your finance file to a safe location (external drive, cloud storage, etc.)"
-   - File location: "Current file: [path]" (clickable to open in file explorer)
-   - "Copy File" button (opens file picker to copy)
+   - Instructions: Step-by-step guidance to copy the finance file to a safe location
+   - File location: "Current file: [path]" displayed
+   - "Copy Path" button (copies file path to clipboard)
+   - "Show in Explorer" button (opens the file's directory in the system file manager)
 
 ### Step 3: Copy File (Optional)
 1. User clicks "Copy File" button
@@ -341,15 +327,19 @@
 - **Screen**: Error message "File is locked. Another instance may be using it."
 - **Action**: Close other instances, retry
 
-### Network Error (if applicable)
-- **Screen**: Error message "Unable to save. Please try again."
-- **Action**: Retry button
+### No Attachments on Line Item
+- **Screen**: Attachment indicator shows "+" icon
+- **Action**: Click to open popover, then click "Add" to attach files
+
+### Large Attachment Warning
+- **Screen**: FileSizeWarningDialog showing filename, size, and 25 MB soft limit
+- **Action**: "Upload Anyway" to proceed or "Cancel" to skip the file
 
 ---
 
-## Flow 9: Read-Only Mode Experience (CONFIRMED from LICENSING.md) — MVP
+## Flow 9: Read-Only Mode Experience (CONFIRMED from LICENSING.md) — DEFERRED
 
-> **MVP Note**: This flow is REQUIRED for MVP. Read-Only mode is the default experience for users without a valid license.
+> **DEFERRED**: App Mode Plumbing (#61) was moved to `out-of-scope` for MVP. The non-negotiable safeguards are implemented: Export Always Available (#62) and DB Open/Unlock Never Blocked (#63). Full Read-Only mode with license-based gating is deferred to post-MVP.
 
 ### Scenario: User without valid license
 
@@ -385,9 +375,9 @@
 
 ---
 
-## Flow 10: Import License File (CONFIRMED from LICENSING.md) — MVP
+## Flow 10: Import License File (CONFIRMED from LICENSING.md) — DEFERRED
 
-> **MVP Note**: This flow is REQUIRED for MVP. Users must be able to import a perpetual license file to unlock Full Mode.
+> **DEFERRED**: License import depends on App Mode Plumbing (#61), which was moved to `out-of-scope` for MVP. The app currently runs in Full Mode for all users. License import will be implemented post-MVP.
 
 ### Step 1: Navigate to License
 1. User clicks "Settings" in sidebar
@@ -473,10 +463,142 @@
 
 ---
 
+## Flow 13: Attachment Upload — IMPLEMENTED
+
+> **Phase 11**: Attachments are stored as encrypted BLOBs inside the SQLCipher database. They travel with the portable `.financedb` file.
+
+### Prerequisites
+- A finance file is open
+- A period exists with at least one category
+- The CategoryLedgerModal is open (double-click a received/spent cell)
+
+### Step 1: Open Attachment Popover
+1. User sees an **attachment indicator** on each line item row in the CategoryLedgerModal
+   - No attachments: shows "+" icon
+   - Has attachments: shows thumbnail (for images) or file icon, with emerald count badge if count > 1
+2. User clicks the attachment indicator
+3. **Screen**: AttachmentPopover opens (320px wide, max 400px tall), anchored to the indicator
+
+### Step 2: Add Attachment
+1. User clicks the "Add" button in the popover
+2. **Screen**: Native file picker dialog opens (multi-select enabled)
+3. **File filters**: Images, Documents, All Files
+4. User selects one or more files
+5. User clicks "Open"
+
+### Step 3: File Size Check
+1. System checks each selected file's size (lightweight stat — no content read)
+2. **If file > 25 MB**: FileSizeWarningDialog appears
+   - Shows: warning icon, filename, formatted file size
+   - Note about the 25 MB soft limit
+   - **Options**: "Upload Anyway" (proceed) or "Cancel" (skip this file)
+3. **If file <= 25 MB**: upload proceeds immediately
+4. Files are processed sequentially
+
+### Step 4: Upload Complete
+1. Each approved file is uploaded via `add_attachment` Tauri command
+2. File data stored as encrypted BLOB in `line_item_attachments` table
+3. Image files get auto-generated thumbnails (Rust backend, `image` crate)
+4. MIME type auto-detected via `infer` crate
+5. Attachment indicator updates: count badge refreshes, thumbnail updates
+6. Popover refreshes to show the new attachment(s)
+
+### Error Cases
+- User cancels file picker → no action
+- File read error → error message shown, other files continue
+- Zero-byte file → allowed (uploaded normally)
+
+---
+
+## Flow 14: Attachment View — IMPLEMENTED
+
+> Attachments use a **unified popover-then-lightbox flow**: the popover provides quick access and management, while the lightbox offers full-screen image viewing. There is no separate Settings toggle — the two modes complement each other.
+
+### Step 1: Open Popover
+1. User clicks the attachment indicator on a line item row
+2. **Screen**: AttachmentPopover opens
+3. Popover shows a list of attachments, each with:
+   - Thumbnail (for images) or file type icon (for non-images)
+   - Filename (truncated if long)
+   - File size (human-readable)
+   - Action buttons: View, Export, Delete
+
+### Step 2a: View Image Attachment
+1. User clicks "View" (eye icon) on an image attachment
+2. **Screen**: AttachmentLightbox opens (full-screen gallery)
+3. Lightbox features:
+   - Full-resolution image loaded on demand
+   - Zoom (mouse wheel or pinch)
+   - Arrow key navigation (prev/next) if multiple attachments
+   - Thumbnail strip at bottom
+   - Slide info bar: filename and file size
+   - Export button in toolbar
+4. User presses Escape or clicks close button → lightbox closes, returns to popover
+
+### Step 2b: View Non-Image Attachment
+1. User clicks "View" (eye icon) on a non-image attachment (PDF, DOC, etc.)
+2. System exports the file to a temporary directory
+3. System opens the file in the default system application (via `openPath`)
+
+### Step 3: Close Popover
+1. User clicks outside the popover → popover closes
+2. Or user presses Escape → popover closes
+
+### Edge Cases
+- Single image → lightbox opens with no navigation arrows
+- No attachments → indicator shows "+" icon; popover opens with empty state and "Add files" prompt
+- Non-image in lightbox → large file icon with "Open in system app" and "Save to disk" buttons
+
+> **Note**: The original plan included a separate Settings toggle for popover vs. lightbox mode (TASK-11.10 / #95). This was removed in favor of the unified flow described above.
+
+---
+
+## Flow 15: Attachment Export & Delete — IMPLEMENTED
+
+### Export Attachment
+
+#### Step 1: Initiate Export
+1. User clicks the export (download) icon on an attachment in the popover
+2. Or: User clicks the export button in the lightbox toolbar (exports current slide)
+
+#### Step 2: Save Dialog
+1. **Screen**: Native save dialog with the original filename as default
+2. User selects save location
+3. User clicks "Save"
+
+#### Step 3: Export Complete
+1. System reads the attachment BLOB from the encrypted database
+2. System writes the file to the chosen location
+3. Success/error feedback provided
+4. If user cancels save dialog → no file written, no error
+
+### Delete Attachment
+
+#### Step 1: Initiate Delete
+1. User clicks the delete (trash) icon on an attachment in the popover
+
+#### Step 2: Confirm Delete
+1. **Screen**: Inline confirmation appears within the popover row ("Yes" / "No" buttons)
+2. User clicks "Yes" to confirm or "No" to cancel
+
+#### Step 3: Delete Complete
+1. System performs a soft delete — sets `deleted_at` timestamp on the attachment record
+2. Attachment disappears from the popover list
+3. Attachment count badge updates immediately
+4. If all attachments deleted → indicator reverts to "+" icon
+
+### Error Cases
+- Disk full on export → error message shown
+- Write permission denied → error message shown
+- Cancel delete confirmation → no action taken
+
+---
+
 ## References
 
-- See **PRODUCT_REQUIREMENTS.md** for detailed requirements
+- See **PRODUCT_REQUIREMENTS.md** for detailed requirements (including US-9 through US-12 for attachments)
 - See **UX_INTERACTIONS.md** for interaction patterns
-- See **MVP_PLAN.md** for implementation roadmap
+- See **MVP_PLAN.md** for implementation roadmap and phase details
+- See **TEST_PLAN.md** for manual and automated test coverage
 - See **LICENSING.md** for authoritative licensing spec
 - See **LICENSING_MVP_IMPACTS.md** for MVP vs deferred licensing breakdown

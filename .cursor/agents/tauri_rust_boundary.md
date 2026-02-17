@@ -25,53 +25,56 @@ Design and implement Tauri commands (Rust backend) that bridge frontend and data
 Facts:
 ```
 CONFIRMED:
-- Existing command pattern at `src-tauri/src/modules/commands/budget.rs:89`
-- Database access via `State<DbState>` (from `src-tauri/src/modules/database/mod.rs:14`)
-- Error handling returns `Result<T, String>` (from `budget.rs:89`)
+- All 38 Tauri commands in `src-tauri/src/encrypted_db.rs`
+- Database access via `State<DbState>` with Mutex<Option<Connection>> (from `src-tauri/src/lib.rs`)
+- Error handling returns `Result<T, String>` (standard pattern)
+- Commands registered in `src-tauri/src/lib.rs` invoke_handler
 ```
 
 ### INFERRED
 Assumptions:
 ```
 INFERRED:
-- New command should follow same pattern as `create_monthly_budget`
+- New command should follow same pattern as `create_period_from_template`
 - Should use prepared statements for queries
+- Must lock DbState mutex: `db_state.0.lock().unwrap()`
 ```
 
 ### OPEN QUESTIONS
 Unknowns:
 ```
 OPEN QUESTIONS:
-- Should period creation validate template exists?
-- What error message for duplicate period?
+- Should the new command validate input before DB query?
+- What error message for edge cases?
 ```
 
 ### RECOMMENDATIONS
 Implementation plan:
 ```
 RECOMMENDATIONS:
-1. Create `create_period` command in `budget.rs`
+1. Add new command function in `src-tauri/src/encrypted_db.rs`
 2. Use `State<DbState>` for database access
-3. Validate template exists before creating period
-4. Return `Result<i64, String>` (period_id or error)
-5. Test with existing test patterns
+3. Lock mutex: `let binding = db_state.0.lock().unwrap();`
+4. Get connection: `let conn = binding.as_ref().ok_or("No database open")?;`
+5. Return `Result<T, String>` (type or error)
+6. Register command in `src-tauri/src/lib.rs` invoke_handler
 ```
 
 ### REFERENCES
 Files:
 ```
 REFERENCES:
-- src-tauri/src/modules/commands/budget.rs
-- src-tauri/src/modules/database/mod.rs
-- src-tauri/src/lib.rs (command registration)
+- src-tauri/src/encrypted_db.rs (all Tauri commands)
+- src-tauri/src/lib.rs (command registration, DbState definition)
+- src-tauri/src/migrations.rs (schema for query reference)
 ```
 
 ## Process
 
 ### Step 1: Understand Existing Pattern
-- Read existing commands (e.g., `create_monthly_budget`)
-- Understand error handling pattern
-- Understand database access pattern
+- Read existing commands in `src-tauri/src/encrypted_db.rs` (e.g., `create_period_from_template`)
+- Understand error handling pattern (`Result<T, String>`)
+- Understand database access pattern (`State<DbState>` with mutex lock)
 
 ### Step 2: Design Command
 - Define command signature
@@ -85,10 +88,10 @@ REFERENCES:
 - Document database changes needed
 
 ### Step 4: Implement (if implementing MVP)
-- Create command function
-- Implement database queries
+- Add command function to `encrypted_db.rs`
+- Implement database queries with parameterized statements
 - Add error handling
-- Register command in `lib.rs`
+- Register command in `lib.rs` invoke_handler
 
 ### Step 5: Test
 - Test success case
@@ -101,16 +104,21 @@ REFERENCES:
 ```rust
 #[tauri::command]
 pub fn command_name(
-    args: CommandArgs,
-    db: State<DbState>
+    db_state: State<'_, DbState>,
+    arg1: String,
+    arg2: i64,
 ) -> Result<ReturnType, String> {
-    // Implementation
+    let binding = db_state.0.lock().unwrap();
+    let conn = binding.as_ref().ok_or("No database open")?;
+    // Implementation using conn
+    Ok(result)
 }
 ```
 
 ### Database Access
 ```rust
-let conn = db.get_conn().map_err(|e| e.to_string())?;
+let binding = db_state.0.lock().unwrap();
+let conn = binding.as_ref().ok_or("No database open")?;
 ```
 
 ### Error Handling
@@ -137,6 +145,6 @@ let conn = db.get_conn().map_err(|e| e.to_string())?;
 - UI changes (use `react_grid_architect`)
 
 ## References
-- **command_add_tauri_command.md**: Command pattern guide
 - **ARCHITECTURE_CURRENT.md**: Current architecture
-- Existing commands in `src-tauri/src/modules/commands/`
+- All commands in `src-tauri/src/encrypted_db.rs`
+- Command registration in `src-tauri/src/lib.rs`

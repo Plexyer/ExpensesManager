@@ -1,9 +1,9 @@
 # Column Resize Specification
 
-> **GitHub Issue:** [#82 — BUG-003b: Column Resize Behavior Adjustments](https://github.com/Plexyer/ExpensesManager/issues/82)
-> **Predecessor:** [#81 — BUG-003: Cell Text Wrapping & Column Resizing](https://github.com/Plexyer/ExpensesManager/issues/81) (closed)
-> **Status:** Open
+> **GitHub Issues:** #81, #82, #83, #84, #85 — all CLOSED
+> **Status:** IMPLEMENTED
 > **Created:** 2026-02-09
+> **Last Updated:** 2026-02-15
 
 ---
 
@@ -223,29 +223,70 @@ This computation should happen once when grid data loads and be stored (e.g., as
 
 ---
 
-## Summary of Changes from BUG-003
+## 6. Scale Factor Correction
 
-| Aspect | BUG-003 (current) | BUG-003b (target) |
-|--------|-------------------|-------------------|
-| Column separators | None | Barely visible vertical lines |
-| Frozen columns | Resizable (same as others) | Not resizable, auto-sized to content |
-| Resize behavior | Single-column (only dragged column changes) | Paired (both adjacent columns change, zero-sum) |
-| Resize persistence | Redux + database | Same (no change) |
-| Snap-to-content | None | Magnetic or hard detent (user setting) |
-| Settings page | Empty placeholder | First item: snap mode toggle |
+### Issue
+On Windows with display scaling > 100% (e.g., 125%, 150%), `e.clientX` returns CSS pixels but the physical mouse movement is scaled, causing the resize handle to move more than the cursor (amplified resize — #84).
+
+### Fix (Implemented)
+The resize delta is divided by `window.devicePixelRatio` to normalize mouse movement:
+
+```typescript
+const scaleFactor = window.devicePixelRatio;
+const delta = (e.clientX - startX) / scaleFactor;
+```
+
+This ensures 1px of mouse movement = 1px of column width change regardless of display scaling.
+
+---
+
+## 7. Keyboard Resize
+
+### Requirement
+When the resize handle is focused (via Tab), the user can resize columns with arrow keys:
+
+| Key | Action |
+|-----|--------|
+| `ArrowLeft` | Shrink left column / grow right column by 10px |
+| `ArrowRight` | Grow left column / shrink right column by 10px |
+
+### Implementation
+The resize handle is a focusable `<div>` with `tabIndex={0}`, `role="separator"`, and `aria-orientation="vertical"`. The `onKeyDown` handler dispatches paired width adjustments of ±10px, respecting the 60px minimum.
+
+---
+
+## Bug Fix Outcomes
+
+| Issue | Title | Status | Outcome |
+|-------|-------|--------|---------|
+| #81 | BUG-003: Cell Text Wrapping & Column Resizing | CLOSED | Initial resize implementation; cell text now wraps correctly with `break-words` |
+| #82 | BUG-003b: Column Resize Behavior Adjustments | CLOSED | Paired resize, auto-sized frozen columns, snap-to-content |
+| #83 | BUG-010: No resize handle between frozen and resizable columns | CLOSED | Handle removed between col 1 (frozen) and col 2 (resizable) |
+| #84 | BUG-011: Fixed amplified resize (slider moves more than mouse) | CLOSED | Scale factor correction applied (`devicePixelRatio`) |
+| #85 | BUG-012: "Remaining" column fixed-width auto-sized | CLOSED | "Remaining" column marked `resizable: false`, auto-sized to content |
+
+## Summary of Implemented Behavior
+
+| Aspect | Implementation |
+|--------|---------------|
+| Column separators | Barely visible vertical lines (`border-r border-slate-600/40`) |
+| Frozen columns (Category, Received Date) | Not resizable, auto-sized to widest content via `measureText()` |
+| Resizable columns (Received Amount, Spent Amount) | Paired zero-sum resize; one resize handle between them |
+| "Remaining" column | Not resizable, auto-sized to content |
+| Minimum width | 60px (`MIN_COLUMN_WIDTH`) for all columns |
+| Snap-to-content | Magnetic snap with 8px threshold (`MAGNETIC_THRESHOLD`) |
+| Scale factor | Normalized via `window.devicePixelRatio` |
+| Keyboard resize | ±10px steps via ArrowLeft/ArrowRight on focused handle |
+| Resize persistence | Widths stored in Redux (`budgetSlice`) and persisted to `ui_settings` DB table via `settingsService` |
 
 ---
 
 ## References
 
-- **GitHub Issue:** [#82](https://github.com/Plexyer/ExpensesManager/issues/82)
-- **Predecessor:** [#81](https://github.com/Plexyer/ExpensesManager/issues/81) (BUG-003, closed)
-- **Grid Types:** `src/components/features/BudgetGrid/types.ts`
-- **Grid Header:** `src/components/features/BudgetGrid/PeriodGridHeader.tsx`
-- **Grid Cell:** `src/components/features/BudgetGrid/PeriodGridCell.tsx`
-- **Grid Body:** `src/components/features/BudgetGrid/PeriodGridBody.tsx`
-- **Grid Table:** `src/components/features/BudgetGrid/PeriodGridTable.tsx`
-- **Budget Slice:** `src/store/slices/budgetSlice.ts`
-- **Settings Service:** `src/services/settingsService.ts`
-- **Settings Page:** `src/pages/SettingsPage.tsx`
+- **GitHub Issues:** [#81](https://github.com/Plexyer/ExpensesManager/issues/81), [#82](https://github.com/Plexyer/ExpensesManager/issues/82), [#83](https://github.com/Plexyer/ExpensesManager/issues/83), [#84](https://github.com/Plexyer/ExpensesManager/issues/84), [#85](https://github.com/Plexyer/ExpensesManager/issues/85) — all closed
+- **GRID_ARCHITECTURE.md** — Grid component hierarchy and types
+- **Grid Types:** `src/components/features/BudgetGrid/types.ts` — `GridColumnConfig`, `MIN_COLUMN_WIDTH`, `COLUMN_CONFIG`, `ColumnWidths`, `OptimalWidths`
+- **Grid Header:** `src/components/features/BudgetGrid/PeriodGridHeader.tsx` — resize handle rendering, drag logic, `MAGNETIC_THRESHOLD`
+- **Budget Slice:** `src/store/slices/budgetSlice.ts` — `columnWidths`, `optimalWidths` state
+- **Settings Service:** `src/services/settingsService.ts` — width persistence
 - **UI Settings DB:** `ui_settings` table (migration v4 in `src-tauri/src/migrations.rs`)

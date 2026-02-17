@@ -223,12 +223,10 @@ If perpetual license is validly signed but server reports newer `generation`:
 
 ## Open Questions (From Licensing Spec)
 
-These questions remain open and need user input:
-
-1. **Exact encryption technology** for portable DB (likely SQLite encryption - SQLCipher confirmed separately)
-2. **Payment provider choice** and webhook integration
-3. **Premium dependency clarification**: Premium requires Base access (either Perpetual OR Basic Paid) - confirmed
-4. **Bugfix updates forever**: Final policy on distribution mechanics
+1. ~~**Exact encryption technology** for portable DB~~ — **RESOLVED**: SQLCipher with Argon2id key derivation (implemented in Phase 1).
+2. **Payment provider choice** and webhook integration — *(Deferred — post-MVP)*
+3. ~~**Premium dependency clarification**~~ — **RESOLVED**: Premium requires Base access (either Perpetual OR Basic Paid). Confirmed.
+4. **Bugfix updates forever**: Final policy on distribution mechanics — *(Deferred — post-MVP)*
 
 ---
 

@@ -4,25 +4,28 @@
 
 This document outlines the step-by-step implementation plan for the ExpensesManager MVP. Each step includes checkpoints and acceptance criteria.
 
+> **Last Updated:** 2026-02-15 (Phase 12 — Documentation Update in progress)
+
 ## Key Confirmed Decisions
 
 | Decision | Status | Details |
 |----------|--------|---------|
 | Target Platform | CONFIRMED | Windows 11 only for MVP |
-| Encryption | CONFIRMED | SQLCipher via rusqlite |
-| Password Hashing | CONFIRMED | Argon2id (replacing SHA256) |
-| Grid Editing | CONFIRMED | Modal-only (no inline editing) |
+| Encryption | IMPLEMENTED | SQLCipher via rusqlite (bundled-sqlcipher) |
+| Password Hashing | IMPLEMENTED | Argon2id (64 MB memory, 3 iterations, 4 threads) |
+| Grid Editing | IMPLEMENTED | Modal-only (no inline editing) — custom PeriodGrid |
 | Performance | CONFIRMED | <100ms target, <500ms acceptable, loading screens required |
-| Testing | CONFIRMED | Write automated tests during development |
-| Multi-currency | CONFIRMED | Fixed conversion ratio, multi-currency columns |
+| Testing | IMPLEMENTED | Vitest + React Testing Library (frontend), inline #[cfg(test)] (Rust) |
+| Multi-currency | IMPLEMENTED | Fixed conversion ratio, multi-currency columns (CHF/EUR) |
 | Virtualization | CONFIRMED | Use for large lists |
-| **Licensing** | CONFIRMED | Read-Only mode fallback, export always available |
-| **No Lock-In** | CONFIRMED | Users can ALWAYS access data + export |
-| **App Modes** | CONFIRMED | Full Mode (with license) / Read-Only Mode (default) |
+| **Licensing** | DEFERRED | Safeguards #62/#63 implemented; App Mode Plumbing #61 out-of-scope for MVP |
+| **No Lock-In** | IMPLEMENTED | Users can ALWAYS access data + export (Safeguards #62, #63) |
+| **Attachments** | IMPLEMENTED | BLOB storage in SQLCipher DB, thumbnails, popover/lightbox viewing |
+| **i18n** | IMPLEMENTED | 3 languages: English, German, Hungarian |
 
 ---
 
-## Phase 1: Foundation - File System & Encryption
+## Phase 1: Foundation — File System & Encryption
 
 ### Step 1.1: File Picker Integration ✅ COMPLETED (2026-02-06)
 **Goal**: Add file picker to create/open finance files  
@@ -38,17 +41,17 @@ This document outlines the step-by-step implementation plan for the ExpensesMana
 - ✅ Selected file path stored in app state
 
 **Implemented Files**:
-- `src/components/features/Onboarding/Onboarding.tsx` - Onboarding UI
-- `src/services/fileService.ts` - Tauri dialog wrapper
-- `src/store/slices/fileSlice.ts` - Redux file state
-- `src/pages/HomePage.tsx`, `src/pages/SettingsPage.tsx` - Pages
-- `src-tauri/src/lib.rs` - Dialog plugin registration
+- `src/components/features/Onboarding/Onboarding.tsx` — Onboarding UI
+- `src/services/fileService.ts` — Tauri dialog wrapper
+- `src/store/slices/fileSlice.ts` — Redux file state
+- `src/pages/HomePage.tsx`, `src/pages/SettingsPage.tsx` — Pages
+- `src-tauri/src/lib.rs` — Dialog plugin registration
 
-**Complexity**: S (Small)
+**Complexity**: S (Small) | **GitHub Issue**: #20
 
 ---
 
-### Step 1.2: Master Password Flow
+### Step 1.2: Master Password Flow ✅ COMPLETED (2026-02-09)
 **Goal**: Implement password creation and unlock  
 **Scope**:
 - Password creation modal (with confirmation)
@@ -62,648 +65,519 @@ This document outlines the step-by-step implementation plan for the ExpensesMana
 - ✅ Wrong password shows error
 - ✅ Password hint stored and displayed
 
-**Likely Files**:
-- `src/components/PasswordModal.tsx` (new)
-- `src-tauri/src/modules/commands/security.rs` (modify)
-- `src/services/securityService.ts` (new)
+**Implemented Files**:
+- `src/components/features/Onboarding/PasswordCreationModal.tsx` — Password creation UI
+- `src/components/features/Onboarding/PasswordUnlockModal.tsx` — Password unlock UI
+- `src/components/common/PasswordInput.tsx` — Reusable password input component
+- `src/utils/passwordValidation.ts` — Password validation rules
+- `src/utils/passwordStrength.ts` — Password strength meter
 
-**Complexity**: M (Medium)
+**Complexity**: M (Medium) | **GitHub Issues**: #21, #22
 
 ---
 
-### Step 1.2b: Temporary Stub File Format ⏳ NEXT
+### Step 1.2b: Temporary Stub File Format ✅ COMPLETED (2026-02-09) — OBSOLETE
 **Goal**: Create a temporary plaintext file format to test create/open/unlock flows  
-**Scope**:
-- Write stub JSON file on "Create Finance File"
-- Read stub file on "Open Finance File"
-- Verify password against stub file
-- Enable MVP development before SQLCipher is ready
 
-**Acceptance Criteria**:
-- ✅ "Create" writes `.financedb` stub file to disk
-- ✅ "Open" reads stub file and presents unlock modal
-- ✅ Password verification works against stub content
-- ✅ Password hint displayed from stub file
-- ✅ Error handling for invalid/corrupted files
+**⚠️ OBSOLETE**: This was a temporary format with plaintext passwords, replaced by SQLCipher encryption in Step 1.3. The stub file code (`stub_file.rs`) has been removed.
 
-**Likely Files**:
-- `src/services/fileService.ts` (add stub read/write)
-- `src/components/features/Onboarding/PasswordCreationModal.tsx` (call stub write)
-- `src/components/features/Onboarding/PasswordUnlockModal.tsx` (call stub verify)
-
-**Complexity**: S (Small)
-
-**⚠️ MVP STUB ONLY**: Temporary format with plaintext passwords. See `.cursor/FINANCEDB_STUB_SPEC.md`. Replaced by Step 1.3 (real encryption).
+**Complexity**: S (Small) | **GitHub Issue**: #23
 
 ---
 
-### Step 1.3: Encryption Integration
-**Goal**: Integrate SQLCipher or app-level encryption  
+### Step 1.3: Encryption Integration ✅ COMPLETED (2026-02-09)
+**Goal**: Integrate SQLCipher encryption with Argon2id key derivation  
 **Scope**:
-- Research SQLCipher Rust bindings
-- Implement key derivation (Argon2id)
-- Implement file encryption/decryption
-- Test encryption/decryption flow
+- SQLCipher via `rusqlite` with `bundled-sqlcipher` feature
+- Argon2id key derivation (64 MB memory, 3 iterations, 4 threads)
+- Custom file header format (magic bytes, salt, KDF params, hint)
 - Replace stub file format with real encrypted SQLite
 
 **Acceptance Criteria**:
-- ✅ Database file is encrypted
+- ✅ Database file is encrypted (SQLCipher)
 - ✅ File can be unlocked with correct password
 - ✅ Wrong password fails to unlock
-- ✅ File can be moved/copied (portable)
+- ✅ File can be moved/copied (portable `.financedb` files)
 - ✅ Stub format replaced with real encrypted DB
 
-**Likely Files**:
-- `src-tauri/src/modules/security/encryption.rs` (implement)
-- `src-tauri/Cargo.toml` (add dependencies: argon2, sqlcipher or aes-gcm)
-- `src-tauri/src/modules/database/mod.rs` (modify for encryption)
+**Implemented Files**:
+- `src-tauri/src/encrypted_db.rs` — All Tauri commands (create, open, close, CRUD)
+- `src-tauri/src/kdf.rs` — Argon2id key derivation
+- `src-tauri/src/file_header.rs` — Custom file header (magic bytes, salt, KDF params, hint)
+- `src-tauri/src/migrations.rs` — Database schema migrations (v1–v5)
+- `src-tauri/Cargo.toml` — Dependencies: rusqlite (bundled-sqlcipher), argon2, rand
 
-**Complexity**: L (Large) - Research required
+**Complexity**: L (Large) | **GitHub Issues**: #24, #25, #26
 
-**Checkpoint**: File system working, encryption integrated, password flow complete
-
----
-
-## Phase 2: Data Model - Budget Instances & Categories
-
-### Step 2.1: Period Budget Instance Schema
-**Goal**: Model a **single budget instance per period** (one grid view per budget instance)  
-**Scope**:
-- Create a table for period budget instances (cadence, start_date, end_date, template reference)
-- Create migration script
-- Update backend commands to load/save budget instances
-
-**Acceptance Criteria**:
-- ✅ Budget instance table exists with correct schema
-- ✅ Migration runs successfully
-- ✅ Existing data migrated (if any)
-
-**Likely Files**:
-- `src-tauri/migrations/YYYY_MM_create_periods.sql` (new)
-- `src-tauri/src/modules/database/mod.rs` (modify)
-
-**Complexity**: M (Medium)
+**Checkpoint**: ✅ File system working, encryption integrated, password flow complete
 
 ---
 
-### Step 2.2: Budget Category Rows (Per Budget Instance)
-**Goal**: Store category rows for a budget instance (rows reference **global categories**)  
-**Scope**:
-- Create table linking budget instance ↔ global categories, including received_date defaults and template default amounts
-- Ensure global categories are unique per dataset (already true in current repo schema)
-- Update foreign keys
+## Phase 2: Data Model — Budget Instances & Categories
 
-**Acceptance Criteria**:
-- ✅ Budget instance category-row table exists
-- ✅ `template_categories` has cadence/default amounts linkage documented (see DATA_MODEL.md)
-- ✅ Foreign keys correct
+### Step 2.1: Period Budget Instance Schema ✅ COMPLETED (2026-02-09)
+**Goal**: Model a single budget instance per period  
 
-**Likely Files**:
-- `src-tauri/migrations/YYYY_MM_create_envelopes.sql` (new)
-- `src-tauri/migrations/YYYY_MM_add_account_to_templates.sql` (new)
+**Implemented Files**:
+- `src-tauri/src/migrations.rs` — Migration v1: `period_budget_instances` table
+- `src-tauri/src/encrypted_db.rs` — `create_period`, `get_periods` commands
 
-**Complexity**: M (Medium)
+**Complexity**: M (Medium) | **GitHub Issue**: #27
 
 ---
 
-### Step 2.3: Received/Spent Line Items Schema
-**Goal**: Store **received** and **spent** line items per category within a budget instance  
-**Scope**:
-- Store line items with explicit date (and optional time)
-- Ensure rollups can compute received/spent totals for the current budget instance grid
+### Step 2.2: Budget Category Rows ✅ COMPLETED (2026-02-09)
+**Goal**: Store category rows linking budget instance to global categories  
 
-**Acceptance Criteria**:
-- ✅ Line items link to (budget instance + global category)
-- ✅ Rollup queries work correctly
-- ✅ Existing transactions migrated (if any)
+**Implemented Files**:
+- `src-tauri/src/migrations.rs` — Migration v1: `global_categories`, `budget_instance_categories` tables
+- `src-tauri/src/encrypted_db.rs` — Category CRUD commands
 
-**Likely Files**:
-- `src-tauri/migrations/YYYY_MM_update_transactions.sql` (new)
-- `src-tauri/src/modules/commands/expense.rs` (modify)
-
-**Complexity**: M (Medium)
-
-**Checkpoint**: Database schema supports budget instances, global categories, and received/spent line items
+**Complexity**: M (Medium) | **GitHub Issue**: #28
 
 ---
 
-## Phase 3: Templates - Add Cadence / Period Length
-
-### Step 3.1: Template UI - Cadence
+### Step 2.3: Add Cadence to Templates ✅ COMPLETED (2026-02-09)
 **Goal**: Ensure templates define cadence/period length  
-**Scope**:
-- Add cadence selection to template creation/editing UI
-- Store cadence in template schema
 
-**Acceptance Criteria**:
-- ✅ User can set cadence (monthly/biweekly/weekly/daily/yearly/custom) per template
-- ✅ Cadence saved with template
-- ✅ Cadence displayed in template view
+**Implemented Files**:
+- `src-tauri/src/migrations.rs` — Migration v1: `templates`, `template_categories` tables with cadence
+- `src/types/template.types.ts` — Template TypeScript types
 
-**Likely Files**:
-- `src/components/features/Templates/TemplatesPage.tsx` (modify)
-- `src/types/template.types.ts` (modify)
-
-**Complexity**: S (Small)
+**Complexity**: S (Small) | **GitHub Issue**: #29
 
 ---
 
-### Step 3.2: Template → Period Application
+### Step 2.4: Received/Spent Line Items Schema ✅ COMPLETED (2026-02-09)
+**Goal**: Store received and spent line items per category  
+
+**Implemented Files**:
+- `src-tauri/src/migrations.rs` — Migration v1: `category_line_items` table
+- `src/types/lineItem.types.ts` — Line item TypeScript types
+
+**Complexity**: M (Medium) | **GitHub Issue**: #30
+
+---
+
+### Step 2.5: Implement Rollup Queries ✅ COMPLETED (2026-02-09)
+**Goal**: Rollup queries for received/spent totals  
+
+**Implemented Files**:
+- `src-tauri/src/encrypted_db.rs` — `get_budget_grid_data` command with rollup aggregation
+- `src/services/periodService.ts` — Grid data service
+
+**Complexity**: M (Medium) | **GitHub Issue**: #31
+
+**Checkpoint**: ✅ Database schema supports budget instances, global categories, and received/spent line items
+
+---
+
+## Phase 3: Templates — Cadence & Period Application
+
+### Step 3.1: Template UI — Cadence ✅ COMPLETED (2026-02-09)
+**Goal**: Template creation/editing with cadence selection  
+
+**Implemented Files**:
+- `src/pages/TemplatesPage.tsx` — Template management page
+- `src/components/features/Templates/TemplateCategoryList.tsx` — Category list with drag-and-drop
+- `src/components/features/Templates/TemplateCategoryItem.tsx` — Individual category item
+- `src/services/templateService.ts` — Template Tauri command wrapper
+- `src/store/slices/templateSlice.ts` — Redux template state
+
+**Complexity**: S (Small) | **GitHub Issues**: #32, #33
+
+---
+
+### Step 3.2: Template → Period Application ✅ COMPLETED (2026-02-09)
 **Goal**: Apply template to create period with envelopes  
-**Scope**:
-- Update `apply_template_to_budget` command (or create new)
-- Copy envelopes from template to period
-- Copy default amounts
 
-**Acceptance Criteria**:
-- ✅ Period created from template includes all referenced categories
-- ✅ Default amounts copied from template
+**Implemented Files**:
+- `src-tauri/src/encrypted_db.rs` — `apply_template` command
+- `src/services/periodService.ts` — `applyTemplate()` function
 
-**Likely Files**:
-- `src-tauri/src/modules/commands/budget.rs` (modify or new command)
-- `src/services/budgetService.ts` (modify)
+**Complexity**: M (Medium) | **GitHub Issue**: #34
 
-**Complexity**: M (Medium)
-
-**Checkpoint**: Templates include cadence + defaults and can create period budget instances
+**Checkpoint**: ✅ Templates include cadence + defaults and can create period budget instances
 
 ---
 
-## Phase 4: UI - Single-Period Main Grid
+## Phase 4: UI — Single-Period Main Grid
 
-### Step 4.1: Grid Component Architecture
-**Goal**: Design grid component structure  
-**Scope**:
-- Plan grid component hierarchy
-- Choose grid library (AG Grid or custom)
-- Design columns as category fields/rollups (Category, Received date, Received amount, Spent amount)
+### Step 4.1: Grid Component Architecture ✅ COMPLETED (2026-02-09)
+**Goal**: Design and implement grid component hierarchy  
 
-**Acceptance Criteria**:
-- ✅ Grid component structure planned
-- ✅ Grid library chosen
-- ✅ Cell rendering design documented
+**Implemented Files**:
+- `src/components/features/BudgetGrid/PeriodGrid.tsx` — Grid orchestrator
+- `src/components/features/BudgetGrid/types.ts` — Grid column config and types
 
-**Likely Files**:
-- `src/components/features/BudgetGrid/PeriodGrid.tsx` (new, design doc)
-
-**Complexity**: S (Small) - Planning only
+**Complexity**: S (Small) | **GitHub Issue**: #35
 
 ---
 
-### Step 4.2: Grid Data Loading
-**Goal**: Load and display **one budget instance** (one period) category grid data  
-**Scope**:
-- Create command to load grid data for a single budget instance
-- Implement rollup calculations (received_total, spent_total)
-- Display data in grid
+### Step 4.2: Grid Data Loading ✅ COMPLETED (2026-02-09)
+**Goal**: Load and display one budget instance category grid data  
 
-**Acceptance Criteria**:
-- ✅ Grid loads budget instance category data
-- ✅ Cells show received/spent totals
-- ✅ Grid updates when data changes
+**Implemented Files**:
+- `src/components/features/BudgetGrid/PeriodGridTable.tsx` — Table container with auto-sizing
+- `src/components/features/BudgetGrid/PeriodGridHeader.tsx` — Column headers with resize handles
+- `src/components/features/BudgetGrid/PeriodGridBody.tsx` — Data rows + summary row
+- `src/components/features/BudgetGrid/PeriodGridRow.tsx` — Individual row
+- `src/components/features/BudgetGrid/PeriodGridCell.tsx` — Individual cell
+- `src/components/features/BudgetGrid/PeriodGridEmpty.tsx` — Empty state
+- `src/components/features/BudgetGrid/PeriodGridSkeleton.tsx` — Loading skeleton
+- `src/store/slices/budgetSlice.ts` — Redux budget state
 
-**Likely Files**:
-- `src-tauri/src/modules/commands/budget.rs` (new command: `get_grid_data`)
-- `src/components/features/BudgetGrid/PeriodGrid.tsx` (implement)
-- `src/services/budgetService.ts` (new function)
-
-**Complexity**: L (Large)
+**Complexity**: L (Large) | **GitHub Issue**: #36
 
 ---
 
-### Step 4.3: Grid Interactions
-**Goal**: Implement Excel-like grid interactions  
-**Scope**:
-- Cell selection (click, arrow keys)
-- Sticky column headers (within a single budget instance grid)
-- Keyboard navigation
-- Double-click Received/Spent amount to open modal
+### Step 4.3: Grid Cell Selection ✅ COMPLETED (2026-02-10)
+**Goal**: Excel-like cell selection with mouse and keyboard  
 
-**Acceptance Criteria**:
-- ✅ User can select cells with mouse/keyboard
-- ✅ Frozen columns/rows work
-- ✅ Double-click opens transaction modal
-
-**Likely Files**:
-- `src/components/features/BudgetGrid/PeriodGrid.tsx` (modify)
-- `src/components/features/BudgetGrid/GridCell.tsx` (new)
-
-**Complexity**: M (Medium)
-
-**Checkpoint**: Grid displays one period budget instance, basic interactions work
+**Complexity**: M (Medium) | **GitHub Issue**: #37
 
 ---
 
-## Phase 5: Transactions - Double-Click Modal
+### Step 4.4: Frozen Columns/Rows ✅ COMPLETED (2026-02-11)
+**Goal**: Sticky column headers and frozen left columns  
 
-### Step 5.1: Transaction Modal Integration
-**Goal**: Open transaction modal on double-click  
-**Scope**:
-- Connect double-click event to modal
-- Pass (budget instance id + category id) + column context (received vs spent) to modal
-- Load line items for the selected category within the current budget instance
-
-**Acceptance Criteria**:
-- ✅ Double-click cell opens modal
-- ✅ Modal shows line items for that category within the current budget instance
-- ✅ Modal can add/edit/delete transactions
-
-**Likely Files**:
-- `src/components/features/BudgetGrid/PeriodGrid.tsx` (modify)
-- `src/components/features/BudgetGrid/CategoryLedgerModal.tsx` (modify or reuse)
-
-**Complexity**: M (Medium)
+**Complexity**: M (Medium) | **GitHub Issue**: #38
 
 ---
 
-### Step 5.2: Transaction Entry
-**Goal**: Add transactions via modal  
-**Scope**:
-- Line-item form (explicit date, optional time, description, amount)
-- Save transaction to database
-- Update grid cell after save
+### Step 4.5: Double-Click to Open Modal ✅ COMPLETED (2026-02-11)
+**Goal**: Double-click on received/spent cells opens transaction modal  
 
-**Acceptance Criteria**:
-- ✅ User can add transaction in modal
-- ✅ Transaction saves to database
-- ✅ Grid cell updates with new total
+**Implemented Files**:
+- `src/components/features/BudgetGrid/CategoryLedgerModal.tsx` — Transaction modal
 
-**Likely Files**:
-- `src/components/features/BudgetGrid/CategoryLedgerModal.tsx` (modify)
-- `src-tauri/src/modules/commands/expense.rs` (modify)
-
-**Complexity**: M (Medium)
+**Complexity**: M (Medium) | **GitHub Issue**: #39
 
 ---
 
-### Step 5.3: Rollup Updates
-**Goal**: Grid cells update automatically when transactions change  
-**Scope**:
-- Refresh grid data after transaction save
-- Update cell display (spent/remaining)
-- Handle negative amounts (refunds)
+### Step 4.6: Period Filtering ✅ COMPLETED (2026-02-11)
+**Goal**: Filter/navigate between period budget instances  
 
-**Acceptance Criteria**:
-- ✅ Grid updates after transaction save
-- ✅ Spent/remaining totals correct
-- ✅ Negative amounts handled (refunds)
+**Implemented Files**:
+- `src/components/features/BudgetGrid/PeriodList.tsx` — Period list view
+- `src/components/features/BudgetGrid/PeriodListRow.tsx` — Period list row
+- `src/components/features/BudgetGrid/PeriodCard.tsx` — Period card display
+- `src/components/features/BudgetGrid/PeriodDetailToolbar.tsx` — Period detail toolbar
 
-**Likely Files**:
-- `src/components/features/BudgetGrid/PeriodGrid.tsx` (modify)
-- `src/services/budgetService.ts` (modify)
+**Complexity**: M (Medium) | **GitHub Issue**: #40
 
-**Complexity**: S (Small)
+**Checkpoint**: ✅ Grid displays one period budget instance, all interactions work
 
-**Checkpoint**: Double-click opens modal, transactions save, grid updates
+---
+
+## Phase 5: Transactions — Double-Click Modal
+
+### Step 5.1: Transaction Modal Integration ✅ COMPLETED (2026-02-11)
+**Goal**: Open transaction modal on double-click with correct context  
+
+**Complexity**: M (Medium) | **GitHub Issue**: #41
+
+---
+
+### Step 5.2: Transaction Entry ✅ COMPLETED (2026-02-11)
+**Goal**: Add transactions via modal form  
+
+**Implemented Files**:
+- `src/services/lineItemService.ts` — Line item CRUD service
+
+**Complexity**: M (Medium) | **GitHub Issue**: #42
+
+---
+
+### Step 5.3: Transaction Edit/Delete ✅ COMPLETED (2026-02-11)
+**Goal**: Edit and delete transactions, grid updates automatically  
+
+**Complexity**: M (Medium) | **GitHub Issue**: #43
+
+**Checkpoint**: ✅ Double-click opens modal, transactions save, grid updates with rollups
 
 ---
 
 ## Phase 6: Period Creation Flow
 
-### Step 6.1: Period Creation UI
-**Goal**: Create period from template UI  
-**Scope**:
-- Period creation modal/form
-- Template selection dropdown
-- Cadence selection (monthly/biweekly/weekly/daily/yearly/custom)
-- Date picker (start date, end date if custom)
+### Step 6.1: Period Creation UI ✅ COMPLETED (2026-02-11)
+**Goal**: Period creation modal with template and date selection  
 
-**Acceptance Criteria**:
-- ✅ User can open period creation modal
-- ✅ User can select template
-- ✅ User can select cadence
-- ✅ User can enter dates
+**Implemented Files**:
+- `src/components/features/BudgetGrid/CreatePeriodModal.tsx` — Period creation form
 
-**Likely Files**:
-- `src/components/features/BudgetGrid/CreatePeriodForm.tsx` (new)
-- `src/components/features/BudgetGrid/PeriodGrid.tsx` (modify)
-
-**Complexity**: M (Medium)
+**Complexity**: M (Medium) | **GitHub Issue**: #44
 
 ---
 
-### Step 6.2: Period Creation Backend
+### Step 6.2: Period Creation Backend ✅ COMPLETED (2026-02-11)
 **Goal**: Create period with envelopes from template  
-**Scope**:
-- Create period command
-- Copy envelopes from template
-- Set default amounts
 
-**Acceptance Criteria**:
-- ✅ Period created in database
-- ✅ Envelopes created from template
-- ✅ Default amounts copied
-
-**Likely Files**:
-- `src-tauri/src/modules/commands/budget.rs` (new command: `create_period`)
-- `src/services/budgetService.ts` (new function)
-
-**Complexity**: M (Medium)
+**Complexity**: M (Medium) | **GitHub Issue**: #45
 
 ---
 
-### Step 6.3: Period Display
-**Goal**: Open/navigate to the new period budget instance grid  
-**Scope**:
-- Navigate to the created budget instance grid view
-- Display period header (cadence, date range)
-- Update grid data loading for that instance
+### Step 6.3: Period Display ✅ COMPLETED (2026-02-11)
+**Goal**: Navigate to the new period grid view  
 
-**Acceptance Criteria**:
-- ✅ App opens the budget instance grid view
-- ✅ Period header shows cadence and dates
-- ✅ Grid displays category rows for the budget instance
+**Complexity**: S (Small) | **GitHub Issue**: #46
 
-**Likely Files**:
-- `src/components/features/BudgetGrid/PeriodGrid.tsx` (modify)
-
-**Complexity**: S (Small)
-
-**Checkpoint**: User can create periods from templates, periods display in grid
+**Checkpoint**: ✅ User can create periods from templates, periods display in grid
 
 ---
 
 ## Phase 7: Export & Backup
 
-### Step 7.1: CSV Export Backend
+### Step 7.1: CSV Export Backend ✅ COMPLETED (2026-02-11)
 **Goal**: Export data to CSV  
-**Scope**:
-- Create export command (periods, envelopes, transactions)
-- Format data as CSV
-- Return CSV string or write to file
 
-**Acceptance Criteria**:
-- ✅ Export command returns CSV data
-- ✅ CSV includes all periods, envelopes, transactions
-- ✅ CSV format is valid (can open in Excel)
+**Implemented Files**:
+- `src-tauri/src/encrypted_db.rs` — `export_csv` command
+- `src/services/exportService.ts` — Export service wrapper
 
-**Likely Files**:
-- `src-tauri/src/modules/commands/export.rs` (new)
-- `src/services/exportService.ts` (new)
-
-**Complexity**: M (Medium)
+**Complexity**: M (Medium) | **GitHub Issue**: #47
 
 ---
 
-### Step 7.2: CSV Export UI
-**Goal**: Export CSV via UI  
-**Scope**:
-- Export button in Settings
-- File picker to save CSV
-- Success/error messages
+### Step 7.2: CSV Export UI ✅ COMPLETED (2026-02-11)
+**Goal**: Export CSV via UI with file picker  
 
-**Acceptance Criteria**:
-- ✅ User can click "Export CSV"
-- ✅ File picker opens
-- ✅ CSV file saved
-- ✅ Success message shown
+**Implemented Files**:
+- `src/components/features/Settings/ExportSettings.tsx` — Export section in Settings
 
-**Likely Files**:
-- `src/components/pages/Settings.tsx` (modify)
-- `src/components/features/Settings/ExportSettings.tsx` (new)
-
-**Complexity**: S (Small)
+**Complexity**: S (Small) | **GitHub Issue**: #48
 
 ---
 
-### Step 7.3: Backup Guidance
-**Goal**: Show backup instructions  
-**Scope**:
-- Backup section in Settings
-- Instructions text
-- File location display (clickable)
-- Copy file button
+### Step 7.3: Backup Guidance ✅ COMPLETED (2026-02-11)
+**Goal**: Show backup instructions in Settings  
 
-**Acceptance Criteria**:
-- ✅ Backup section visible in Settings
-- ✅ Instructions displayed
-- ✅ File location shown (clickable)
-- ✅ User can copy file
+**Implemented Files**:
+- `src/components/features/Settings/BackupSettings.tsx` — Backup guidance section
 
-**Likely Files**:
-- `src/components/features/Settings/BackupSettings.tsx` (new)
+**Complexity**: S (Small) | **GitHub Issue**: #49
 
-**Complexity**: S (Small)
-
-**Checkpoint**: CSV export works, backup guidance displayed
+**Checkpoint**: ✅ CSV export works, backup guidance displayed
 
 ---
 
-## Phase 7.5: Licensing & App Modes (CONFIRMED from LICENSING.md)
+## Phase 7.5: Licensing & App Modes — DEFERRED
 
-> **Scope Note**: This phase implements ONLY the MVP-relevant licensing requirements. See `.cursor/LICENSING_MVP_IMPACTS.md` for the full breakdown of what's MVP vs deferred. All open licensing questions (LQ1-LQ5) remain deferred until post-MVP.
+> **Status Note**: Licensing safeguards for data access are IMPLEMENTED (#62, #63). Full app mode plumbing (#61) has been moved to `out-of-scope` for MVP. See `.cursor/LICENSING_MVP_IMPACTS.md` for details.
 
-### Step 7.5.1: App Mode State Management
-**Goal**: Implement Full Mode vs Read-Only Mode  
-**Scope**:
-- Create license state in Redux (mode, licenseType, licenseId, etc.)
-- Implement mode switching logic
-- Add mode indicator to UI
+### Implemented Safeguards
 
-**Acceptance Criteria**:
-- ✅ App tracks current mode (full / read-only)
-- ✅ Mode indicator visible in header/footer
-- ✅ Mode persists across sessions
+| Safeguard | GitHub Issue | Status |
+|-----------|-------------|--------|
+| SAFEGUARD-2: Export Always Available | #62 | ✅ CLOSED — completed (2026-02-12) |
+| SAFEGUARD-3: DB Open/Unlock Never Blocked | #63 | ✅ CLOSED — completed (2026-02-12) |
 
-**Likely Files**:
-- `src/store/slices/licenseSlice.ts` (new)
-- `src/components/common/ModeIndicator.tsx` (new)
+### Deferred (Out-of-Scope for MVP)
 
-**Complexity**: S (Small)
+| Item | GitHub Issue | Status |
+|------|-------------|--------|
+| SAFEGUARD-1: App Mode Plumbing (Full vs Read-Only) | #61 | OPEN — `out-of-scope` |
+| License file import | — | Depends on #61 |
+| License state in Redux | — | Depends on #61 |
+| License status display in Settings | — | Depends on #61 |
+| Feature gating by build date | — | Depends on #61 |
 
-**MVP Priority**: HIGH - This is foundational for licensing
-
----
-
-### Step 7.5.2: Read-Only Mode Behavior
-**Goal**: Disable write operations in Read-Only mode  
-**Scope**:
-- Disable add/edit/delete buttons when read-only
-- Show read-only banner
-- Ensure export is ALWAYS available (UX non-negotiable)
-
-**Acceptance Criteria**:
-- ✅ Write operations disabled in Read-Only mode
-- ✅ Clear visual indication of Read-Only state
-- ✅ **Export works in Read-Only mode** (NON-NEGOTIABLE)
-- ✅ View/search/filter works normally
-
-**Likely Files**:
-- All components with write actions (modify)
-- `src/components/common/ReadOnlyBanner.tsx` (new)
-
-**Complexity**: M (Medium)
-
----
-
-### Step 7.5.3: License File Import
-**Goal**: Import perpetual license file  
-**Scope**:
-- File picker to select license file
-- Validate signature using embedded public key
-- Activate Full Mode on valid license
-
-**Acceptance Criteria**:
-- ✅ User can import license file via Settings
-- ✅ Valid license activates Full Mode
-- ✅ Invalid license shows error, remains Read-Only
-- ✅ License details shown in Settings
-
-**Likely Files**:
-- `src/components/features/Settings/LicenseSettings.tsx` (new)
-- `src-tauri/src/modules/commands/license.rs` (new)
-- `src-tauri/src/modules/security/license_verify.rs` (new)
-
-**Complexity**: M (Medium)
-
----
-
-### Step 7.5.4: Feature Gating Hook (CONFIRMED)
-**Goal**: Gate features by build release date  
-**Scope**:
-- Add build metadata with release date
-- Implement feature gating logic: `build_release_date <= feature_updates_until`
-- NEVER use system clock for eligibility
-
-**Acceptance Criteria**:
-- ✅ Build includes release date metadata
-- ✅ Feature gating uses build date (not system clock)
-- ✅ Expired feature updates → base features only (no new features)
-
-**Likely Files**:
-- `src-tauri/build.rs` (modify for build metadata)
-- `src-tauri/src/modules/license/feature_gate.rs` (new)
-
-**Complexity**: S (Small)
-
-**MVP Note**: For MVP, this is a "hook" - the metadata must exist, but actual gating can be minimal since MVP features are all "base" features.
-
-**Checkpoint**: App modes work, license import works, feature gating hook in place
-
----
-
-### Deferred Licensing (Post-MVP)
-
-The following licensing items are **explicitly deferred** and NOT part of the MVP:
-
-| Item | Reason |
-|------|--------|
-| Payment/purchase flow | Requires server + payment provider (LQ1 open) |
-| Subscription lease tokens | Requires server infrastructure |
-| Recovery secret flow | Requires purchase flow (LQ3 open) |
-| Offline Mode toggle UI | Low priority; perpetual works offline by default |
-| Old generation license banner | Requires server for status check |
-| Bugfix distribution mechanics | Policy decision (LQ2 open) |
-| Premium features | Explicitly out of scope |
-
-See `.cursor/LICENSING_MVP_IMPACTS.md` for complete details.
+See `.cursor/LICENSING_MVP_IMPACTS.md` for complete breakdown. All open licensing questions (LQ1–LQ5) remain deferred.
 
 ---
 
 ## Phase 8: Polish & Testing
 
-### Step 8.1: Error Handling
-**Goal**: Comprehensive error handling  
-**Scope**:
-- Error messages for all failure cases
-- User-friendly error dialogs
-- Logging for debugging
+### Step 8.1: Error Handling ✅ COMPLETED (2026-02-12)
+**Goal**: Comprehensive error handling across the application  
 
-**Acceptance Criteria**:
-- ✅ All errors show user-friendly messages
-- ✅ Errors logged for debugging
-- ✅ User can recover from errors
+**Implemented Files**:
+- `src/components/common/ErrorBoundary.tsx` — React error boundary
+- `src/utils/formatErrorMessage.ts` — User-friendly error formatting
+- All components — Error states and recovery actions
 
-**Likely Files**:
-- All components (add error handling)
-
-**Complexity**: M (Medium)
+**Complexity**: M (Medium) | **GitHub Issue**: #50
 
 ---
 
-### Step 8.2: Internationalization (i18n) ✅ DONE
-**Goal**: Support English and German  
-**Scope**:
-- Set up i18n library (react-i18next)
-- Translate UI strings
-- Currency formatting (CHF/EUR)
+### Step 8.2: Internationalization (i18n) ✅ COMPLETED (2026-02-12)
+**Goal**: Support English, German, and Hungarian  
 
-**Acceptance Criteria**:
-- ✅ UI supports English and German
-- ✅ User can switch language
-- ✅ Currency formatted correctly
+**Implemented Files**:
+- `src/i18n/index.ts` — i18next config + localStorage persistence
+- `src/i18n/en.json` — English translations (~300+ keys)
+- `src/i18n/de.json` — German translations (~300+ keys)
+- `src/i18n/hu.json` — Hungarian translations (~300+ keys)
+- `src/utils/currency.ts` — Locale-aware `formatCurrency` via `Intl.NumberFormat`
+- `src/utils/dateFormat.ts` — Locale-aware `formatDate`/`formatTime` via `Intl.DateTimeFormat`
+- `src/components/features/Settings/LanguageSettings.tsx` — Language selection UI
+- All 20+ component files translated
 
-**Implementation Notes (completed)**:
-- Installed `react-i18next` and `i18next` npm dependencies.
-- Created `src/i18n/` with `index.ts` (config + localStorage persistence), `en.json` (~300 keys), `de.json` (~300 keys).
-- Created `src/utils/currency.ts` (locale-aware `formatCurrency` via `Intl.NumberFormat`).
-- Created `src/utils/dateFormat.ts` (locale-aware `formatDate`/`formatTime` via `Intl.DateTimeFormat`).
-- Created `src/components/features/Settings/LanguageSettings.tsx` for language selection.
-- Translated all 20+ component files across Onboarding, BudgetGrid, Settings, Templates, and common components.
-- Replaced local formatting utilities in `CategoryLedgerModal` and `PeriodGridCell` with shared utilities.
-- Language persisted to `localStorage` (pre-DB-open), de-CH locale for German, en-US for English.
-- TypeScript compiles with zero errors.
-
-**Likely Files**:
-- `src/i18n/` (new folder)
-- All components (add translations)
-
-**Complexity**: M (Medium)
+**Complexity**: M (Medium) | **GitHub Issue**: #51
 
 ---
 
-### Step 8.3: Automated Testing (DONE)
-**Goal**: Write automated tests during development  
-**Scope**:
-- Write unit tests for Rust backend commands (DONE)
-- Write integration tests for critical flows (DONE)
-- Write frontend tests for key components (DONE)
-- Manual testing by user for final verification (DONE — test plan created)
+### Step 8.3: Automated Testing ✅ COMPLETED (2026-02-12)
+**Goal**: Write automated tests for frontend and backend  
 
-**Acceptance Criteria**:
-- ✅ Automated tests exist for each feature (DONE)
-- ✅ Tests verify features work and prevent regressions (DONE)
-- ✅ All MVP features manually tested by user (test plan created at `.cursor/TEST_PLAN.md`)
-- ✅ Critical bugs fixed (BUG-007 #15 resolved — current save behavior accepted)
-- ✅ Performance targets met: <100ms grid load, <500ms acceptable for large datasets (DONE)
+**Implemented Files**:
+- `src/test/setup.ts` — Vitest test setup (jsdom)
+- `src/test/renderWithProviders.tsx` — Test utility with Redux store
+- `src/utils/__tests__/*.test.ts` — 57 utility tests (formatErrorMessage, passwordValidation, passwordStrength, currency, dateFormat, formatFileSize)
+- `src/components/common/__tests__/*.test.tsx` — 18 component tests (ErrorBoundary, PasswordInput, FileSizeWarningDialog)
+- `src/components/features/Settings/__tests__/LanguageSettings.test.tsx` — Language settings tests
+- `src-tauri/src/*.rs` — 63 Rust backend tests (inline `#[cfg(test)]` modules)
+- `.cursor/TEST_PLAN.md` — Manual test plan covering all 10 MVP feature areas
 
 **Implementation Notes**:
-- Completed: 2026-02-12
-- Frontend test infrastructure: Vitest + React Testing Library + jsdom
-- 57 utility tests: formatErrorMessage, passwordValidation, passwordStrength, currency, dateFormat
-- 18 component tests: ErrorBoundary, LanguageSettings, PasswordInput
-- 63 Rust backend tests all passing (fixed 2 migration version assertion bugs)
+- Total automated tests: 138+ (75 frontend + 63 Rust)
 - BUG-007 (#15) closed: "stay on period after save" accepted as correct UX
-- Manual test plan: `.cursor/TEST_PLAN.md` covering all 10 MVP feature areas
-- Total automated tests: 138 (75 frontend + 63 Rust)
 
-**Likely Files**:
-- `src/utils/__tests__/*.test.ts` (Utility unit tests)
-- `src/components/**/__tests__/*.test.tsx` (Component tests)
-- `src/test/setup.ts` (Test setup)
-- `src/test/renderWithProviders.tsx` (Test utilities)
-- `src-tauri/src/` (Rust tests — inline `#[cfg(test)]` modules)
-- `.cursor/TEST_PLAN.md` (Manual test plan)
+**Complexity**: L (Large) | **GitHub Issue**: #52
 
-**Complexity**: L (Large)
+**Checkpoint**: ✅ MVP base features complete, tested, ready for additional phases
 
-**Checkpoint**: MVP complete, tested, ready for release
+---
+
+## Phase 9: Safeguards & Quick Fixes ✅ COMPLETED (2026-02-09 to 2026-02-12)
+
+### Overview
+This phase covered licensing safeguards (non-negotiable data access principles) and quick UI/UX fixes discovered during implementation.
+
+### Tasks
+
+| Task | GitHub Issue | Closed | Description |
+|------|-------------|--------|-------------|
+| TASK-SAFEGUARD-2: Export Always Available | #62 | 2026-02-12 | Export command/UI never gated by license status |
+| TASK-SAFEGUARD-3: DB Open/Unlock Never Blocked | #63 | 2026-02-12 | File/DB operations are license-independent |
+| TASK-9.1: Dashboard Page Placeholder | #64 | 2026-02-09 | Dashboard tab with placeholder content |
+| TASK-FIX-1: Password Modal Responsive Height | #66 | 2026-02-09 | Fixed modal height on small screens |
+| TASK-FIX-2: Close File Backend Connection | #67 | 2026-02-09 | Close backend DB connection when closing file |
+
+**Note**: TASK-SAFEGUARD-1 (#61, App Mode Plumbing) was moved to `out-of-scope` — see Phase 7.5.
+
+**Implemented Files**:
+- `src/pages/DashboardPage.tsx` — Dashboard page placeholder
+- `src/components/features/Onboarding/PasswordCreationModal.tsx` — Responsive height fix
+- `src-tauri/src/encrypted_db.rs` — `close_file` command fix
+
+---
+
+## Phase 10: Bug Fixes ✅ COMPLETED (2026-02-09 to 2026-02-12)
+
+### Overview
+This phase addressed grid-related bugs discovered during testing, primarily around column resizing behavior and cell rendering.
+
+### Tasks
+
+| Task | GitHub Issue | Closed | Description |
+|------|-------------|--------|-------------|
+| BUG-003: Cell Text Wrapping & Column Resizing | #81 | 2026-02-09 | Added text wrapping and basic column resize |
+| BUG-003b: Column Resize Behavior Adjustments | #82 | 2026-02-09 | Paired resize, snap-to-content, frozen column rules |
+| BUG-010: No Resize Handle at Frozen Boundary | #83 | 2026-02-10 | Removed unwanted handle between frozen and resizable columns |
+| BUG-011: Amplified Column Resize | #84 | 2026-02-10 | Fixed 1:1 mouse-to-slider with `table-layout: fixed` |
+| BUG-012: Remaining Column Fixed Width | #85 | 2026-02-10 | "Remaining" column auto-sized, non-resizable, added `resizable` property |
+| BUG-007: Save Period Navigation | #15 | 2026-02-12 | Confirmed "stay on period after save" as correct UX |
+
+**Implemented Files**:
+- `src/components/features/BudgetGrid/PeriodGridHeader.tsx` — Resize handles, paired resize logic
+- `src/components/features/BudgetGrid/PeriodGridTable.tsx` — `table-layout: fixed`, auto-sizing
+- `src/components/features/BudgetGrid/PeriodGridCell.tsx` — Text wrapping, maxWidth
+- `src/components/features/BudgetGrid/PeriodGridBody.tsx` — Summary row column consistency
+- `src/components/features/BudgetGrid/types.ts` — Added `resizable` property to `GridColumnConfig`
+- `src/components/features/Settings/PeriodTableSettings.tsx` — Snap mode setting (magnetic/detent)
+- `src/services/settingsService.ts` — UI settings persistence service
+- `.cursor/COLUMN_RESIZE_SPEC.md` — Updated spec
+
+---
+
+## Phase 11: Attachments ✅ COMPLETED (2026-02-13 to 2026-02-15)
+
+### Overview
+This phase added a complete file attachment system allowing users to attach files (images, PDFs, documents) to line items/transactions, with thumbnail generation, popover/lightbox viewing, and export capabilities.
+
+### Tasks
+
+| Task | GitHub Issue | Closed | Description |
+|------|-------------|--------|-------------|
+| TASK-11.1: DB Migration v5 — Attachments Table | #86 | 2026-02-13 | `line_item_attachments` table with BLOB storage |
+| TASK-11.2: Rust Backend — Attachment CRUD Commands | #87 | 2026-02-13 | Add/get/delete/export attachment commands |
+| TASK-11.3: Rust Backend — Thumbnail + MIME Detection | #88 | 2026-02-13 | Image thumbnail generation, MIME type detection |
+| TASK-11.4: Frontend — Attachment Types + Service | #89 | 2026-02-13 | TypeScript types and service layer |
+| TASK-11.5: Frontend — AttachmentIndicator Component | #90 | 2026-02-13 | Compact indicator showing attachment count |
+| TASK-11.6: Frontend — AttachmentPopover Component | #91 | 2026-02-13 | Thumbnail grid popover for quick viewing |
+| TASK-11.7: Frontend — AttachmentLightbox View | #92 | 2026-02-13 | Full-screen gallery with navigation |
+| TASK-11.8: Frontend — Integration into CategoryLedgerModal | #93 | 2026-02-13 | Attachment indicator in transaction rows |
+| TASK-11.9: Frontend — File Size Warning Dialog | #94 | 2026-02-13 | Warning for files >25MB |
+| TASK-11.10: Frontend — Settings Toggle (Attachment View Mode) | #95 | 2026-02-15 | Removed (unified popover→lightbox flow) |
+| TASK-11.11: Internationalization — Attachment Keys | #96 | 2026-02-13 | Translation keys in EN, DE, HU |
+| TASK-11.12: Testing — Attachment Tests | #97 | 2026-02-13 | Unit + integration tests for attachments |
+
+**Implemented Files**:
+- `src-tauri/src/migrations.rs` — Migration v5: `line_item_attachments` table + indexes
+- `src-tauri/src/encrypted_db.rs` — `add_attachment`, `get_attachments`, `delete_attachment`, `export_attachment` commands
+- `src/types/attachment.types.ts` — Attachment TypeScript types
+- `src/services/attachmentService.ts` — Attachment service layer
+- `src/hooks/useAttachmentUpload.ts` — Upload hook with file picker + size warning
+- `src/components/features/BudgetGrid/AttachmentIndicator.tsx` — Compact indicator with count badge
+- `src/components/features/BudgetGrid/AttachmentPopover.tsx` — Thumbnail grid popover
+- `src/components/features/BudgetGrid/AttachmentLightbox.tsx` — Full-screen gallery (export only)
+- `src/components/features/BudgetGrid/CategoryLedgerModal.tsx` — Integration point
+- `src/components/common/FileSizeWarningDialog.tsx` — File size warning dialog
+- `src/utils/formatFileSize.ts` — Human-readable file size formatting
+- `src/i18n/en.json`, `src/i18n/de.json`, `src/i18n/hu.json` — Attachment translation keys
+- Test files: `src/services/__tests__/attachmentService.test.ts`, `src/hooks/__tests__/useAttachmentUpload.test.ts`, `src/components/features/BudgetGrid/__tests__/AttachmentIndicator.test.tsx`, `src/components/common/__tests__/FileSizeWarningDialog.test.tsx`
+
+---
+
+## Phase 12: Documentation Update 📋 CURRENT (2026-02-15 — in progress)
+
+### Overview
+This phase updates all `.cursor/` documentation files to accurately reflect the codebase after completing Phases 1–11. Documentation had fallen severely behind during rapid feature development.
+
+### Completed Tasks
+
+| Task | GitHub Issue | Closed | Description |
+|------|-------------|--------|-------------|
+| TASK-12.1: Delete Obsolete Files + Create Archive | #98 | 2026-02-15 | Removed `START_HERE.md`, `FINANCEDB_STUB_SPEC.md`; archived `QUESTIONS_FOR_USER.md`, `RESEARCH_BINARY_STORAGE.md`, `TASK-1.4_SQLCIPHER_RESEARCH.md`; updated 17 cross-references |
+| TASK-12.5: Update MVP_PLAN.md | #102 | — | This task (current) |
+| TASK-12.12: Update BUILD_AND_RUN.md + RULES.md | #109 | 2026-02-15 | Updated testing, prerequisites, database, Rust backend sections |
+| TASK-12.13: Update MCP_RECOMMENDATIONS.md + LICENSING Docs | #110 | 2026-02-15 | Rewrote MCP docs; updated licensing safeguard statuses |
+
+### Remaining Tasks
+
+| Task | GitHub Issue | Complexity | Dependencies |
+|------|-------------|-----------|-------------|
+| TASK-12.2: Rewrite ARCHITECTURE_CURRENT.md | #99 | L | None |
+| TASK-12.3: Rewrite REPO_MAP.md | #100 | L | None |
+| TASK-12.4: Rewrite DATA_MODEL.md | #101 | L | None |
+| TASK-12.6: Update PROJECT_OVERVIEW.md | #103 | M | None |
+| TASK-12.7: Update TEST_PLAN.md | #104 | M | None |
+| TASK-12.8: Update PRODUCT_REQUIREMENTS.md | #105 | M | None |
+| TASK-12.9: Update UI_FLOWS.md | #106 | M | None |
+| TASK-12.10: Update UX_INTERACTIONS.md | #107 | M | None |
+| TASK-12.11: Update Spec Documents (4 files) | #108 | M | None |
+| TASK-12.14: Update Agents Directory | #111 | M | #99, #100, #101 |
+| TASK-12.15: Update Skills Directory | #112 | M | #99, #100 |
+| TASK-12.16: Update Commands Directory | #113 | M | #99, #100, #101 |
 
 ---
 
 ## Implementation Order
 
-1. **Phase 1** (Foundation) - Must complete first
-2. **Phase 2** (Data Model) - Must complete before UI
-3. **Phase 3** (Templates) - Can do in parallel with Phase 4
-4. **Phase 4** (Grid UI) - Depends on Phase 2
-5. **Phase 5** (Transactions) - Depends on Phase 4
-6. **Phase 6** (Period Creation) - Depends on Phase 3 and 4
-7. **Phase 7** (Export) - Can do anytime after Phase 2; **NON-NEGOTIABLE for MVP**
-8. **Phase 7.5** (Licensing) - Should be early; Read-Only mode + Export is baseline
-9. **Phase 8** (Polish) - Final phase
-
-**Note**: Phase 7 (Export) and Phase 7.5 (Licensing/Read-Only mode) are **non-negotiable** for MVP. Export must always work, and Read-Only mode is the default fallback.
+1. **Phase 1** (Foundation) — ✅ COMPLETED (2026-02-06 to 2026-02-09)
+2. **Phase 2** (Data Model) — ✅ COMPLETED (2026-02-09)
+3. **Phase 3** (Templates) — ✅ COMPLETED (2026-02-09)
+4. **Phase 4** (Grid UI) — ✅ COMPLETED (2026-02-09 to 2026-02-11)
+5. **Phase 5** (Transactions) — ✅ COMPLETED (2026-02-11)
+6. **Phase 6** (Period Creation) — ✅ COMPLETED (2026-02-11)
+7. **Phase 7** (Export & Backup) — ✅ COMPLETED (2026-02-11)
+8. **Phase 7.5** (Licensing) — ❌ DEFERRED (safeguards #62/#63 done; app modes #61 out-of-scope)
+9. **Phase 8** (Polish & Testing) — ✅ COMPLETED (2026-02-11 to 2026-02-12)
+10. **Phase 9** (Safeguards & Fixes) — ✅ COMPLETED (2026-02-09 to 2026-02-12)
+11. **Phase 10** (Bug Fixes) — ✅ COMPLETED (2026-02-09 to 2026-02-12)
+12. **Phase 11** (Attachments) — ✅ COMPLETED (2026-02-13 to 2026-02-15)
+13. **Phase 12** (Documentation) — 📋 CURRENT (2026-02-15 — in progress)
 
 ---
 
@@ -717,16 +591,20 @@ See `.cursor/LICENSING_MVP_IMPACTS.md` for complete details.
 ✅ User can see rollups (received/spent totals) in grid  
 ✅ User can export to CSV  
 ✅ User sees backup guidance  
-✅ **App runs in Read-Only mode by default (no license)**  
-✅ **User can import perpetual license file to unlock Full Mode**  
-✅ **Export is ALWAYS available, even in Read-Only mode**  
-✅ **Feature gating uses build date, not system clock**  
+✅ User can attach files to transactions and view/export them  
+✅ App supports 3 languages (EN, DE, HU)  
+✅ **Export is ALWAYS available** (safeguard #62)  
+✅ **DB Open/Unlock is NEVER blocked** (safeguard #63)  
+❌ ~~App runs in Read-Only mode by default~~ — DEFERRED (#61 out-of-scope)  
+❌ ~~User can import perpetual license file~~ — DEFERRED (depends on #61)  
+❌ ~~Feature gating uses build date~~ — DEFERRED (depends on #61)  
 
 ---
 
 ## References
 
-- See **BACKLOG.md** for detailed task breakdown
+- See **GitHub Issues** for detailed task breakdown
 - See **PRODUCT_REQUIREMENTS.md** for requirements
 - See **DATA_MODEL.md** for schema details
 - See **LICENSING.md** for authoritative licensing spec
+- See **LICENSING_MVP_IMPACTS.md** for MVP licensing breakdown

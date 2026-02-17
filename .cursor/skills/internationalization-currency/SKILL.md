@@ -1,12 +1,13 @@
 # Skill: Internationalization & Currency
 
 ## Purpose
-How to scaffold internationalization (i18n) and currency support for EN/DE and CHF/EUR.
+How to scaffold internationalization (i18n) and currency support for EN/DE/HU and locale-aware currencies (CHF/EUR/HUF).
 
 ## When to Use
 - Adding i18n support to UI
-- Formatting currency (CHF/EUR)
+- Formatting currency (CHF/EUR/HUF)
 - Adding new languages/currencies
+- Extending the existing 3-language setup (EN/DE/HU)
 
 ## Library Choice
 
@@ -33,6 +34,7 @@ npm install react-i18next i18next
 src/i18n/
 ├── en.json
 ├── de.json
+├── hu.json
 └── index.ts
 ```
 
@@ -43,6 +45,15 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import en from './en.json';
 import de from './de.json';
+import hu from './hu.json';
+
+export type SupportedLanguage = 'en' | 'de' | 'hu';
+
+export const SUPPORTED_LANGUAGES: ReadonlyArray<{ code: SupportedLanguage; label: string }> = [
+  { code: 'en', label: 'English' },
+  { code: 'de', label: 'Deutsch' },
+  { code: 'hu', label: 'Magyar' },
+];
 
 i18n
   .use(initReactI18next)
@@ -50,8 +61,9 @@ i18n
     resources: {
       en: { translation: en },
       de: { translation: de },
+      hu: { translation: hu },
     },
-    lng: 'en', // default language
+    lng: getStoredLanguage(), // persisted in localStorage
     fallbackLng: 'en',
     interpolation: {
       escapeValue: false, // React already escapes
@@ -140,37 +152,39 @@ const message = t('budget.created', { period: 'March 2025' });
 // src/utils/currency.ts
 export const formatCurrency = (
   amount: number,
-  currency: 'CHF' | 'EUR',
-  locale: 'en' | 'de' = 'en'
+  currency: 'CHF' | 'EUR' | 'HUF',
+  locale: 'en' | 'de' | 'hu' = 'en'
 ): string => {
-  const localeMap = {
+  const localeMap: Record<string, string> = {
     en: 'en-US',
     de: 'de-CH', // Swiss German for CHF, de-DE for EUR
+    hu: 'hu-HU', // Hungarian
   };
   
   return new Intl.NumberFormat(localeMap[locale], {
     style: 'currency',
     currency: currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: currency === 'HUF' ? 0 : 2,
+    maximumFractionDigits: currency === 'HUF' ? 0 : 2,
   }).format(amount);
 };
 
 // Usage
 formatCurrency(150.50, 'CHF', 'en'); // "CHF 150.50"
 formatCurrency(150.50, 'EUR', 'de'); // "150,50 €"
+formatCurrency(5000, 'HUF', 'hu');   // "5 000 Ft"
 ```
 
 ### Currency Display Component
 ```typescript
 interface CurrencyDisplayProps {
   amount: number;
-  currency: 'CHF' | 'EUR';
+  currency: 'CHF' | 'EUR' | 'HUF';
 }
 
 function CurrencyDisplay({ amount, currency }: CurrencyDisplayProps) {
   const { i18n } = useTranslation();
-  const locale = i18n.language as 'en' | 'de';
+  const locale = i18n.language as 'en' | 'de' | 'hu';
   
   return <span>{formatCurrency(amount, currency, locale)}</span>;
 }
@@ -180,39 +194,44 @@ function CurrencyDisplay({ amount, currency }: CurrencyDisplayProps) {
 
 ### Language Selector Component
 ```typescript
+import { SUPPORTED_LANGUAGES, persistLanguage, type SupportedLanguage } from '@/i18n';
+
 function LanguageSelector() {
   const { i18n } = useTranslation();
   
-  const changeLanguage = (lng: 'en' | 'de') => {
+  const handleChangeLanguage = (lng: SupportedLanguage) => {
     i18n.changeLanguage(lng);
-    // Optionally save to localStorage
-    localStorage.setItem('language', lng);
+    persistLanguage(lng);
   };
   
   return (
-    <select value={i18n.language} onChange={(e) => changeLanguage(e.target.value as 'en' | 'de')}>
-      <option value="en">English</option>
-      <option value="de">Deutsch</option>
+    <select
+      value={i18n.language}
+      onChange={(e) => handleChangeLanguage(e.target.value as SupportedLanguage)}
+    >
+      {SUPPORTED_LANGUAGES.map(({ code, label }) => (
+        <option key={code} value={code}>{label}</option>
+      ))}
     </select>
   );
 }
 ```
 
 ### Persist Language Preference
-```typescript
-// Load saved language on app start
-const savedLanguage = localStorage.getItem('language') || 'en';
-i18n.changeLanguage(savedLanguage);
-```
+Language persistence is handled via `localStorage` in `src/i18n/index.ts`:
+- `getStoredLanguage()` reads on app start
+- `persistLanguage(lang)` saves after user selection
+- Storage key: `expenses-manager-language`
 
 ## Date Formatting
 
 ### Format Dates by Locale
 ```typescript
-export const formatDate = (date: Date, locale: 'en' | 'de' = 'en'): string => {
-  const localeMap = {
+export const formatDate = (date: Date, locale: 'en' | 'de' | 'hu' = 'en'): string => {
+  const localeMap: Record<string, string> = {
     en: 'en-US',
     de: 'de-CH',
+    hu: 'hu-HU',
   };
   
   return new Intl.DateTimeFormat(localeMap[locale], {
@@ -225,35 +244,39 @@ export const formatDate = (date: Date, locale: 'en' | 'de' = 'en'): string => {
 // Usage
 formatDate(new Date('2025-03-15'), 'en'); // "March 15, 2025"
 formatDate(new Date('2025-03-15'), 'de'); // "15. März 2025"
+formatDate(new Date('2025-03-15'), 'hu'); // "2025. március 15."
 ```
 
 ## Architecture for Adding More Languages
 
-### Structure
+### Current Structure
 ```
 src/i18n/
-├── en.json
-├── de.json
-├── fr.json (future)
-└── index.ts
+├── en.json    (English)
+├── de.json    (German)
+├── hu.json    (Hungarian)
+├── fr.json    (future)
+└── index.ts   (config, SupportedLanguage type, SUPPORTED_LANGUAGES array)
 ```
 
 ### Adding New Language
-1. Create translation file (e.g., `fr.json`)
-2. Add to i18next config
-3. Add option to language selector
-4. Test translations
+1. Create translation file (e.g., `fr.json`) copying structure from `en.json`
+2. Import in `src/i18n/index.ts` and add to `resources`
+3. Add to `SupportedLanguage` type union
+4. Add to `SUPPORTED_LANGUAGES` array
+5. Add locale mapping in `formatCurrency` and `formatDate` helpers
+6. Test translations and currency/date formatting
 
-## Currency Per Envelope
+## Currency Per Category
 
 ### Storage
-- Store currency in `envelopes` table: `currency TEXT NOT NULL DEFAULT 'CHF'`
-- Or store default currency in finance file metadata
+- Store currency in `global_categories` table or finance file metadata
+- Default currency can be set per dataset
 
 ### Display
-- Show currency symbol in grid cells
-- Format amounts based on envelope currency
-- Handle mixed currencies in same period
+- Show currency symbol in PeriodGrid cells
+- Format amounts based on category currency
+- Handle mixed currencies in same period (if supported)
 
 ## Testing
 

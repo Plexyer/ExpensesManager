@@ -7,11 +7,7 @@ import {
   updateLineItem,
   deleteLineItem,
 } from "../../../services/lineItemService";
-import {
-  getAttachmentSummaries,
-  listAttachments,
-} from "../../../services/attachmentService";
-import { getUiSetting } from "../../../services/settingsService";
+import { getAttachmentSummaries } from "../../../services/attachmentService";
 import type { LineItem } from "../../../types/lineItem.types";
 import type { AttachmentSummary } from "../../../types/attachment.types";
 import type { AttachmentMeta } from "../../../types/attachment.types";
@@ -23,8 +19,6 @@ import AttachmentLightbox from "./AttachmentLightbox";
 import { formatErrorMessage } from "../../../utils/formatErrorMessage";
 import { formatCurrency } from "../../../utils/currency";
 import { formatDate, formatTime } from "../../../utils/dateFormat";
-
-type AttachmentViewMode = "popover" | "lightbox";
 
 interface CategoryLedgerModalProps {
   /** Which category + kind to display */
@@ -89,7 +83,6 @@ const CategoryLedgerModal = ({
   const [attachmentSummaries, setAttachmentSummaries] = useState<
     Record<string, AttachmentSummary>
   >({});
-  const [viewMode, setViewMode] = useState<AttachmentViewMode>("popover");
   const [popoverState, setPopoverState] = useState<{
     lineItemId: number;
     anchorRect: AnchorRect;
@@ -144,21 +137,6 @@ const CategoryLedgerModal = ({
   useEffect(() => {
     fetchItems();
   }, [fetchItems]);
-
-  // Load attachment view mode setting on mount
-  useEffect(() => {
-    const loadViewMode = async () => {
-      try {
-        const stored = await getUiSetting("attachment_view_mode");
-        if (stored === "popover" || stored === "lightbox") {
-          setViewMode(stored);
-        }
-      } catch {
-        // Fall back to default silently
-      }
-    };
-    loadViewMode();
-  }, []);
 
   // Focus the modal on mount for accessibility
   useEffect(() => {
@@ -308,36 +286,26 @@ const CategoryLedgerModal = ({
 
   // ── Attachment handlers ──
 
-  /** Called when an attachment indicator is clicked. Routes to popover or lightbox. */
+  /** Called when an attachment indicator is clicked. Opens the popover. */
   const handleIndicatorClick = useCallback(
-    async (lineItemId: number, event: React.MouseEvent<HTMLElement>) => {
-      if (viewMode === "popover") {
-        // Compute anchor rect from the clicked button
-        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-        const anchorRect: AnchorRect = {
-          top: rect.top,
-          left: rect.left,
-          width: rect.width,
-          height: rect.height,
-        };
+    (lineItemId: number, event: React.MouseEvent<HTMLElement>) => {
+      // Compute anchor rect from the clicked button
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      const anchorRect: AnchorRect = {
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+      };
 
-        // Toggle: if same popover is open, close it; otherwise open new one
-        if (popoverState?.lineItemId === lineItemId) {
-          setPopoverState(null);
-        } else {
-          setPopoverState({ lineItemId, anchorRect });
-        }
+      // Toggle: if same popover is open, close it; otherwise open new one
+      if (popoverState?.lineItemId === lineItemId) {
+        setPopoverState(null);
       } else {
-        // Lightbox mode: fetch full attachment list then open
-        try {
-          const attachments = await listAttachments(lineItemId);
-          setLightboxState({ lineItemId, attachments, index: 0 });
-        } catch {
-          // Silently fail — user can try again
-        }
+        setPopoverState({ lineItemId, anchorRect });
       }
     },
-    [viewMode, popoverState]
+    [popoverState]
   );
 
   /** Refresh attachment summaries after add/delete in popover or lightbox. */
@@ -770,9 +738,7 @@ const CategoryLedgerModal = ({
         isOpen={lightboxState !== null}
         attachments={lightboxState?.attachments ?? []}
         initialIndex={lightboxState?.index ?? 0}
-        lineItemId={lightboxState?.lineItemId ?? 0}
         onClose={handleCloseLightbox}
-        onAttachmentsChanged={handleAttachmentsChanged}
       />
     </div>
   );

@@ -24,44 +24,51 @@ Design database schema changes, migrations, and data model updates for MVP featu
 Facts:
 ```
 CONFIRMED:
-- Current schema documented in `DATA_MODEL.md`
-- Migrations in `src-tauri/migrations/`
-- Schema created in `src-tauri/src/modules/database/mod.rs:36`
+- Current schema at migration v5 (CURRENT_SCHEMA_VERSION = 5)
+- 9 tables: _meta, global_categories, templates, template_categories,
+  period_budget_instances, budget_instance_categories, category_line_items,
+  line_item_attachments, ui_settings
+- 16 indexes defined across migrations v1–v5
+- Schema defined in `src-tauri/src/migrations.rs`
+- DB operations in `src-tauri/src/encrypted_db.rs`
+- DATA_MODEL.md documents full schema
 ```
 
 ### INFERRED
 Assumptions:
 ```
 INFERRED:
-- Need to add `periods` table for period-based system
-- Need to add `cadence`/period length to templates (corrected design requirement)
+- New features may require migration v6+
+- Attachment BLOBs stored directly in line_item_attachments table
+- All queries use parameterized statements via rusqlite
 ```
 
 ### OPEN QUESTIONS
 Unknowns:
 ```
 OPEN QUESTIONS:
-- Should periods table include `finance_file_id` (if multi-file support)?
-- What indexes are needed for performance?
+- What indexes are needed for new features?
+- Should new tables follow same naming convention (snake_case)?
 ```
 
 ### RECOMMENDATIONS
 Schema design:
 ```
 RECOMMENDATIONS:
-1. Create `periods` table with columns: period_id, cadence, start_date, end_date, template_id
-2. Add `cadence` column to `budget_templates` (TEXT, default 'monthly')
-3. Create indexes on period_id, cadence, start_date
-4. Create migration file: `YYYY_MM_create_periods.sql`
+1. Add new migration function in src-tauri/src/migrations.rs
+2. Increment CURRENT_SCHEMA_VERSION
+3. Follow existing pattern: migrate_to_vN(conn) -> Result<()>
+4. Add indexes for frequently queried columns
+5. Update DATA_MODEL.md after schema changes
 ```
 
 ### REFERENCES
 Files:
 ```
 REFERENCES:
-- .cursor/DATA_MODEL.md
-- src-tauri/src/modules/database/mod.rs
-- src-tauri/migrations/2025_10_fix_categories_and_templates.sql
+- .cursor/DATA_MODEL.md (full schema documentation)
+- src-tauri/src/migrations.rs (schema definitions, v1–v5)
+- src-tauri/src/encrypted_db.rs (DB operations, 38 Tauri commands)
 ```
 
 ## Process
@@ -73,8 +80,8 @@ REFERENCES:
 
 ### Step 2: Review Current Schema
 - Read DATA_MODEL.md
-- Review existing migrations
-- Understand current structure
+- Review `src-tauri/src/migrations.rs` for current tables and indexes
+- Understand current structure (9 tables, 16 indexes at v5)
 
 ### Step 3: Design Schema Changes
 - New tables needed
@@ -83,10 +90,10 @@ REFERENCES:
 - Indexes needed
 
 ### Step 4: Design Migration
-- Migration file name (YYYY_MM_description.sql)
-- SQL statements
+- Add `migrate_to_vN()` function in `migrations.rs`
+- Increment `CURRENT_SCHEMA_VERSION`
+- SQL statements (CREATE TABLE, ALTER TABLE, CREATE INDEX)
 - Data migration (if needed)
-- Rollback plan (if needed)
 
 ### Step 5: Document Design
 - Update DATA_MODEL.md
@@ -95,32 +102,34 @@ REFERENCES:
 
 ## Migration Pattern
 
-### File Naming
-```
-YYYY_MM_description.sql
-Example: 2025_03_create_periods.sql
-```
+### Location
+All migrations are defined as Rust functions in `src-tauri/src/migrations.rs`.
+There are no separate `.sql` migration files.
 
 ### Migration Structure
-```sql
--- Create periods table
-CREATE TABLE IF NOT EXISTS periods (
-    period_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    cadence TEXT NOT NULL,
-    start_date DATE NOT NULL,
-    end_date DATE,
-    template_id INTEGER REFERENCES budget_templates(template_id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+```rust
+fn migrate_to_v6(conn: &Connection) -> Result<()> {
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS new_table (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
 
--- Create indexes
-CREATE INDEX IF NOT EXISTS idx_periods_start_date ON periods(start_date);
-CREATE INDEX IF NOT EXISTS idx_periods_cadence ON periods(cadence);
+        CREATE INDEX IF NOT EXISTS idx_new_table_name ON new_table(name);
+    ")?;
+    Ok(())
+}
 ```
+
+### Version Tracking
+- `CURRENT_SCHEMA_VERSION` constant at top of `migrations.rs`
+- `_meta` table stores `schema_version` key
+- `ensure_schema(conn)` runs migrations sequentially from current to target version
 
 ## Definition of Done
 - ✅ Schema changes designed
-- ✅ Migration file created (if implementing)
+- ✅ Migration function added to `migrations.rs` (if implementing)
 - ✅ DATA_MODEL.md updated
 - ✅ Rollup queries documented (if needed)
 - ✅ Indexes planned
@@ -136,6 +145,6 @@ CREATE INDEX IF NOT EXISTS idx_periods_cadence ON periods(cadence);
 - Encryption design (use `sqlite_encryption_designer`)
 
 ## References
-- **DATA_MODEL.md**: Current and proposed schema
-- **command_add_db_migration.md**: Migration pattern guide
-- Existing migrations in `src-tauri/migrations/`
+- **DATA_MODEL.md**: Current schema documentation (v5)
+- **`src-tauri/src/migrations.rs`**: All migration functions
+- **`src-tauri/src/encrypted_db.rs`**: Database operations and Tauri commands

@@ -1,12 +1,12 @@
 # Skill: MVP Task Decomposition
 
 ## Purpose
-How to break down MVP features into small, implementable tasks following the BACKLOG.md structure.
+How to break down MVP features into small, implementable tasks following the GitHub Issues structure.
 
 ## When to Use
 - Planning a new MVP feature
 - Breaking down a large feature into tasks
-- Creating new backlog items
+- Creating new GitHub Issues
 
 ## Process
 
@@ -49,7 +49,7 @@ Break feature into tasks using this structure:
 - User selects template
 - User chooses cadence (monthly/biweekly/etc.)
 - User enters dates
-- Period created with envelopes from template
+- Period created with categories from template
 
 ### Tasks Created
 
@@ -70,11 +70,11 @@ Break feature into tasks using this structure:
 **Scope**: Command to create budget instance, copy categories, set default amounts + cadence  
 **Acceptance Criteria**:
 - ✅ Period created in database
-- ✅ Envelopes created from template
+- ✅ Categories created from template
 - ✅ All data copied correctly
-**Likely Areas/Files**: `budget.rs` (new command)  
+**Likely Areas/Files**: `src-tauri/src/encrypted_db.rs` (new command)  
 **Complexity**: M  
-**Dependencies**: TASK-2.2 (envelopes table), TASK-3.2 (template application)
+**Dependencies**: TASK-2.2 (categories table), TASK-3.2 (template application)
 
 #### TASK-6.3: Update Grid to Show New Period
 **Goal**: Open / navigate to the new period budget instance grid  
@@ -82,7 +82,7 @@ Break feature into tasks using this structure:
 **Acceptance Criteria**:
 - ✅ App opens the new budget instance grid view
 - ✅ Period header shows cadence and dates
-- ✅ Grid displays envelope data
+- ✅ Grid displays category data
 **Likely Areas/Files**: `PeriodGrid.tsx` (modify)  
 **Complexity**: S  
 **Dependencies**: TASK-6.2, TASK-4.2 (grid data loading)
@@ -106,9 +106,9 @@ Break feature into tasks using this structure:
 
 ## Output Format
 
-Add tasks to BACKLOG.md in appropriate phase section.
+Add tasks as GitHub Issues with appropriate phase labels.
 
 ## References
-- See **BACKLOG.md** for existing task examples
+- See **GitHub Issues** for existing task examples
 - See **MVP_PLAN.md** for phase structure
 - See **PRODUCT_REQUIREMENTS.md** for feature requirements

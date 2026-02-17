@@ -1,18 +1,19 @@
-# Domain Model (Corrected Design)
+# Domain Model — IMPLEMENTED
 
 ## Goal
-Define the **domain concepts** and their relationships for the corrected app design:
+Define the **domain concepts** and their relationships for the app:
 - **One period budget instance per main grid view**
 - **Columns are category fields/rollups within that period**
 - **Double-click Received/Spent amount opens dated line items**
 - **Categories are global & unique per dataset**
 - **Templates define cadence + default amounts and reference global categories**
+- **Line items can have file attachments (images, PDFs, etc.)**
 
-This file is documentation only. If the repo models things differently today, we call it out as a **GAP** without changing code.
+All entities below are fully implemented. Database schema is at migration v5 (`src-tauri/src/migrations.rs`).
 
 ---
 
-## Core Entities (CONFIRMED DESIGN)
+## Core Entities (IMPLEMENTED)
 
 ### Finance File / Dataset
 - **Meaning**: One portable encrypted SQLite file.
@@ -49,34 +50,79 @@ This file is documentation only. If the repo models things differently today, we
 
 ### Line Item
 - **Meaning**: A dated entry that contributes to Received or Spent amount totals.
+- **DB Table**: `category_line_items`
 - **Kinds**:
   - **Received** line items (money budgeted/saved into the category during the period)
   - **Spent** line items (money spent from the category during the period)
 - **Fields**:
-  - Date (required, ISO 8601 format) (CONFIRMED)
-  - Time (optional, defaults to 00:00:00 if not provided) (CONFIRMED)
+  - Date (required, ISO 8601 format)
+  - Time (optional, defaults to 00:00:00 if not provided)
   - Amount
-  - Currency (CHF or EUR for MVP) (CONFIRMED)
+  - Currency (CHF or EUR for MVP)
   - Description/notes (optional)
-  - is_template_default (boolean, marks first auto-created received item) (CONFIRMED)
+  - is_template_default (boolean, marks first auto-created received item)
+- **Attachments**: Each line item can have 0..N file attachments (see Attachment entity)
+
+### Attachment
+- **Meaning**: A file attached to a specific line item (receipts, invoices, photos, etc.)
+- **DB Table**: `line_item_attachments` (migration v5)
+- **Fields**:
+  - `id` (INTEGER PRIMARY KEY)
+  - `line_item_id` (FK → `category_line_items.id`)
+  - `file_name` (TEXT NOT NULL — original filename)
+  - `mime_type` (TEXT NOT NULL — detected via `infer` crate)
+  - `file_size` (INTEGER NOT NULL — bytes)
+  - `file_data` (BLOB NOT NULL — full file content stored in DB)
+  - `thumbnail` (BLOB — auto-generated for images via Rust `image` crate; NULL for non-images)
+  - `created_at` (TEXT NOT NULL — ISO 8601)
+  - `deleted_at` (TEXT — soft-delete timestamp; NULL = active)
+- **Indexes**: `idx_attachments_line_item` (line_item_id), `idx_attachments_deleted` (deleted_at)
+- **Soft Delete**: Rows with `deleted_at IS NOT NULL` are hidden from queries but retained in the DB
+- **Size Limit**: 25 MB soft warning (user can proceed); no hard limit
+
+### UI Settings
+- **Meaning**: Key-value store for user preferences (column widths, display options, etc.)
+- **DB Table**: `ui_settings` (migration v4)
+- **Fields**:
+  - `key` (TEXT PRIMARY KEY — e.g., `"column_widths"`, `"show_spent_minus"`)
+  - `value` (TEXT NOT NULL — JSON-encoded value)
+  - `updated_at` (TEXT NOT NULL — ISO 8601)
+- **Accessed via**: `get_ui_setting` / `set_ui_setting` Tauri commands
 
 ---
 
-## Relationships (CONFIRMED DESIGN)
+## Relationships (IMPLEMENTED)
 
 ```
 Finance file (dataset)
-  ├── Global Categories (unique)
+  ├── _meta (schema version)
+  ├── Global Categories (unique per file)
   ├── Templates
-  │     └── TemplateCategoryDefaults (refs global categories + default amounts + cadence + currency)
-  └── Period Budget Instances
-        └── Budget Category Rows (ref global categories)
-              └── Line Items (received/spent; timestamped; with currency)
+  │     └── Template Categories (refs global categories + default amounts + cadence + currency)
+  ├── Period Budget Instances
+  │     └── Budget Instance Categories (ref global categories)
+  │           └── Line Items (received/spent; timestamped; with currency)
+  │                 └── Attachments (0..N per line item; soft-deletable)
+  └── UI Settings (key-value pairs for user preferences)
 ```
+
+### Database Tables (Migration v5)
+
+| Table | Entity | Key Relationships |
+|-------|--------|-------------------|
+| `_meta` | Schema metadata | `schema_version = 5` |
+| `global_categories` | Global Category | Referenced by template_categories + budget_instance_categories |
+| `templates` | Template | Has many template_categories |
+| `template_categories` | Template Category | FK → templates, FK → global_categories |
+| `period_budget_instances` | Period Budget Instance | FK → templates; has many budget_instance_categories |
+| `budget_instance_categories` | Budget Category Row | FK → period_budget_instances, FK → global_categories |
+| `category_line_items` | Line Item | FK → budget_instance_categories; has many line_item_attachments |
+| `line_item_attachments` | Attachment | FK → category_line_items |
+| `ui_settings` | UI Settings | Standalone key-value store |
 
 ---
 
-## Main Grid Mental Model (CONFIRMED DESIGN)
+## Main Grid Mental Model (IMPLEMENTED)
 
 ### What the grid is
 - A **single** period budget instance view.
@@ -99,19 +145,20 @@ Finance file (dataset)
 
 ---
 
-## Mapping to Current Repo (CONFIRMED + GAP)
+## Implementation Status
 
-### CONFIRMED (current repo has)
-- A monthly budget concept (`MonthlyBudgets`) in the Rust DB layer.
-- Global categories (`global_categories`) and templates (`budget_templates`, `template_categories`) exist.
+All domain entities are fully implemented:
 
-### GAP (implementation needed to match confirmed design)
-- Templates need `cadence` and `default_currency` columns added (migration required).
-- Need `category_line_items` table with `kind` = 'received' | 'spent' and `currency` field (migration required).
-- Need derived "Received date" column (computed from line items, not stored).
-- Need multi-currency support with fixed conversion ratio for MVP (API-based rates post-MVP).
-- Replace SHA256 with Argon2id for password hashing.
-- Need SQLCipher integration for database encryption.
+| Entity | DB Table | Tauri Commands | Status |
+|--------|----------|----------------|--------|
+| Global Category | `global_categories` | CRUD commands | IMPLEMENTED |
+| Template | `templates` + `template_categories` | CRUD + reorder | IMPLEMENTED |
+| Period Budget Instance | `period_budget_instances` | Create/delete/list | IMPLEMENTED |
+| Budget Category Row | `budget_instance_categories` | Auto-created from template | IMPLEMENTED |
+| Line Item | `category_line_items` | CRUD via ledger modal | IMPLEMENTED |
+| Attachment | `line_item_attachments` | Add/list/get/delete/export | IMPLEMENTED |
+| UI Settings | `ui_settings` | get/set key-value | IMPLEMENTED |
+| Encryption | SQLCipher + Argon2id | create/open/close DB | IMPLEMENTED |
 
 ---
 
@@ -189,9 +236,11 @@ App Instance
 
 ## References
 - `.cursor/PRODUCT_REQUIREMENTS.md`
-- `.cursor/UI_FLOWS.md`
-- `.cursor/UX_INTERACTIONS.md`
-- `.cursor/DATA_MODEL.md`
-- `.cursor/QUESTIONS_FOR_USER.md`
-- `.cursor/LICENSING.md`
+- `.cursor/UI_FLOWS.md` — User journeys and attachment flows (Flows 13–15)
+- `.cursor/UX_INTERACTIONS.md` — Interaction patterns
+- `.cursor/DATA_MODEL.md` — SQL schema details and query patterns
+- `.cursor/ENCRYPTION_SPEC.md` — File header format, KDF parameters
+- `.cursor/GRID_ARCHITECTURE.md` — Grid component hierarchy and column types
+- `.cursor/LICENSING.md` — Licensing entity details
 - `.cursor/LICENSING_SUMMARY.md`
+- `src-tauri/src/migrations.rs` — Database schema migrations v1–v5

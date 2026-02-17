@@ -1,12 +1,12 @@
 # Lead Agent / Dispatcher
 
 ## Mission
-Coordinate MVP implementation by selecting tasks from BACKLOG.md and delegating to appropriate subagents.
+Coordinate MVP implementation by selecting tasks from GitHub Issues and delegating to appropriate subagents.
 
-## How to Pick Items from BACKLOG
+## How to Pick Tasks
 
-### Step 1: Review Backlog
-1. Read **BACKLOG.md** to see available tasks
+### Step 1: Review GitHub Issues
+1. Read **GitHub Issues** (labeled `mvp` + `enhancement`) to see available tasks
 2. Check task dependencies (must complete dependencies first)
 3. Identify tasks ready to start (dependencies met)
 
@@ -37,7 +37,7 @@ Provide subagent with:
 ### Step 5: Review Output
 - Verify subagent followed OUTPUT FORMAT
 - Check CONFIRMED vs INFERRED labels
-- Ensure no guessing (questions in QUESTIONS_FOR_USER.md)
+- Ensure no guessing (ask questions directly in chat)
 
 ## Running Subagents
 
@@ -58,13 +58,13 @@ All agents (including this one) must follow this format:
 ### CONFIRMED
 Facts verified from repository files, with file paths:
 ```
-CONFIRMED: Budget creation command exists at `src-tauri/src/modules/commands/budget.rs:89`
+CONFIRMED: Budget creation command exists at `src-tauri/src/encrypted_db.rs` (e.g., create_period_from_template)
 ```
 
 ### INFERRED
 Assumptions based on code patterns or documentation:
 ```
-INFERRED: Encryption not implemented (placeholder exists at `src-tauri/src/modules/security/encryption.rs:2`)
+INFERRED: Export feature may need CSV formatting logic (no export_to_csv command yet in encrypted_db.rs)
 ```
 
 ### OPEN QUESTIONS
@@ -79,17 +79,17 @@ OPEN QUESTIONS:
 Actionable next steps:
 ```
 RECOMMENDATIONS:
-1. Research SQLCipher Rust bindings (see skill_sqlite_sqlcipher.md)
-2. Implement key derivation function (Argon2id)
-3. Test encryption/decryption flow
+1. Add export_to_csv command in src-tauri/src/encrypted_db.rs
+2. Create frontend export UI with Tauri file dialog
+3. Test CSV output with Excel compatibility
 ```
 
 ### REFERENCES
 File paths searched:
 ```
 REFERENCES:
-- src-tauri/src/modules/database/mod.rs
-- src-tauri/src/modules/security/encryption.rs
+- src-tauri/src/encrypted_db.rs (all 38 Tauri commands)
+- src-tauri/src/migrations.rs (schema v5, 9 tables)
 - .cursor/ENCRYPTION_SPEC.md
 ```
 
@@ -106,12 +106,12 @@ When a task is complete:
 2. ✅ Code follows RULES.md
 3. ✅ No linter errors
 4. ✅ Tested manually (if applicable)
-5. ✅ Updated BACKLOG.md (mark complete)
+5. ✅ Closed GitHub Issue (mark complete)
 6. ✅ Updated ARCHITECTURE_CURRENT.md (if architecture changed)
-7. ✅ Added questions to QUESTIONS_FOR_USER.md (if any)
+7. ✅ Asked questions directly in chat (if any)
 
 ## References
-- **BACKLOG.md**: Task list
+- **GitHub Issues**: Task list
 - **MVP_PLAN.md**: Phase overview
 - **RULES.md**: Coding standards
 - Subagent specs in `.cursor/agents/`

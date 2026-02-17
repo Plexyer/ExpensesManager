@@ -174,13 +174,7 @@
     "preview": "Előnézet",
     "previewOn": "CHF -125.00",
     "previewOff": "CHF 125.00",
-    "attachments": "Mellékletek",
-    "attachmentsDesc": "Válassza ki, hogyan jelenjenek meg a csatolt fájlok a tranzakciós mellékletek megtekintésekor.",
-    "attachmentViewMode": "Melléklet nézet mód",
-    "attachmentPopover": "Kompakt felugró ablak",
-    "attachmentPopoverDesc": "Mellékletek megjelenítése kompakt felugró ablakban a tranzakciós sor mellett. Gyors böngészéshez ideális.",
-    "attachmentLightbox": "Teljes képernyős galéria",
-    "attachmentLightboxDesc": "Mellékletek megjelenítése teljes képernyős galériában nagyítással és navigációval. Részletes megtekintéshez ideális."
+    "attachments": "Mellékletek"
   },
   "export": {
     "title": "Exportálás",

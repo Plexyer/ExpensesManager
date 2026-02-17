@@ -3,9 +3,10 @@
 ## Prerequisites (CONFIRMED)
 
 ### Required
-- **Node.js** v16+ (for frontend)
+- **Node.js** v18+ (for frontend)
 - **Rust** (latest stable) - for backend
 - **Tauri CLI** - installed via `npm install` (dev dependency)
+- **MSVC C++ Build Tools** (Windows) - required for SQLCipher/OpenSSL compilation
 
 ### Optional
 - **Git** - for version control
@@ -34,7 +35,7 @@ This installs:
 rustc --version
 cargo --version
 ```
-Should show Rust 1.70+ (or latest stable)
+Should show latest stable Rust
 
 ---
 
@@ -47,7 +48,7 @@ npm run tauri dev
 
 **What happens**:
 1. Vite dev server starts on `http://localhost:1420`
-2. Rust backend compiles (first time may take a few minutes)
+2. Rust backend compiles (first time takes **5-15 minutes** due to SQLCipher + OpenSSL compilation; subsequent builds are fast/cached)
 3. Tauri window opens, loads frontend from dev server
 4. Hot reload enabled for frontend changes
 5. Rust changes require restart (manual)
@@ -58,10 +59,11 @@ npm run tauri dev
 - **Frontend**: Vite dev server with React
 - **Backend**: Rust compiled in debug mode
 
-### Database Initialization
-- Database auto-creates on first `init_database` call
-- Location: `%APPDATA%/expensesmanager/expenses_encrypted.sqlite` (Windows)
-- Migrations run automatically via `init_database` command
+### Finance File Handling
+- The user creates or opens encrypted `.financedb` files via native file dialogs
+- Files are SQLCipher-encrypted SQLite databases with a custom file header (salt + KDF params)
+- Schema migrations run automatically when a file is opened (current: v5)
+- There is no fixed database location -- the user chooses where to save/open their file
 
 ---
 
@@ -90,26 +92,46 @@ npm run tauri build
 
 ---
 
-## Testing (INFERRED - not confirmed)
+## Testing (CONFIRMED)
 
-### Current State
-- No test scripts in `package.json`
-- No test files found in repo
-- No test configuration visible
+### Frontend Tests (Vitest)
+Test infrastructure is fully set up with **Vitest** + **@testing-library/react**.
 
-### Recommended Testing Setup (for MVP)
 ```bash
-# Frontend tests (if added)
+# Run all frontend tests once
 npm run test
 
-# Rust tests (if added)
+# Run tests in watch mode (re-runs on file changes)
+npm run test:watch
+```
+
+**Configuration**:
+- Framework: Vitest v4 with jsdom environment
+- Config: `vite.config.ts` → `test` section
+- Setup file: `src/test/setup.ts`
+- Test pattern: `src/**/*.{test,spec}.{ts,tsx}`
+- Libraries: `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`
+
+**Existing test files** (as of Phase 11):
+- `src/utils/__tests__/formatFileSize.test.ts`
+- `src/utils/__tests__/dateFormat.test.ts`
+- `src/utils/__tests__/currency.test.ts`
+- `src/utils/__tests__/passwordStrength.test.ts`
+- `src/utils/__tests__/passwordValidation.test.ts`
+- `src/utils/__tests__/formatErrorMessage.test.ts`
+- `src/services/__tests__/attachmentService.test.ts`
+- `src/hooks/__tests__/useAttachmentUpload.test.ts`
+
+### Rust Tests
+```bash
 cd src-tauri
 cargo test
 ```
+Rust unit tests exist within source modules where applicable.
 
 ---
 
-## Troubleshooting (INFERRED)
+## Troubleshooting (CONFIRMED)
 
 ### Common Issues
 
@@ -156,7 +178,7 @@ cargo test
 
 ---
 
-## Environment Variables (INFERRED)
+## Environment Variables (CONFIRMED)
 
 ### Development
 - `TAURI_DEV_HOST` - Custom host for dev server (optional)
@@ -166,16 +188,17 @@ cargo test
 
 ---
 
-## Database Location (CONFIRMED)
+## Finance File Location (CONFIRMED)
 
 ### Development & Production
-- **Windows**: `%APPDATA%\expensesmanager\expenses_encrypted.sqlite`
-- **macOS**: `~/Library/Application Support/expensesmanager/expenses_encrypted.sqlite`
-- **Linux**: `~/.local/share/expensesmanager/expenses_encrypted.sqlite`
+- **No fixed path** -- the user creates/opens `.financedb` files via native file dialog
+- Files can be stored anywhere the user chooses (Desktop, Documents, USB drive, etc.)
+- Files are fully portable and can be moved/copied between machines
 
 ### Accessing Database
-- Use SQLite browser (e.g., DB Browser for SQLite)
-- Or command line: `sqlite3 <path-to-db>`
+- Finance files are **SQLCipher-encrypted** and cannot be opened with standard SQLite tools
+- To inspect the DB, use `sqlcipher` CLI with the correct key, or debug through the app
+- The app handles all encryption/decryption via Argon2id key derivation + SQLCipher raw key mode
 
 ---
 
@@ -186,26 +209,29 @@ cargo test
   "scripts": {
     "dev": "vite",                    // Frontend dev server only
     "build": "tsc && vite build",    // Frontend production build
-    "preview": "vite preview",      // Preview production build
-    "tauri": "tauri"                 // Tauri CLI (use: npm run tauri dev/build)
+    "preview": "vite preview",       // Preview production build
+    "tauri": "tauri",                // Tauri CLI (use: npm run tauri dev/build)
+    "test": "vitest run",            // Run all frontend tests once
+    "test:watch": "vitest"           // Run tests in watch mode
   }
 }
 ```
 
 ---
 
-## Platform-Specific Notes (INFERRED)
+## Platform-Specific Notes
 
-### Windows
-- Requires Visual Studio Build Tools (for Rust compilation)
+### Windows (CONFIRMED - MVP target)
+- Requires Visual Studio Build Tools with MSVC C++ (for Rust + SQLCipher compilation)
 - MSI installer created on build
+- First build compiles SQLCipher + vendored OpenSSL from source (adds 5-15 min)
 
-### macOS
+### macOS (untested - future platform)
 - May require Xcode Command Line Tools
 - DMG installer created on build
 - May need code signing for distribution
 
-### Linux
+### Linux (untested - future platform)
 - Requires system dependencies (see Tauri docs)
 - AppImage created on build
 

@@ -4,77 +4,93 @@ This document summarizes which licensing requirements impact the MVP and which a
 
 ---
 
+## MVP Safeguards — Status Tracker
+
+These three safeguards are non-negotiable data-access principles tracked as GitHub Issues:
+
+| Safeguard | GitHub Issue | Status | Notes |
+|-----------|-------------|--------|-------|
+| **SAFEGUARD-1: App Mode Plumbing** (Full vs Read-Only) | [#61](https://github.com/Plexyer/ExpensesManager/issues/61) | OPEN — `out-of-scope` | Deferred from MVP; reopened and moved out of scope |
+| **SAFEGUARD-2: Export Always Available** | [#62](https://github.com/Plexyer/ExpensesManager/issues/62) | CLOSED — completed | Export works without license checks (NON-NEGOTIABLE) |
+| **SAFEGUARD-3: DB Open/Unlock Never Blocked** | [#63](https://github.com/Plexyer/ExpensesManager/issues/63) | CLOSED — completed | DB access is license-independent (NON-NEGOTIABLE) |
+
+---
+
 ## Must Implement in MVP
 
 These licensing requirements affect core architecture and user experience from day 1. Implementing them later would cause major rework.
 
-### 1. App Modes: Full vs Read-Only (CONFIRMED)
-- **Full Mode**: Read + Write enabled (requires valid license)
-- **Read-Only Mode**: Read + Export only (default when no license)
-- **Impact**: UI components must respect mode state; all write actions must be conditionally disabled
-
-### 2. Read-Only Mode as Default (CONFIRMED)
-- App launches in Read-Only mode if no valid license is present
-- Users can view, search, filter, and export data
-- Write operations (add/edit/delete) are disabled
-- **Impact**: Mode state must exist from app startup; UI must handle disabled state
-
-### 3. Export ALWAYS Available (NON-NEGOTIABLE)
-- CSV export must work in both Full and Read-Only modes
-- No licensing check should ever block export
-- **Impact**: Export feature must be implemented without mode gating
+### 1. Export ALWAYS Available (NON-NEGOTIABLE) — IMPLEMENTED
+- CSV export works in both Full and Read-Only modes
+- No licensing check blocks export
+- **Impact**: Export feature is implemented without mode gating
 - **Rationale**: Users must never be locked out of their data
+- **GitHub Issue**: [#62](https://github.com/Plexyer/ExpensesManager/issues/62) — closed/completed
 
-### 4. Open Database + Unlock Never Blocked (NON-NEGOTIABLE)
-- Opening an encrypted database file must never require a valid license
-- Password unlock must work regardless of license status
-- **Impact**: File/database operations are license-independent; only write actions are gated
+### 2. Open Database + Unlock Never Blocked (NON-NEGOTIABLE) — IMPLEMENTED
+- Opening an encrypted database file never requires a valid license
+- Password unlock works regardless of license status
+- **Impact**: File/database operations are license-independent; only write actions would be gated
 - **Rationale**: No data lock-in
+- **GitHub Issue**: [#63](https://github.com/Plexyer/ExpensesManager/issues/63) — closed/completed
 
-### 5. Perpetual License File Import (CONFIRMED)
-- User can import a signed license file (`.json` or `.lic`)
-- Signature verified offline using embedded public key
-- Valid license → switch to Full Mode
-- **Impact**: Need license import UI in Settings; need signature verification in Rust backend
-
-### 6. Encrypted Portable Database File (CONFIRMED)
-- Database is always encrypted with user password (SQLCipher)
+### 3. Encrypted Portable Database File (CONFIRMED) — IMPLEMENTED
+- Database is always encrypted with user password (SQLCipher with Argon2id key derivation)
 - File is portable (can be copied to other devices)
 - **Impact**: Already part of MVP security requirements; no additional work from licensing perspective
 
-### 7. License State in Redux (CONFIRMED)
-- Track current mode (full / read-only)
-- Track license type (perpetual / subscription / none)
-- Track license details (licenseId, generation, featureUpdatesUntil)
-- **Impact**: New Redux slice for license state
+---
 
-### 8. License Status Display (CONFIRMED)
+## Deferred from MVP (Out-of-Scope)
+
+These items were originally planned for MVP but have been moved out of scope:
+
+### 1. App Modes: Full vs Read-Only — DEFERRED
+- **Full Mode**: Read + Write enabled (requires valid license)
+- **Read-Only Mode**: Read + Export only (default when no license)
+- **Impact**: UI components would need to respect mode state; all write actions conditionally disabled
+- **GitHub Issue**: [#61](https://github.com/Plexyer/ExpensesManager/issues/61) — open, labeled `out-of-scope`
+- **Reason**: MVP ships as full-featured app; licensing enforcement deferred to post-MVP
+
+### 2. Read-Only Mode as Default — DEFERRED
+- App would launch in Read-Only mode if no valid license present
+- **Depends on**: App Mode Plumbing (#61)
+- **Deferred with**: #61
+
+### 3. Perpetual License File Import — DEFERRED
+- User imports a signed license file (`.json` or `.lic`)
+- Signature verified offline using embedded public key
+- **Depends on**: App Mode Plumbing (#61) — no point importing licenses if modes aren't enforced
+
+### 4. License State in Redux — DEFERRED
+- Track current mode (full / read-only), license type, license details
+- **Depends on**: App Mode Plumbing (#61)
+
+### 5. License Status Display — DEFERRED
 - Settings page shows current license status
-- Display plan type, feature updates until date
-- Import license action available
-- **Impact**: New License section in Settings UI
+- **Depends on**: License State in Redux, which depends on #61
 
 ---
 
-## Must Design Hooks for MVP (Implement Later)
+## Must Design Hooks for Post-MVP (Implement Later)
 
-These items need placeholder infrastructure in MVP to avoid rework, but full implementation is deferred.
+These items need placeholder infrastructure to avoid rework, but full implementation is deferred.
 
 ### 1. Feature Gating by Build Date
 - Gate features by `build_release_date <= feature_updates_until`
 - NEVER use system clock for eligibility
-- **MVP Hook**: Build must include release date metadata (even if feature gating logic is minimal in MVP)
+- **Hook**: Build must include release date metadata (even if feature gating logic is minimal)
 - **Full Implementation**: Deferred until features exist that need gating
 
 ### 2. Mode-Based UI Disabling
 - Write buttons/actions disabled in Read-Only mode
-- **MVP Hook**: Components should check mode before allowing actions
-- **Full Implementation**: Complete as components are built
+- **Hook**: Components should check mode before allowing actions
+- **Full Implementation**: Complete as licensing is implemented
 
 ### 3. Read-Only Banner
 - Non-intrusive banner when in Read-Only mode
 - Links to "Purchase" or "Import License"
-- **MVP Hook**: Banner component exists and displays when mode is read-only
+- **Hook**: Banner component exists and displays when mode is read-only
 - **Full Implementation**: Purchase link can be placeholder or external URL initially
 
 ---
@@ -133,15 +149,16 @@ These items are explicitly out of scope for MVP. They do not affect MVP architec
 
 | Item | MVP Status | Rationale |
 |------|------------|-----------|
-| App Modes (Full/Read-Only) | ✅ MUST IMPLEMENT | Core UX architecture |
-| Read-Only as default | ✅ MUST IMPLEMENT | Default behavior |
-| Export always available | ✅ MUST IMPLEMENT (NON-NEGOTIABLE) | No data lock-in |
-| DB unlock never blocked | ✅ MUST IMPLEMENT (NON-NEGOTIABLE) | No data lock-in |
-| License file import | ✅ MUST IMPLEMENT | Minimal licensing UI |
-| License state in Redux | ✅ MUST IMPLEMENT | State management |
-| License status display | ✅ MUST IMPLEMENT | Settings UI |
+| Export always available | ✅ IMPLEMENTED (#62 closed) | No data lock-in |
+| DB unlock never blocked | ✅ IMPLEMENTED (#63 closed) | No data lock-in |
+| Encrypted portable DB | ✅ IMPLEMENTED | SQLCipher + Argon2id |
+| App Modes (Full/Read-Only) | ❌ DEFERRED (#61 out-of-scope) | Licensing enforcement post-MVP |
+| Read-Only as default | ❌ DEFERRED | Depends on #61 |
+| License file import | ❌ DEFERRED | Depends on #61 |
+| License state in Redux | ❌ DEFERRED | Depends on #61 |
+| License status display | ❌ DEFERRED | Depends on #61 |
 | Build date metadata | 🔶 HOOK ONLY | Needed for future feature gating |
-| Mode-based UI disabling | 🔶 HOOK ONLY | Implement as components built |
+| Mode-based UI disabling | 🔶 HOOK ONLY | Implement as licensing is built |
 | Read-Only banner | 🔶 HOOK ONLY | Placeholder OK initially |
 | Payment/purchase flow | ❌ DEFERRED | Server required |
 | Subscription system | ❌ DEFERRED | Server required |
@@ -158,6 +175,6 @@ These items are explicitly out of scope for MVP. They do not affect MVP architec
 
 - **LICENSING.md**: Authoritative licensing specification
 - **LICENSING_SUMMARY.md**: Structured summary of licensing decisions
-- **QUESTIONS_FOR_USER.md**: Open licensing questions (LQ1-LQ5, all deferred)
+- **`.cursor/archive/QUESTIONS_FOR_USER.md`**: Open licensing questions (LQ1-LQ5, all deferred) — archived
 - **MVP_PLAN.md**: Phase 7.5 covers licensing implementation
-- **BACKLOG.md**: TASK-LIC-* covers licensing tasks
+- **GitHub Issues**: Safeguard issues #61, #62, #63

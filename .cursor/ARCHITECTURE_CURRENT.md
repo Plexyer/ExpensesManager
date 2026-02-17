@@ -1,564 +1,559 @@
-# Current Architecture
+# Current Architecture — IMPLEMENTED
 
-> **Last Updated**: 2026-02-06  
-> **Note**: This document contains both the TARGET architecture (planned) and CURRENT implementation status. Sections marked "(PLANNED)" describe intended design; sections marked "(IMPLEMENTED)" reflect actual code.
+> **Last Updated**: 2026-02-17
+> **Status**: All MVP features (Phases 1–11) are implemented. Phase 12 (Documentation Update) is in progress.
+
+---
 
 ## MVP Progress
 
-| Phase | Status | Notes |
-|-------|--------|-------|
-| Phase 1.1 - File Picker | ✅ DONE | Tauri dialog, Redux store, Onboarding UI |
-| Phase 1.2 - Password Creation | ✅ DONE | Password modal with zxcvbn strength, validation |
-| Phase 1.2b - Password Unlock | ✅ DONE | Unlock modal with error handling, attempt limiting |
-| Phase 1.2c - Stub File Format | ✅ DONE | Temporary plaintext `.financedb` for testing (TASK-STUB-1) |
-| Phase 1.3 - Encryption | ⏳ NEXT | TASK-1.4 (research) then TASK-1.5/1.6 |
-
-### Stub File Format (Implemented 2026-02-06)
-
-**Solution Implemented**: Temporary stub file format with Rust backend (no new dependencies).
-
-**Components**:
-- `src-tauri/src/stub_file.rs`: Tauri commands for create/read/verify stub files
-- `src/services/fileService.ts`: TypeScript wrappers for Rust commands
-- Stub files are JSON with format `financedb_stub`, version `1`, plaintext password
-
-**⚠️ MVP STUB ONLY**: Password stored in plaintext. Will be replaced by SQLCipher in Phase 1.3.
+| Phase | Name | Status | Completed |
+|-------|------|--------|-----------|
+| 1 | Foundation — File System & Encryption | DONE | 2026-02-09 |
+| 2 | Data Model — Budget Instances & Categories | DONE | 2026-02-09 |
+| 3 | Templates — Cadence & Period Application | DONE | 2026-02-09 |
+| 4 | UI — Single-Period Main Grid | DONE | 2026-02-11 |
+| 5 | Transactions — Double-Click Modal | DONE | 2026-02-11 |
+| 6 | Period Creation Flow | DONE | 2026-02-11 |
+| 7 | Export & Backup | DONE | 2026-02-11 |
+| 7.5 | Licensing & App Modes | DEFERRED | Safeguards only (#62, #63) |
+| 8 | Polish & Testing | DONE | 2026-02-12 |
+| 9 | Safeguards & Quick Fixes | DONE | 2026-02-12 |
+| 10 | Bug Fixes | DONE | 2026-02-12 |
+| 11 | Attachments | DONE | 2026-02-15 |
+| 12 | Documentation Update | IN PROGRESS | — |
 
 ---
 
-## Architecture Overview (TARGET)
+## Architecture Overview
 
 ```
-┌─────────────────────────────────────┐
-│      React Frontend (TypeScript)    │
-│  - Redux Toolkit (state)            │
-│  - React Router (routing)            │
-│  - Tailwind CSS (styling)           │
-│  - AG Grid (some grids)             │
-└──────────────┬──────────────────────┘
-               │ Tauri invoke()
-               │
-┌──────────────▼──────────────────────┐
-│      Tauri Bridge (IPC)             │
-└──────────────┬──────────────────────┘
-               │
-┌──────────────▼──────────────────────┐
-│      Rust Backend                    │
-│  - Tauri commands                    │
-│  - rusqlite (SQLite)                 │
-│  - serde (serialization)             │
-└──────────────┬──────────────────────┘
-               │
-┌──────────────▼──────────────────────┐
-│      SQLite Database                 │
-│  (unencrypted, app_data_dir)         │
-└──────────────────────────────────────┘
++---------------------------------------------+
+|         React 18 Frontend (TypeScript)       |
+|  - Redux Toolkit (4 slices)                  |
+|  - React Router DOM (MemoryRouter)           |
+|  - Tailwind CSS v4 (utility classes)         |
+|  - Custom PeriodGrid (no AG Grid)            |
+|  - react-i18next (EN, DE, HU)               |
++-----------------------+---------------------+
+                        | invoke()
+                        v
++-----------------------+---------------------+
+|            Tauri 2 Bridge (IPC)              |
++-----------------------+---------------------+
+                        |
+                        v
++-----------------------+---------------------+
+|            Rust Backend                      |
+|  - encrypted_db.rs (38 Tauri commands)       |
+|  - kdf.rs (Argon2id key derivation)          |
+|  - file_header.rs (EFM1 file format)         |
+|  - migrations.rs (schema v1-v5)              |
++-----------------------+---------------------+
+                        |
+                        v
++-----------------------+---------------------+
+|      SQLCipher-Encrypted SQLite Database     |
+|  (portable .financedb file, AES-256)         |
++---------------------------------------------+
 ```
 
 ---
 
-## Frontend Architecture (CURRENT - as of 2026-02-06)
+## Frontend Architecture
 
-### Actual Component Structure
+### Entry Point
+
+`src/main.tsx` initializes the app:
+
 ```
-App (root, src/App.tsx)
-└── Routes (MemoryRouter)
-    ├── "/" → HomePage
-    │   ├── Onboarding (when no file open)
-    │   └── File Selected View (when file open)
-    └── "/settings" → SettingsPage (placeholder)
+React.StrictMode
+  -> ErrorBoundary
+    -> Provider (Redux store)
+      -> MemoryRouter
+        -> App (routes)
 ```
 
-### Actual Redux Store
+i18n (`src/i18n/index.ts`) is initialized before rendering. Language preference is stored in `localStorage`.
+
+### Routing (`src/App.tsx`)
+
+| Path | Page Component | Purpose |
+|------|---------------|---------|
+| `/` | `DashboardPage` | Dashboard placeholder (future summary view) |
+| `/periods` | `HomePage` | Main budget grid — period list + PeriodGrid |
+| `/templates` | `TemplatesPage` | Template management — CRUD, category assignment, drag-and-drop reorder |
+| `/settings` | `SettingsPage` | Language, export, backup, period table settings |
+
+Navigation is via `AppHeader` component (`src/components/common/AppHeader.tsx`) with tab-style links.
+
+### Component Hierarchy
+
+```
+AppHeader (navigation tabs)
+
+DashboardPage
+  -> Placeholder content
+
+HomePage
+  -> Onboarding (when no file open)
+     -> PasswordCreationModal / PasswordUnlockModal
+  -> PeriodGrid (when file open)
+     -> PeriodList / PeriodCard / PeriodDetailToolbar
+     -> PeriodGridTable
+        -> PeriodGridHeader (column headers + resize handles)
+        -> PeriodGridBody (data rows + summary row)
+           -> PeriodGridRow -> PeriodGridCell
+     -> PeriodGridSkeleton (loading)
+     -> PeriodGridEmpty (empty state)
+     -> CreatePeriodModal
+     -> CategoryLedgerModal (transactions)
+        -> AttachmentIndicator -> AttachmentPopover -> AttachmentLightbox
+
+TemplatesPage
+  -> TemplateCategoryList (with @hello-pangea/dnd drag-and-drop)
+     -> TemplateCategoryItem
+
+SettingsPage
+  -> LanguageSettings
+  -> PeriodTableSettings (snap mode, spent minus)
+  -> ExportSettings
+  -> BackupSettings
+```
+
+### Redux Store (`src/store/store.ts`)
+
+4 slices combined:
+
 ```typescript
-// src/store/store.ts
 {
-  file: FileState  // filePath, fileName, isFileOpen, isLoading, error
+  file: FileState,         // filePath, fileName, isFileOpen, isLoading, error, fileInfo
+  categories: CategoryState, // globalCategories list, loading status
+  templates: TemplateState,  // templates list, loading status
+  budget: BudgetState,       // gridData, selectedCell, columnWidths, optimalWidths,
+                             //   currentBudgetInstanceId, gridDataStatus, showSpentMinus
 }
 ```
 
-### Actual Services
-- `src/services/fileService.ts` - Tauri dialog wrapper (selectNewFilePath, selectExistingFilePath)
+| Slice | File | Key Responsibilities |
+|-------|------|---------------------|
+| `fileSlice` | `src/store/slices/fileSlice.ts` | File open/close state, file path, DB info |
+| `categorySlice` | `src/store/slices/categorySlice.ts` | Global categories CRUD, loading state |
+| `templateSlice` | `src/store/slices/templateSlice.ts` | Templates + template categories, loading state |
+| `budgetSlice` | `src/store/slices/budgetSlice.ts` | Grid data, cell selection, column widths, period navigation |
+
+Typed hooks in `src/store/hooks.ts`: `useAppDispatch`, `useAppSelector`.
+
+### Services
+
+All services wrap Tauri `invoke()` calls and live in `src/services/`:
+
+| Service | File | Commands Wrapped |
+|---------|------|-----------------|
+| `fileService` | `fileService.ts` | `create_encrypted_db`, `open_encrypted_db`, `close_db`, `save_db`, `get_db_info`, `diagnose_db_file` |
+| `periodService` | `periodService.ts` | `create_period_from_template`, `list_periods`, `get_period`, `delete_period`, `get_grid_data` |
+| `categoryService` | `categoryService.ts` | `create_global_category`, `list_global_categories`, `delete_global_category` |
+| `templateService` | `templateService.ts` | Template + template category CRUD commands |
+| `lineItemService` | `lineItemService.ts` | `list_line_items`, `create_line_item`, `update_line_item`, `delete_line_item` |
+| `attachmentService` | `attachmentService.ts` | `add_attachment`, `list_attachments`, `get_attachment_counts`, `delete_attachment`, `export_attachment`, `get_attachment_data` |
+| `settingsService` | `settingsService.ts` | `get_ui_setting`, `set_ui_setting` |
+| `exportService` | `exportService.ts` | `export_to_csv`, `export_csv_to_file` |
+
+### Types (`src/types/`)
+
+| File | Types Defined |
+|------|--------------|
+| `period.types.ts` | `Period`, `GridCategoryRow`, `GetGridDataResult` |
+| `category.types.ts` | `GlobalCategory` |
+| `template.types.ts` | `Template`, `TemplateCategory` |
+| `lineItem.types.ts` | `LineItem`, `CreateLineItemArgs`, `UpdateLineItemArgs` |
+| `attachment.types.ts` | `Attachment`, `AttachmentSummary`, `AttachmentCounts` |
+
+### Hooks (`src/hooks/`)
+
+| Hook | Purpose |
+|------|---------|
+| `useAttachmentUpload` | File picker integration, 25 MB size warning, attachment upload flow |
+
+### Utilities (`src/utils/`)
+
+| File | Purpose |
+|------|---------|
+| `currency.ts` | Locale-aware `formatCurrency` via `Intl.NumberFormat` |
+| `dateFormat.ts` | Locale-aware `formatDate`/`formatTime` via `Intl.DateTimeFormat` |
+| `formatErrorMessage.ts` | User-friendly error message formatting |
+| `formatFileSize.ts` | Human-readable file size (e.g., "2.5 MB") |
+| `passwordStrength.ts` | Password strength calculation via `zxcvbn` |
+| `passwordValidation.ts` | Password validation rules (min length, match) |
+
+### Internationalization (`src/i18n/`)
+
+- `react-i18next` + `i18next` for translations
+- 3 languages: English (`en.json`), German (`de.json`), Hungarian (`hu.json`)
+- ~300+ translation keys per language
+- Language stored in `localStorage` (not in the finance file)
+- Currency and date formatting use `Intl` APIs with the selected locale
+
+### Styling
+
+- **Tailwind CSS v4** via `@tailwindcss/vite` plugin
+- All styling via utility classes — no CSS files (except `src/index.css` for Tailwind import)
+- No Headless UI, no AG Grid, no component library
+- Custom accessible components throughout
 
 ---
 
-## Frontend Architecture (TARGET - planned)
+## Backend Architecture
 
-### React Structure
+### Rust Module Structure (`src-tauri/src/`)
 
-#### Component Hierarchy
+| Module | Lines | Purpose |
+|--------|-------|---------|
+| `lib.rs` | ~82 | App initialization, plugin registration, 38 command registration, exit handler |
+| `encrypted_db.rs` | ~5,850 | All Tauri commands: DB lifecycle, CRUD for all entities, export, settings |
+| `kdf.rs` | ~231 | Argon2id key derivation (64 MB, 3 iter, 4 threads, 32-byte output) |
+| `file_header.rs` | ~312 | EFM1 file format: magic bytes, version, salt, KDF params, password hint |
+| `migrations.rs` | ~1,445 | Schema migrations v1-v5, migration runner, 9 database tables |
+| `main.rs` | ~6 | Entry point; calls `run()`, sets Windows subsystem attribute |
+
+### App Initialization (`lib.rs`)
+
 ```
-App (root)
-├── TimezoneProvider (context)
-├── Header (navigation)
-├── Sidebar (desktop)
-├── Mobile Menu (mobile)
-└── Outlet (React Router)
-    ├── Dashboard
-    ├── BudgetGrid
-    │   ├── BudgetList
-    │   ├── BudgetDetail
-    │   │   └── CategoryGrid
-    │   │       └── CategoryLedgerModal
-    │   └── CreateBudgetForm
-    ├── CategoriesPage
-    ├── TemplatesPage
-    └── Settings
-```
-
-#### State Management
-
-**Redux Store** (`src/store/store.ts`)
-```typescript
-{
-  auth: AuthState,      // Authentication state
-  budget: BudgetState,  // Budgets, categories, loading
-  expense: ExpenseState // Expenses/transactions
-}
-```
-
-**Redux Slices**:
-- `authSlice.ts` - User authentication
-- `budgetSlice.ts` - Budgets, categories, visible columns
-- `expenseSlice.ts` - Expense entries
-
-**React Context**:
-- `TimezoneContext.tsx` - Global timezone selection and date formatting
-
-#### Routing (CONFIRMED from App.tsx)
-- React Router DOM v6
-- Routes: `/`, `/budget`, `/categories`, `/templates`, `/settings`
-- Navigation via `<NavLink>` components
-
-#### Styling
-- **Tailwind CSS 4.1.11** - Utility-first CSS
-- **Headless UI** - Accessible component primitives
-- **Lucide React** - Icon library
-- **AG Grid** - Data grid for CategoryGrid
-
----
-
-## Backend Architecture (CONFIRMED)
-
-### Tauri Setup
-
-#### App Initialization (`src-tauri/src/lib.rs`)
-```rust
 tauri::Builder::default()
-    .plugin(tauri_plugin_opener::init())
-    .setup(|app| {
-        let state = init_state(&app.handle())?;
-        app.manage::<DbState>(state);
-        Ok(())
-    })
-    .invoke_handler(tauri::generate_handler![
-        // ... commands
-    ])
+  -> plugin: tauri_plugin_opener
+  -> plugin: tauri_plugin_dialog
+  -> manage: DbState::new()
+  -> invoke_handler: 38 commands from encrypted_db module
+  -> run event handler: save_if_open() on Exit (BUG-004 fix)
 ```
 
-#### Command Pattern
-- Commands defined in `src-tauri/src/modules/commands/`
-- Registered in `lib.rs` via `invoke_handler![]`
-- Frontend calls via `invoke('command_name', { args })`
-- Commands receive `State<DbState>` for database access
+### DbState
 
-### Database Layer
-
-#### Connection Management (`src-tauri/src/modules/database/mod.rs`)
 ```rust
+// encrypted_db.rs
 pub struct DbState {
-    pub path: PathBuf,  // Path to SQLite file
+    inner: Mutex<Option<OpenFileState>>,
 }
 
-impl DbState {
-    pub fn new(app: &AppHandle) -> Result<Self, DbError> {
-        let app_dir = app.path().app_data_dir()?;
-        let db_path = app_dir.join("expenses_encrypted.sqlite");
-        Ok(Self { path: db_path })
-    }
-
-    pub fn get_conn(&self) -> Result<Connection, DbError> {
-        Connection::open_with_flags(
-            &self.path,
-            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE
-        )
-    }
+struct OpenFileState {
+    conn: Connection,         // rusqlite connection to temp SQLite file
+    file_info: OpenFileInfo,  // original path, header, temp path
 }
 ```
 
-#### Schema Management
-- Schema created inline in `run_migrations()` function
-- Migrations run on `init_database` command
-- Foreign keys enabled: `PRAGMA foreign_keys = ON`
+The app extracts the encrypted SQLite data from the `.financedb` file into a temp file, opens it with SQLCipher, and writes it back on save/close/exit.
 
-#### Current Schema (CONFIRMED from database/mod.rs and migrations)
+### Command Groups (38 total)
 
-**Core Tables**:
-- `MonthlyBudgets` - Budgets (month, year, income, finished_at, name)
-- `budget_categories` - Categories per budget (category_name, allocated_amount)
-- `expenses` - Transactions (entry_type, amount, date, description, place, notes, deleted_at)
-- `BudgetChangeHistory` - Audit trail
+| Group | Commands | Count |
+|-------|----------|-------|
+| DB Lifecycle | `create_encrypted_db`, `open_encrypted_db`, `get_db_info`, `close_db`, `save_db`, `diagnose_db_file` | 6 |
+| Categories | `create_global_category`, `list_global_categories`, `delete_global_category` | 3 |
+| Templates | `create_template`, `list_templates`, `get_template`, `update_template`, `delete_template` | 5 |
+| Template Categories | `get_template_categories`, `add_category_to_template`, `remove_category_from_template`, `update_template_category_amount`, `reorder_template_categories` | 5 |
+| Periods | `create_period_from_template`, `list_periods`, `get_period`, `delete_period` | 4 |
+| Line Items | `list_line_items`, `create_line_item`, `update_line_item`, `delete_line_item` | 4 |
+| Attachments | `add_attachment`, `list_attachments`, `get_attachment_counts`, `get_attachment_summaries`, `delete_attachment`, `export_attachment`, `get_attachment_data` | 7 |
+| UI Settings | `get_ui_setting`, `set_ui_setting` | 2 |
+| Export | `export_to_csv`, `export_csv_to_file` | 2 |
+| Utilities | `get_grid_data`, `get_file_sizes` | 2 |
 
-**Template System**:
-- `budget_templates` - Template definitions
-- `template_categories` - Template → global category mappings
-- `global_categories` - Reusable category definitions
+### Error Handling Pattern
 
-**Legacy Tables** (may be unused):
-- `Users` - User accounts (username, password_hash)
-- `BudgetTemplates` - Old template table
-- `BudgetCategories` - Old category table
-- `CategoryAllocations` - Old allocation table
+All commands return `Result<T, String>`. Errors are converted to strings for the frontend via `.map_err(|e| e.to_string())`. Internal errors use `EncryptedDbError` enum with `thiserror`.
 
-### Command Implementation Pattern
+### Command Invocation Pattern
 
-#### Example: Budget Command (`src-tauri/src/modules/commands/budget.rs`)
-```rust
-#[tauri::command]
-pub fn create_monthly_budget(
-    args: CreateBudgetArgs,
-    db: State<DbState>
-) -> Result<i64, String> {
-    let conn = db.get_conn().map_err(|e| e.to_string())?;
-    // ... SQL operations
-    Ok(budget_id)
-}
 ```
-
-#### Error Handling
-- Commands return `Result<T, String>`
-- Errors converted to strings for frontend
-- Database errors wrapped in `DbError` enum
+Frontend: invoke('command_name', { arg1, arg2 })
+  -> Tauri IPC bridge
+    -> #[tauri::command] fn command_name(state: State<DbState>, arg1, arg2) -> Result<T, String>
+      -> state.inner.lock() -> get Connection
+        -> SQL operations via rusqlite prepared statements
+          -> Return Result<T, String> to frontend
+```
 
 ---
 
-## Data Flow (CONFIRMED)
+## Database Architecture
 
-### Budget Creation Flow
-1. User fills `CreateBudgetForm`
-2. Form calls `createMonthlyBudget()` from `budgetService.ts`
-3. Service calls `invoke('create_monthly_budget', { args })`
-4. Tauri routes to `create_monthly_budget` command in Rust
-5. Command opens DB connection via `DbState`
-6. Command inserts into `MonthlyBudgets` table
-7. Command returns `budget_id`
-8. Frontend updates Redux state
-9. UI refreshes to show new budget
+### Encryption
 
-### Category Grid Flow
-1. `BudgetDetail` renders `CategoryGrid` with `budgetId`
-2. `CategoryGrid` dispatches `fetchCategoriesWithStats(budgetId)`
-3. Redux thunk calls `invoke('get_budget_categories_with_stats', { budgetId })`
-4. Command queries `budget_categories` + `expenses` (aggregated)
-5. Returns category stats (allocated, spent, remaining)
-6. Redux updates `budget.categories`
-7. `CategoryGrid` renders AG Grid with data
+- **SQLCipher** via `rusqlite` with `bundled-sqlcipher` feature
+- **Argon2id** key derivation (64 MB memory, 3 iterations, 4 threads, 32-byte output key)
+- Raw hex key bypass: `PRAGMA key = "x'hex'"` (skips SQLCipher's internal PBKDF2)
+- See `ENCRYPTION_SPEC.md` for full details
+
+### File Format
+
+Each `.financedb` file has:
+1. **Plaintext header** (EFM1 magic, version, salt, KDF params, optional password hint)
+2. **Encrypted SQLite database** (SQLCipher AES-256)
+
+See `ENCRYPTION_SPEC.md` for binary layout details.
+
+### Schema (Migration v5 — 9 tables)
+
+| Table | Purpose | Migration |
+|-------|---------|-----------|
+| `_meta` | Schema version tracking | v1 |
+| `global_categories` | Unique budget categories per file | v1 |
+| `templates` | Template definitions (name, cadence, currency) | v1 |
+| `template_categories` | Template-to-category mappings with default amounts | v1 |
+| `period_budget_instances` | Concrete budget periods (start/end dates, template ref) | v1 |
+| `budget_instance_categories` | Categories within a period instance | v2 |
+| `category_line_items` | Received/spent transactions with timestamps | v3 |
+| `ui_settings` | Key-value store for user preferences | v4 |
+| `line_item_attachments` | File attachments (BLOB storage, soft-delete) | v5 |
+
+See `DATA_MODEL.md` for full column definitions and `DOMAIN_MODEL.md` for entity relationships.
+
+### Attachment Storage
+
+Attachments are stored as BLOBs directly in the SQLCipher-encrypted database:
+- Full file data in `file_data` column (no size limit enforced; 25 MB soft warning in UI)
+- Auto-generated thumbnails for images (Rust `image` crate) in `thumbnail` column
+- MIME type detection via `infer` crate
+- Soft-delete mechanism (`deleted_at` timestamp)
+- Two indexes: `idx_attachments_line_item`, `idx_attachments_deleted`
+
+---
+
+## Data Flows
+
+### Period Creation Flow
+
+```
+TemplatesPage: user selects template + date range
+  -> periodService.createPeriodFromTemplate(templateId, name, startDate, endDate)
+    -> invoke('create_period_from_template', { ... })
+      -> Rust: INSERT into period_budget_instances
+      -> Rust: Copy template_categories -> budget_instance_categories
+      -> Rust: Auto-create first received line item per category (template default amount)
+  -> Redux: fetchPeriods() to refresh period list
+  -> Navigate to new period in PeriodGrid
+```
+
+### Grid Data Loading Flow
+
+```
+HomePage: user selects a period
+  -> dispatch(setCurrentBudgetInstanceId(id))
+  -> dispatch(fetchGridData(id))
+    -> invoke('get_grid_data', { budget_instance_id })
+      -> Rust: SQL query with rollup aggregations (received_total, spent_total, remaining)
+  -> Redux: budgetSlice.gridData updated
+  -> PeriodGridTable renders rows from gridData
+```
 
 ### Transaction Entry Flow
-1. User clicks category in `CategoryGrid`
-2. Opens `CategoryLedgerModal`
-3. Modal loads transactions via `invoke('get_category_ledger', { categoryId })`
-4. User adds transaction via `invoke('add_category_entry', { args })`
-5. Command inserts into `expenses` table
-6. Modal refreshes ledger
-7. `CategoryGrid` refreshes stats
+
+```
+User double-clicks "Spent Amount" cell on "Food" row (or presses Enter)
+  -> CategoryLedgerModal opens with (budgetInstanceCategoryId, kind="spent")
+  -> Modal loads line items: invoke('list_line_items', { ... })
+  -> User adds transaction: invoke('create_line_item', { ... })
+  -> Modal refreshes line item list
+  -> On modal close: dispatch(fetchGridData(currentBudgetInstanceId))
+  -> Grid re-renders with updated rollup totals
+```
+
+### Attachment Upload Flow
+
+```
+User clicks attachment indicator in CategoryLedgerModal
+  -> AttachmentPopover opens, shows existing attachments
+  -> User clicks "Add" -> file picker (via useAttachmentUpload hook)
+  -> If file > 25 MB: FileSizeWarningDialog shown
+  -> invoke('add_attachment', { line_item_id, file_name, file_data_base64 })
+    -> Rust: detect MIME type (infer), generate thumbnail if image, INSERT BLOB
+  -> AttachmentPopover refreshes
+  -> User can click thumbnail to open AttachmentLightbox (full-screen view)
+```
 
 ---
 
-## Security Architecture (CONFIRMED)
+## Security Architecture
 
-### Current Implementation
+### Encryption (Implemented)
 
-#### Password Hashing (`src-tauri/src/modules/security/auth.rs`)
-- **Algorithm**: SHA256 (via `sha2` crate)
-- **Storage**: `Users` table, `password_hash` column
-- **Verification**: `verify_password()` function
-- **Command**: `verify_master_password` (exists but may not be used)
+| Aspect | Implementation |
+|--------|---------------|
+| Database encryption | SQLCipher (AES-256) via `rusqlite` `bundled-sqlcipher` feature |
+| Key derivation | Argon2id (64 MB memory, 3 iterations, 4 threads) |
+| Salt | 32 bytes from OS CSPRNG, stored in file header |
+| Key format | Raw hex key (`PRAGMA key = "x'hex'"`) bypasses SQLCipher PBKDF2 |
+| Password hint | Optional, plaintext in file header (max 255 bytes) |
+| File format | Custom header (EFM1 magic) + encrypted SQLite data |
 
-#### Encryption Status
-- **Database**: ❌ Unencrypted SQLite
-- **File**: ❌ No file-level encryption
-- **SQLCipher**: ❌ Not integrated
-- **Placeholder**: `src-tauri/src/modules/security/encryption.rs` (empty)
+### Security Practices
 
-### MVP Needed
-- Master password creation/unlock flow
-- SQLCipher integration OR app-level encryption
-- Encrypted portable finance files
+- Passwords never logged or stored (only used for key derivation)
+- Encryption key held in memory only during active session
+- All SQL uses parameterized queries (no injection risk)
+- Finance data never exposed in logs
+- `PRAGMA foreign_keys = ON` for referential integrity
+- Auto-save on app exit (prevents data loss — BUG-004 fix)
+
+See `ENCRYPTION_SPEC.md` for full threat model and implementation details.
 
 ---
 
-## Performance Considerations (INFERRED)
+## Testing
+
+### Automated Tests (224+ total)
+
+| Category | Framework | Count | Location |
+|----------|-----------|-------|----------|
+| Frontend utilities | Vitest + jsdom | ~57 | `src/utils/__tests__/` |
+| Frontend components | Vitest + React Testing Library | ~18 | `src/components/**/__tests__/` |
+| Frontend services | Vitest | ~14 | `src/services/__tests__/` |
+| Frontend hooks | Vitest | ~9 | `src/hooks/__tests__/` |
+| Rust backend | `#[cfg(test)]` inline modules | ~63 | `src-tauri/src/*.rs` |
+
+**Test infrastructure:**
+- `src/test/setup.ts` — Vitest setup with jsdom
+- `src/test/renderWithProviders.tsx` — Test utility wrapping components with Redux `Provider`
+- Run: `npm run test` (once) or `npm run test:watch` (watch mode)
+
+### Manual Test Plan
+
+See `TEST_PLAN.md` for comprehensive manual test plan covering all 10 MVP feature areas.
+
+---
+
+## Performance
 
 ### Current Patterns
-- **Database**: Single connection per command (no connection pooling)
-- **Frontend**: Redux caching (budgets, categories cached in store)
-- **Grid**: AG Grid used for CategoryGrid (virtualization built-in)
-- **Queries**: Direct SQL, no ORM overhead
+- Single `Mutex<Option<Connection>>` for database access (single-user desktop app)
+- Grid data cached in Redux `budgetSlice`; refetched only on period change or transaction save
+- Line items loaded lazily (on modal open, not on grid load)
+- Column widths persisted to `ui_settings` table via `settingsService`
+- No virtualization needed for MVP (grids have ~10–50 rows)
+- `React.memo` on `PeriodGridRow` for efficient re-renders
 
-### Potential Issues
-- No database connection pooling (may be fine for single-user desktop app)
-- No query optimization (indexes exist but may need more)
-- Redux state can grow large with many budgets/categories
-
----
-
-## Testing (INFERRED - not confirmed)
-
-### Current State
-- No test files found in repo scan
-- No test configuration in `package.json`
-- No Rust test modules visible
-
-### MVP Needed
-- Unit tests for critical business logic
-- Integration tests for Tauri commands
-- E2E tests for key user flows
+### Measured Targets
+- Grid load: < 100ms target, < 500ms acceptable
+- KDF (Argon2id): < 1 second on modern hardware
+- Smooth scrolling with up to 50 category rows
 
 ---
 
-## Build Pipeline (CONFIRMED)
+## Build Pipeline
 
-### Frontend Build (Vite)
-1. `npm run build` → `tsc && vite build`
-2. TypeScript compiles
-3. Vite bundles React app to `dist/`
-4. Tailwind CSS processed by PostCSS
+### Frontend (Vite)
+```
+npm run build -> tsc && vite build -> dist/
+```
+- TypeScript compiled, Vite bundles React app
+- Tailwind CSS processed via `@tailwindcss/vite` plugin
 
-### Backend Build (Cargo)
-1. `cargo build` (via Tauri CLI)
-2. Rust compiles to binary
-3. Links with Tauri runtime
+### Backend (Cargo)
+```
+cargo build (via Tauri CLI)
+```
+- Rust compiled with `bundled-sqlcipher` (first build: +5–15 min for SQLCipher compilation)
+- Links with Tauri runtime + plugins
 
-### Tauri Bundle
-1. `npm run tauri build`
-2. Frontend builds to `dist/`
-3. Rust compiles
-4. Tauri bundles into installer (Windows/MSI, macOS/DMG, Linux/AppImage)
+### Desktop Bundle
+```
+npm run tauri build -> Windows MSI installer
+```
+- Frontend `dist/` embedded in Tauri binary
+- Target: Windows 11 (MVP); macOS/Linux deferred to post-MVP
+
+### Dev Server
+```
+npm run tauri dev -> Vite dev server (port 1420) + Rust backend
+```
 
 ---
 
-## Dependencies (CONFIRMED)
+## Dependencies
 
-### Frontend (`package.json`) - Updated 2026-02-06
-- React 18.3.1
-- Redux Toolkit 2.11.2
-- React Redux 9.2.0
-- React Router DOM 7.13.0
-- Tailwind CSS 4.1.18 (via @tailwindcss/vite)
-- Tauri API 2.x
-- @tauri-apps/plugin-dialog 2.6.0
+### Frontend (`package.json`)
 
-### Backend (`src-tauri/Cargo.toml`) - Updated 2026-02-06
-- Tauri 2
-- tauri-plugin-dialog 2.6.0
-- tauri-plugin-opener 2
-- serde 1.x
-- serde_json 1.x
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `react` / `react-dom` | ^18.3.1 | UI framework |
+| `@reduxjs/toolkit` / `react-redux` | ^2.11.2 / ^9.2.0 | State management |
+| `react-router-dom` | ^7.13.0 | Client-side routing (MemoryRouter) |
+| `tailwindcss` / `@tailwindcss/vite` | ^4.1.18 | Utility-first CSS |
+| `@tauri-apps/api` | ^2 | Tauri IPC bridge |
+| `@tauri-apps/plugin-dialog` | ^2.6.0 | Native file dialogs |
+| `@tauri-apps/plugin-opener` | ^2 | File/URL opener |
+| `i18next` / `react-i18next` | ^25.8.6 / ^16.5.4 | Internationalization |
+| `@hello-pangea/dnd` | ^18.0.1 | Drag-and-drop (template category reorder) |
+| `yet-another-react-lightbox` | ^3.29.1 | Attachment lightbox viewer |
+| `zxcvbn` | ^4.4.2 | Password strength estimation |
 
----
+### Backend (`src-tauri/Cargo.toml`)
 
-## Current Implementation Status
+| Crate | Version | Purpose |
+|-------|---------|---------|
+| `tauri` | ^2 | Desktop framework |
+| `tauri-plugin-dialog` | ^2.6.0 | Native file dialogs |
+| `tauri-plugin-opener` | ^2 | File/URL opener |
+| `rusqlite` | ^0.35 (`bundled-sqlcipher`) | SQLite + SQLCipher encryption |
+| `argon2` | ^0.5 | Argon2id key derivation |
+| `rand` | ^0.8 | Cryptographic random (salt generation) |
+| `hex` | ^0.4 | Hex encoding for raw keys |
+| `serde` / `serde_json` | ^1 | Serialization |
+| `tempfile` | ^3 | Temporary file handling for DB extraction |
+| `thiserror` | ^1 | Error type definitions |
+| `image` | ^0.25 | Thumbnail generation for image attachments |
+| `infer` | ^0.16 | MIME type detection |
+| `base64` | ^0.22 | Base64 encoding for attachment data transfer |
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| File picker system | ✅ DONE | TASK-1.1 completed 2026-02-06; Tauri dialog plugin integrated |
-| Redux store | ✅ DONE | fileSlice with path/loading/error state |
-| React Router | ✅ DONE | MemoryRouter with `/` and `/settings` routes |
-| Tailwind CSS | ✅ DONE | v4 configured via Vite plugin |
-| Onboarding UI | ✅ DONE | Create/Open file buttons with native dialogs |
+### Dev Dependencies
 
----
-
-## Stub File I/O Architecture (Temporary - MVP Testing)
-
-> **⚠️ MVP STUB ONLY**: This architecture is temporary. See `.cursor/FINANCEDB_STUB_SPEC.md` for full spec.
-
-### Overview
-
-Before SQLCipher encryption is implemented, we use a simple JSON stub file to enable testing of create/open/unlock flows.
-
-```
-┌─────────────────────────────────────┐
-│      React Frontend (TypeScript)    │
-│  - PasswordCreationModal            │
-│  - PasswordUnlockModal              │
-│  - fileService.ts                   │
-└──────────────┬──────────────────────┘
-               │ Tauri FS API (read/write)
-               │
-┌──────────────▼──────────────────────┐
-│      .financedb Stub File           │
-│  {                                  │
-│    "format": "financedb_stub",      │
-│    "version": 1,                    │
-│    "master_password": "plaintext",  │
-│    "password_hint": "optional"      │
-│  }                                  │
-└─────────────────────────────────────┘
-```
-
-### Data Flow
-
-#### Create Finance File
-1. User completes password creation modal
-2. `fileService.writeStubFile(path, password, hint)` called
-3. Tauri FS API writes JSON to selected path
-4. Redux state updated: `isFileOpen = true`
-
-#### Open Finance File
-1. User selects `.financedb` file
-2. `fileService.readStubFile(path)` called
-3. File parsed, `password_hint` extracted for modal
-4. Unlock modal shown
-5. User enters password
-6. `fileService.verifyStubPassword(path, input)` compares to stored password
-7. If match → Redux state updated: `isFileOpen = true`
-8. If mismatch → error shown, retry allowed
-
-### File Location
-
-- **User-chosen**: File saved to location selected in file picker
-- **No default location**: Unlike app data, finance files are portable
-- **Extension**: `.financedb` (same as future encrypted format)
-
-### Security Model (Stub Only)
-
-| Aspect | Stub (Temporary) | Final (SQLCipher) |
-|--------|------------------|-------------------|
-| Password storage | Plaintext in JSON | Not stored (implicit in encryption) |
-| Encryption | None | AES-256 via SQLCipher |
-| Password verification | String comparison | Decryption success/failure |
-| Security level | ⚠️ NONE | ✅ Strong |
+| Package | Purpose |
+|---------|---------|
+| `vitest` ^4.0.18 | Test runner |
+| `@testing-library/react` ^16.3.2 | Component testing |
+| `@testing-library/jest-dom` ^6.9.1 | DOM matchers |
+| `@testing-library/user-event` ^14.6.1 | User interaction simulation |
+| `typescript` ~5.6.2 | Type checking |
+| `vite` ^6.0.3 | Build tool |
+| `@tauri-apps/cli` ^2 | Tauri CLI |
 
 ---
 
-## Known Architecture Gaps (for MVP)
+## Licensing Architecture (DEFERRED)
 
-1. ~~**No file picker system**~~ - ✅ Implemented (TASK-1.1)
-2. ~~**No file creation**~~ - ⏳ Stub file format (TASK-STUB-1 next)
-3. **No encryption** - Database is plaintext SQLite (stub uses plaintext JSON)
-4. **No period system** - Currently no database schema implemented
-5. **No single-period category grid (corrected design)** - No grid UI yet
-6. **No CSV export** - No export functionality exists
-7. **Template cadence not modeled** - No template system implemented yet
-8. **No licensing system** - No license state, no app mode (Full vs Read-Only), no feature gating
-9. **No database** - No rusqlite/SQLite integration yet (file path only, no actual DB operations)
+Full licensing implementation is **deferred** for MVP. Only data-access safeguards are implemented.
 
----
+### Implemented Safeguards
 
-## Licensing Architecture (CONFIRMED)
+| Safeguard | GitHub Issue | Status |
+|-----------|-------------|--------|
+| SAFEGUARD-2: Export Always Available | #62 | CLOSED — implemented |
+| SAFEGUARD-3: DB Open/Unlock Never Blocked | #63 | CLOSED — implemented |
 
-See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_MVP_IMPACTS.md` for MVP scope breakdown.
+### Deferred (Out-of-Scope for MVP)
 
-### License State Management
+| Item | GitHub Issue | Status |
+|------|-------------|--------|
+| App Mode Plumbing (Full vs Read-Only) | #61 | OPEN — `out-of-scope` |
+| License file import | — | Depends on #61 |
+| Feature gating by build date | — | Depends on #61 |
 
-```
-┌─────────────────────────────────────┐
-│      App Startup                    │
-│  1. Check for local license file    │
-│  2. Validate signature (offline)    │
-│  3. Determine app mode              │
-└──────────────┬──────────────────────┘
-               │
-       ┌───────▼────────┐
-       │ License Valid? │
-       └───────┬────────┘
-          Yes  │  No
-    ┌──────────┴──────────┐
-    ▼                     ▼
-┌────────────┐     ┌──────────────┐
-│ Full Mode  │     │ Read-Only    │
-│ (R+W)      │     │ Mode (R only)│
-└────────────┘     └──────────────┘
-```
-
-### App Mode State
-
-```typescript
-// Frontend state shape (conceptual)
-interface LicenseState {
-  mode: 'full' | 'read-only';
-  licenseType: 'perpetual' | 'subscription' | 'none';
-  licenseId: string | null;
-  generation: number | null;
-  featureUpdatesUntil: Date | null;
-  isPremium: boolean;
-  offlineModeEnabled: boolean; // Perpetual only
-}
-```
-
-### Feature Gating Logic (CONFIRMED)
-
-```rust
-// Rust backend (conceptual)
-fn is_feature_available(
-    feature_release_date: Date,
-    license: &PerpetualLicense
-) -> bool {
-    // Gate by BUILD release date, NOT system clock
-    feature_release_date <= license.feature_updates_until
-}
-```
-
-**Key rule**: NEVER use `today()` / system clock for feature eligibility. Use build metadata's release date instead.
-
-### License Artifacts (CONFIRMED)
-
-#### Perpetual License File
-```json
-{
-  "license_id": "lic_abc123",
-  "generation": 1,
-  "plan_type": "perpetual",
-  "feature_updates_until": "2031-02-06",
-  "issued_at": "2026-02-06",
-  "signature": "Ed25519_signature_here"
-}
-```
-
-#### Lease Token (Subscription - Post-MVP)
-```json
-{
-  "account_id": "acc_xyz789",
-  "subscription_paid_until": "2027-02-06",
-  "offline_allowed_until": "2026-03-08",
-  "issued_at": "2026-02-06",
-  "signature": "Ed25519_signature_here"
-}
-```
-
-### Mode Behavior Matrix
-
-| Mode | View Data | Export | Add/Edit/Delete | Requires |
-|------|-----------|--------|-----------------|----------|
-| **Full** | ✅ | ✅ | ✅ | Valid license |
-| **Read-Only** | ✅ | ✅ | ❌ | Any (default) |
-
-### Offline Mode Toggle (Perpetual Only)
-
-When enabled:
-- No server calls (no update checks, no license status check)
-- Show warning in UI
-- All base features work normally
-
-When disabled:
-- Optional update checks
-- Optional license status checks (for banner about newer generation)
-
-### Old Generation Handling (CONFIRMED)
-
-If server reports newer generation exists:
-- **Do NOT switch to Read-Only**
-- Keep Full Mode
-- Show non-intrusive banner: "A newer license version exists. Import it to continue receiving updates."
-- Block feature-update downloads only
-- Offline use continues normally
+See `LICENSING.md` for the authoritative licensing spec and `LICENSING_MVP_IMPACTS.md` for the MVP scope breakdown.
 
 ---
 
 ## References
 
-- See **REPO_MAP.md** for file locations
-- See **DATA_MODEL.md** for database schema details
-- See **PROJECT_OVERVIEW.md** for high-level overview
+- `REPO_MAP.md` — Complete file tree with descriptions
+- `DATA_MODEL.md` — Database schema details and SQL patterns
+- `DOMAIN_MODEL.md` — Entity relationships (implemented)
+- `ENCRYPTION_SPEC.md` — Encryption implementation details
+- `GRID_ARCHITECTURE.md` — Grid component hierarchy and types
+- `COLUMN_RESIZE_SPEC.md` — Column resize behavior
+- `UI_FLOWS.md` — User journeys and screen flows
+- `UX_INTERACTIONS.md` — Interaction patterns and keyboard shortcuts
+- `MVP_PLAN.md` — Phase-by-phase implementation history
+- `LICENSING.md` — Licensing specification
+- `LICENSING_MVP_IMPACTS.md` — Licensing MVP scope breakdown
+- `TEST_PLAN.md` — Manual test plan
+- `BUILD_AND_RUN.md` — Build instructions

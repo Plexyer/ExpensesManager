@@ -143,4 +143,4 @@ These questions from the licensing spec remain open:
 - `.cursor/LICENSING_SUMMARY.md` - Structured summary
 - `.cursor/PRODUCT_REQUIREMENTS.md` - Licensing user stories
 - `.cursor/ARCHITECTURE_CURRENT.md` - License state architecture
-- `.cursor/BACKLOG.md` - Licensing tasks
+- GitHub Issues - Licensing tasks

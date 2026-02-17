@@ -1,174 +1,104 @@
 # MCP Recommendations
 
 ## Overview
-Suggested Model Context Protocol (MCP) servers that would help implement the ExpensesManager MVP faster.
+Model Context Protocol (MCP) servers that are configured and used for ExpensesManager development. MCPs extend Cursor's capabilities with external tool integrations.
+
+> **Note:** MCPs are configured at the Cursor user level, not per-project. This document is a reference, not a setup script. Do not install or configure MCPs unless explicitly asked.
 
 ---
 
-## Recommended MCPs
+## Active MCPs (Currently Configured)
 
 ### 1. GitHub MCP
-**What it enables**: GitHub integration for issue tracking, PR management, code search  
-**Why useful**: 
-- Track MVP tasks as GitHub issues
-- Create PRs for each MVP feature
-- Search codebase via GitHub API
-- Manage project milestones
+**What it enables**: Full GitHub integration — issues, PRs, code search, branches, releases  
+**Status**: Active and heavily used  
+**Key capabilities**:
+- Read/create/close GitHub Issues (primary task tracker for this project)
+- Create and manage pull requests
+- Search code across the repository
+- Read commits, diffs, and file contents on remote
 
-**Setup notes**: 
-- Requires GitHub token
-- Configure in Cursor MCP settings
-- Enable repository access
-
-**Use cases**:
-- Create issues for backlog tasks
-- Link PRs to issues
-- Search code across repository
+**How we use it**:
+- All task tracking via GitHub Issues (replaced local `BACKLOG.md`)
+- Issue lifecycle: create → comment → close as completed
+- Label management (`mvp`, `enhancement`, `documentation`, `out-of-scope`)
+- Phase-based issue organization (e.g., Phase 12 documentation tasks)
 
 ---
 
 ### 2. Context7 MCP
-**What it enables**: Up-to-date documentation and code examples for libraries  
-**Why useful**:
-- Get latest Tauri documentation
-- Find React/TypeScript examples
-- Look up Rust crate documentation
-- Get Tailwind CSS examples
+**What it enables**: Up-to-date documentation and code examples for any library  
+**Status**: Active  
+**Key capabilities**:
+- Resolve library names to Context7-compatible IDs
+- Query latest documentation with code examples
+- Supports Tauri, React, Rust, Tailwind CSS, and any npm/crate library
 
-**Setup notes**:
-- Usually pre-configured in Cursor
-- No additional setup needed
-
-**Use cases**:
-- Look up Tauri API documentation
-- Find React patterns
-- Get Rust examples
-- Check library versions
+**How we use it**:
+- Look up Tauri v2 APIs (commands, file dialogs, state management)
+- React / TypeScript patterns and hooks
+- Rust crate documentation (rusqlite, serde, argon2)
+- Tailwind CSS v4 utility classes
 
 ---
 
-### 3. Browser Extension MCP
-**What it enables**: Navigate web and interact with pages  
-**Why useful**:
-- Test app in browser (dev mode)
-- Debug UI issues
-- Test user flows
-- Verify responsive design
+### 3. Browser Extension MCP (`cursor-ide-browser`)
+**What it enables**: Navigate web pages, interact with elements, take screenshots  
+**Status**: Active  
+**Key capabilities**:
+- Navigate to URLs, click, type, fill forms
+- Take accessibility snapshots and screenshots
+- Handle dialogs, scroll, drag-and-drop
+- Multi-tab management
 
-**Setup notes**:
-- Usually pre-configured
-- Requires browser extension
-
-**Use cases**:
-- Test MVP features in browser
-- Debug UI issues
-- Verify user flows
-- Test on different screen sizes
+**How we use it**:
+- Test the Tauri dev app at `http://localhost:1420`
+- Verify UI changes visually after implementation
+- Debug layout and interaction issues
+- Test user flows (file open, password entry, grid editing)
 
 ---
 
-## Optional MCPs
+### 4. Chrome DevTools MCP
+**What it enables**: Direct Chrome DevTools access — DOM inspection, console, network, performance  
+**Status**: Active  
+**Key capabilities**:
+- Take page snapshots (a11y tree) and screenshots
+- Read console messages and network requests
+- Evaluate JavaScript in the page context
+- Performance tracing (Core Web Vitals)
+- Emulate viewport, color scheme, network conditions
 
-### 4. File System MCP
-**What it enables**: Enhanced file system operations  
-**Why useful**:
-- Better file search
-- File content analysis
-- Directory operations
-
-**Setup notes**:
-- May require configuration
-- Check Cursor MCP settings
-
-**Use cases**:
-- Search codebase
-- Analyze file structure
-- Find file references
+**How we use it**:
+- Inspect live DOM state during debugging
+- Monitor console errors and warnings
+- Profile performance (trace recordings, CWV scores)
+- Test responsive layouts and dark mode
 
 ---
 
-### 5. Database MCP (if available)
-**What it enables**: Direct database access and queries  
-**Why useful**:
-- Test database queries
-- Inspect database schema
-- Verify data migrations
+## Not Needed (for MVP)
 
-**Setup notes**:
-- May not be available
-- Would need SQLite support
+### Cloud / API MCPs
+- **Not needed**: MVP is offline-first with no server infrastructure
+- **Future**: May be useful for premium features (cloud sync, bank sync)
 
-**Use cases**:
-- Test migrations
-- Verify schema
-- Inspect data
+### AI / ML MCPs
+- **Not needed**: MVP has no AI features
+- **Future**: May be useful for receipt OCR / auto-categorization (premium tier)
 
----
+### Database MCP
+- **Not available**: No MCP exists for SQLCipher-encrypted databases
+- **Workaround**: Database inspection is done via Rust backend commands and test scripts
 
-## Not Recommended (for MVP)
-
-### Cloud/API MCPs
-- **Not needed**: MVP is offline-first
-- **Future**: May be useful for premium features (cloud sync)
-
-### AI/ML MCPs
-- **Not needed**: MVP doesn't use AI features
-- **Future**: May be useful for auto-categorization (premium)
-
----
-
-## Setup Instructions
-
-### How to Enable MCPs in Cursor
-1. Open Cursor Settings
-2. Navigate to MCP section
-3. Enable desired MCPs
-4. Configure authentication (if needed)
-5. Restart Cursor
-
-### Recommended Configuration
-- ✅ **GitHub MCP**: Enable (if using GitHub)
-- ✅ **Context7 MCP**: Enable (documentation)
-- ✅ **Browser Extension MCP**: Enable (testing)
-- ⚠️ **File System MCP**: Optional
-- ❌ **Database MCP**: Not available (would be useful)
-
----
-
-## Usage Examples
-
-### Using GitHub MCP
-```
-- Create issue for TASK-1.1: "Add file picker"
-- Link PR to issue when implementing
-- Search codebase for "file dialog"
-```
-
-### Using Context7 MCP
-```
-- Look up Tauri file dialog API
-- Find React file picker examples
-- Get Rust file I/O examples
-```
-
-### Using Browser Extension MCP
-```
-- Open app in browser (localhost:1420)
-- Test file picker flow
-- Verify UI responsiveness
-```
-
----
-
-## Notes
-- MCPs are optional (MVP can be built without them)
-- Use MCPs to accelerate development, not as requirement
-- Some MCPs may require authentication/setup
-- Check Cursor documentation for latest MCP options
+### File System MCP
+- **Not needed**: Cursor's built-in file tools (Read, Write, Glob, Grep) are sufficient
+- The IDE already has full filesystem access
 
 ---
 
 ## References
-- Cursor MCP documentation
-- GitHub MCP: https://github.com/modelcontextprotocol
-- Context7 MCP: Check Cursor settings
+- [MCP Specification](https://modelcontextprotocol.io/)
+- Cursor MCP documentation (Settings → MCP section)
+- GitHub MCP: configured via `user-github` server
+- Context7 MCP: configured via `user-context7` server

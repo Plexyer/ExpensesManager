@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import Lightbox, {
   useLightboxState,
@@ -15,12 +15,9 @@ import { tempDir } from "@tauri-apps/api/path";
 
 import {
   getAttachmentData,
-  deleteAttachment,
   exportAttachment,
   pickExportPath,
 } from "../../../services/attachmentService";
-import { useAttachmentUpload } from "../../../hooks/useAttachmentUpload";
-import FileSizeWarningDialog from "../../common/FileSizeWarningDialog";
 import { formatFileSize } from "../../../utils/formatFileSize";
 import type { AttachmentMeta } from "../../../types/attachment.types";
 
@@ -35,12 +32,8 @@ interface AttachmentLightboxProps {
   attachments: AttachmentMeta[];
   /** The initial slide index to show when opening */
   initialIndex?: number;
-  /** The line item ID these attachments belong to */
-  lineItemId: number;
   /** Called when the lightbox should close */
   onClose: () => void;
-  /** Called when attachments change (add/delete) so the parent can refresh */
-  onAttachmentsChanged: () => void;
 }
 
 // ============================================================================
@@ -52,9 +45,7 @@ declare module "yet-another-react-lightbox" {
     "non-image": NonImageSlide;
   }
   interface Labels {
-    "Add files"?: string;
     "Export file"?: string;
-    "Delete attachment"?: string;
     "Open in system app"?: string;
   }
 }
@@ -78,34 +69,10 @@ const isImageMimeType = (mimeType: string): boolean => {
 // Custom Toolbar Icons
 // ============================================================================
 
-const AddIcon = createIcon(
-  "AddIcon",
-  <path
-    d="M12 4.5v15m7.5-7.5h-15"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    strokeWidth={2}
-    fill="none"
-    stroke="currentColor"
-  />
-);
-
 const ExportIcon = createIcon(
   "ExportIcon",
   <path
     d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    strokeWidth={2}
-    fill="none"
-    stroke="currentColor"
-  />
-);
-
-const DeleteIcon = createIcon(
-  "DeleteIcon",
-  <path
-    d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
     strokeLinecap="round"
     strokeLinejoin="round"
     strokeWidth={2}
@@ -120,22 +87,8 @@ const DeleteIcon = createIcon(
 
 interface ToolbarButtonProps {
   attachments: AttachmentMeta[];
-  onAdd: () => void;
   onExport: (attachment: AttachmentMeta) => void;
-  onDelete: (attachment: AttachmentMeta) => void;
-  isUploading: boolean;
 }
-
-const AddButton = ({ onAdd, isUploading }: Pick<ToolbarButtonProps, "onAdd" | "isUploading">) => {
-  return (
-    <IconButton
-      label="Add files"
-      icon={AddIcon}
-      disabled={isUploading}
-      onClick={onAdd}
-    />
-  );
-};
 
 const ExportButton = ({
   attachments,
@@ -150,23 +103,6 @@ const ExportButton = ({
       icon={ExportIcon}
       disabled={!attachment}
       onClick={() => attachment && onExport(attachment)}
-    />
-  );
-};
-
-const DeleteButton = ({
-  attachments,
-  onDelete,
-}: Pick<ToolbarButtonProps, "attachments" | "onDelete">) => {
-  const { currentIndex } = useLightboxState();
-  const attachment = attachments[currentIndex];
-
-  return (
-    <IconButton
-      label="Delete attachment"
-      icon={DeleteIcon}
-      disabled={!attachment}
-      onClick={() => attachment && onDelete(attachment)}
     />
   );
 };
@@ -270,111 +206,6 @@ const NonImageSlideRenderer = ({
 };
 
 // ============================================================================
-// Delete Confirmation Overlay
-// ============================================================================
-
-interface DeleteConfirmationProps {
-  fileName: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-  t: (key: string, options?: Record<string, unknown>) => string;
-}
-
-const DeleteConfirmation = ({
-  fileName,
-  onConfirm,
-  onCancel,
-  t,
-}: DeleteConfirmationProps) => {
-  const dialogRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    dialogRef.current?.focus();
-  }, []);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onCancel();
-      }
-    },
-    [onCancel]
-  );
-
-  return (
-    <div
-      className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/70"
-      onClick={onCancel}
-      role="presentation"
-    >
-      <div
-        ref={dialogRef}
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="delete-confirm-title"
-        aria-describedby="delete-confirm-desc"
-        tabIndex={-1}
-        onKeyDown={handleKeyDown}
-        onClick={(e) => e.stopPropagation()}
-        className="max-w-sm mx-4 p-6 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl focus:outline-none"
-      >
-        {/* Warning icon + Title */}
-        <div className="flex items-start gap-3 mb-4">
-          <div className="flex-shrink-0 mt-0.5">
-            <svg
-              className="w-6 h-6 text-red-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
-              />
-            </svg>
-          </div>
-          <h3
-            id="delete-confirm-title"
-            className="text-lg font-semibold text-white"
-          >
-            {t("attachments.deleteTitle")}
-          </h3>
-        </div>
-
-        {/* Description */}
-        <p id="delete-confirm-desc" className="text-sm text-slate-400 mb-6">
-          {t("attachments.deleteMessage", { fileName })}
-        </p>
-
-        {/* Action buttons */}
-        <div className="flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            aria-label={t("attachments.ariaCancelDeletion")}
-            className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          >
-            {t("common.cancel")}
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            aria-label={t("attachments.ariaConfirmDeletion")}
-            className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
-          >
-            {t("common.delete")}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ============================================================================
 // Slide Info Bar (filename + size — rendered as a fixed overlay)
 // ============================================================================
 
@@ -404,41 +235,26 @@ const SlideInfoBar = ({ attachment }: SlideInfoBarProps) => {
 // ============================================================================
 
 /**
- * Full-screen lightbox/gallery for browsing and managing transaction attachments.
+ * Full-screen lightbox/gallery for browsing transaction attachments.
  *
  * Features:
  * - Full-resolution image display with zoom (via `yet-another-react-lightbox`)
  * - Keyboard/arrow navigation between attachments
  * - Thumbnail strip at the bottom
- * - Toolbar: add files, export/save, delete (with confirmation)
+ * - Toolbar: export/save, close
  * - Non-image files: large file icon with "Open in system app" and "Save to disk" buttons
- * - File size warning dialog when adding large files
  */
 const AttachmentLightbox = ({
   isOpen,
   attachments,
   initialIndex = 0,
-  lineItemId,
   onClose,
-  onAttachmentsChanged,
 }: AttachmentLightboxProps) => {
   const { t } = useTranslation();
   const [index, setIndex] = useState(initialIndex);
   const [loadedDataUrls, setLoadedDataUrls] = useState<
     Record<number, string>
   >({});
-  const [deleteTarget, setDeleteTarget] = useState<AttachmentMeta | null>(null);
-
-  // Upload hook (for adding more files from within the lightbox)
-  const {
-    isUploading,
-    currentWarning,
-    handlePickAndUpload,
-    handleWarningConfirm,
-    handleWarningCancel,
-  } = useAttachmentUpload(lineItemId, () => {
-    onAttachmentsChanged();
-  });
 
   // Reset index when attachments or initialIndex changes
   useEffect(() => {
@@ -508,32 +324,6 @@ const AttachmentLightbox = ({
     }
   }, []);
 
-  const handleDeleteRequest = useCallback((attachment: AttachmentMeta) => {
-    setDeleteTarget(attachment);
-  }, []);
-
-  const handleDeleteConfirm = useCallback(async () => {
-    if (!deleteTarget) return;
-    try {
-      await deleteAttachment(deleteTarget.attachment_id);
-      setDeleteTarget(null);
-      onAttachmentsChanged();
-
-      // Adjust index if we deleted the last slide
-      if (attachments.length <= 1) {
-        onClose();
-      } else if (index >= attachments.length - 1) {
-        setIndex(Math.max(0, attachments.length - 2));
-      }
-    } catch (err) {
-      console.error("Failed to delete attachment:", err);
-    }
-  }, [deleteTarget, attachments.length, index, onAttachmentsChanged, onClose]);
-
-  const handleDeleteCancel = useCallback(() => {
-    setDeleteTarget(null);
-  }, []);
-
   const handleOpenExternal = useCallback(
     async (attachment: AttachmentMeta) => {
       try {
@@ -582,20 +372,10 @@ const AttachmentLightbox = ({
         }}
         toolbar={{
           buttons: [
-            <AddButton
-              key="add-btn"
-              onAdd={handlePickAndUpload}
-              isUploading={isUploading}
-            />,
             <ExportButton
               key="export-btn"
               attachments={attachments}
               onExport={handleExport}
-            />,
-            <DeleteButton
-              key="delete-btn"
-              attachments={attachments}
-              onDelete={handleDeleteRequest}
             />,
             "close",
           ],
@@ -650,9 +430,7 @@ const AttachmentLightbox = ({
           },
         }}
         labels={{
-          "Add files": t("attachments.addFiles"),
           "Export file": t("attachments.exportFile"),
-          "Delete attachment": t("attachments.deleteAttachment"),
           "Open in system app": t("attachments.openInApp"),
         }}
         styles={{
@@ -662,25 +440,6 @@ const AttachmentLightbox = ({
 
       {/* Slide info bar (filename + size) */}
       {isOpen && <SlideInfoBar attachment={attachments[index]} />}
-
-      {/* Delete confirmation dialog */}
-      {deleteTarget && (
-        <DeleteConfirmation
-          fileName={deleteTarget.file_name}
-          onConfirm={handleDeleteConfirm}
-          onCancel={handleDeleteCancel}
-          t={t}
-        />
-      )}
-
-      {/* File size warning dialog (from upload hook) */}
-      <FileSizeWarningDialog
-        isOpen={!!currentWarning}
-        fileName={currentWarning?.file.file_name ?? ""}
-        fileSize={currentWarning?.file.file_size ?? 0}
-        onConfirm={handleWarningConfirm}
-        onCancel={handleWarningCancel}
-      />
     </>
   );
 };

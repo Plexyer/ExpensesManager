@@ -60,23 +60,23 @@ Create a feature specification document for a new MVP feature.
 
 ### Feature: Create Period from Template
 
-**User Story**: As a user, I want to create a period from a template so I don't have to recreate envelope distributions.
+**User Story**: As a user, I want to create a period from a template so I don't have to recreate category distributions.
 
 **Acceptance Criteria**:
-- ✅ User can select template
-- ✅ User can choose cadence
-- ✅ Period created with envelopes from template
-- ✅ Default amounts copied
+- User can select template
+- User can choose cadence
+- Period created with categories from template
+- Default amounts copied
 
 **UI**: Period creation modal/form
 
-**Data Model**: Use existing `periods` table
+**Data Model**: Uses `period_budget_instances` and `budget_instance_categories` tables (schema v5)
 
-**Backend**: `create_period` command
+**Backend**: `create_period_from_template` command in `src-tauri/src/encrypted_db.rs`
 
-**Frontend**: `CreatePeriodForm.tsx`
+**Frontend**: `CreatePeriodForm.tsx` component
 
 ## References
-- **PRODUCT_REQUIREMENTS.md**: Feature requirements
 - **UI_FLOWS.md**: User flows
-- **BACKLOG.md**: Task structure
+- **GitHub Issues**: Task breakdown (labeled `mvp` + `enhancement`)
+- **MVP_PLAN.md**: Feature phases

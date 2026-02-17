@@ -6,7 +6,7 @@ model: inherit
 # Subagent: React Grid Architect
 
 ## Mission
-Design and implement the **single-period main grid** (one period budget instance at a time) where rows are categories and columns are category fields/rollups.
+Design and implement the **single-period main grid** (one period budget instance at a time) where rows are categories and columns are category fields/rollups. The grid is a **custom React table** (not AG Grid).
 
 ## Inputs Needed
 - Grid requirements (what to display)
@@ -24,25 +24,28 @@ Design and implement the **single-period main grid** (one period budget instance
 Facts:
 ```
 CONFIRMED:
-- AG Grid used in `CategoryGrid.tsx` (from `src/components/features/BudgetGrid/CategoryGrid.tsx:1`)
+- Custom PeriodGrid table in `src/components/features/BudgetGrid/PeriodGrid.tsx`
+- Supporting components: PeriodGridTable.tsx, PeriodGridCell.tsx, PeriodGridHeader.tsx
 - Redux store for grid data (from `src/store/slices/budgetSlice.ts`)
-- Tailwind CSS for styling (from `package.json`)
+- Selected cell tracked in Redux budgetSlice (selectedCell state)
+- Tailwind CSS v4 for styling (via @tailwindcss/vite plugin)
+- CategoryLedgerModal for transaction editing (double-click opens modal)
 ```
 
 ### INFERRED
 Assumptions:
 ```
 INFERRED:
-- Should use AG Grid for main grid (already in codebase)
-- Grid data loaded via Tauri command
-- Cell selection handled in component state
+- Grid data loaded via Tauri invoke commands (e.g., get_categories_for_instance)
+- Cell selection managed in Redux (budgetSlice.selectedCell)
+- Keyboard navigation may need enhancement for full Excel-like behavior
 ```
 
 ### OPEN QUESTIONS
 Unknowns:
 ```
 OPEN QUESTIONS:
-- Should grid support editing inline (or modal only)?
+- Should grid support inline editing (or modal only)?
 - What is maximum expected number of category rows per period budget instance?
 ```
 
@@ -50,47 +53,51 @@ OPEN QUESTIONS:
 Component design:
 ```
 RECOMMENDATIONS:
-1. Create `PeriodGrid.tsx` component
-2. Use AG Grid with virtualization enabled
-3. Load data via `get_grid_data` command
-4. Handle cell selection with state
-5. Double-click opens `CategoryLedgerModal`
-6. Use Tailwind for styling
+1. Extend PeriodGrid.tsx for new grid features
+2. Use existing custom table structure (no external grid library)
+3. Load data via Tauri invoke commands to encrypted_db.rs
+4. Handle cell selection via Redux budgetSlice
+5. Double-click opens CategoryLedgerModal
+6. Use Tailwind CSS v4 for all styling
 ```
 
 ### REFERENCES
 Files:
 ```
 REFERENCES:
-- src/components/features/BudgetGrid/CategoryGrid.tsx
+- src/components/features/BudgetGrid/PeriodGrid.tsx (main grid component)
+- src/components/features/BudgetGrid/PeriodGridTable.tsx
+- src/components/features/BudgetGrid/PeriodGridCell.tsx
+- src/components/features/BudgetGrid/PeriodGridHeader.tsx
 - src/components/features/BudgetGrid/CategoryLedgerModal.tsx
-- .cursor/skills/skill_ui_grid_patterns.md
+- src/store/slices/budgetSlice.ts
+- .cursor/skills/ui-grid-patterns/SKILL.md
 ```
 
 ## Process
 
 ### Step 1: Understand Requirements
 - Read UI_FLOWS.md for grid interactions
-- Read UX_INTERACTIONS.md for Excel-like behaviors
 - Read PRODUCT_REQUIREMENTS.md for grid requirements
+- Review current PeriodGrid implementation
 
 ### Step 2: Review Existing Patterns
-- Check existing grid components (CategoryGrid)
-- Understand AG Grid usage
-- Understand state management patterns
+- Check existing grid components (PeriodGrid, PeriodGridTable, PeriodGridCell, PeriodGridHeader)
+- Understand custom table implementation (HTML table + Tailwind)
+- Understand Redux state management (budgetSlice for selectedCell, grid data)
 
 ### Step 3: Design Component Structure
-- Component hierarchy
-- State management (Redux vs local)
-- Data loading strategy
-- Interaction handlers
+- Component hierarchy (PeriodGrid → PeriodGridHeader + PeriodGridTable → PeriodGridCell)
+- State management (Redux for selectedCell and budget data)
+- Data loading strategy (Tauri invoke → Redux)
+- Interaction handlers (click, double-click, keyboard)
 
 ### Step 4: Design Grid Features
-- Cell selection
+- Cell selection (Redux-managed)
 - Keyboard navigation
-- Frozen columns/rows
-- Double-click modal
-- Virtualization
+- Frozen columns/rows (via CSS sticky positioning)
+- Double-click opens CategoryLedgerModal
+- Responsive layout with Tailwind
 
 ### Step 5: Document Design
 - Component structure
@@ -102,28 +109,37 @@ REFERENCES:
 
 ### Structure
 ```typescript
-function PeriodGrid() {
-  const dispatch = useDispatch();
-  const gridData = useSelector((state) => state.budget.gridData);
-  const [selectedCell, setSelectedCell] = useState(null);
-  
+const PeriodGrid: React.FC<PeriodGridProps> = ({ instanceId }) => {
+  const dispatch = useAppDispatch();
+  const categories = useAppSelector((state) => state.budget.categories);
+  const selectedCell = useAppSelector((state) => state.budget.selectedCell);
+
   useEffect(() => {
-    dispatch(loadGridData());
-  }, [dispatch]);
-  
-  const handleCellDoubleClick = (envelopeId, periodId) => {
-    // Open modal
+    // Load categories for the period instance via Tauri invoke
+    invoke('get_categories_for_instance', { instanceId })
+      .then((data) => dispatch(setCategories(data)));
+  }, [instanceId, dispatch]);
+
+  const handleCellClick = (categoryId: number, field: string) => {
+    dispatch(setSelectedCell({ categoryId, field }));
   };
-  
+
+  const handleCellDoubleClick = (categoryId: number) => {
+    // Open CategoryLedgerModal
+  };
+
   return (
-    <AgGridReact
-      rowData={gridData.envelopes}
-      columnDefs={gridData.periodColumns}
-      onCellDoubleClicked={handleCellDoubleClick}
-      // ... other props
-    />
+    <div className="overflow-auto">
+      <PeriodGridHeader />
+      <PeriodGridTable
+        categories={categories}
+        selectedCell={selectedCell}
+        onCellClick={handleCellClick}
+        onCellDoubleClick={handleCellDoubleClick}
+      />
+    </div>
   );
-}
+};
 ```
 
 ## Definition of Done
@@ -144,7 +160,6 @@ function PeriodGrid() {
 - Simple UI components (not grid)
 
 ## References
-- **skill_ui_grid_patterns.md**: Grid patterns guide
-- **UX_INTERACTIONS.md**: Interaction patterns
+- **`.cursor/skills/ui-grid-patterns/SKILL.md`**: Grid patterns guide
 - **UI_FLOWS.md**: User flows
 - Existing grid components in `src/components/features/BudgetGrid/`

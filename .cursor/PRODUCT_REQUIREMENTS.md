@@ -34,8 +34,24 @@
    - Rollups update automatically when received/spent line items change
 
 6. **Basic Export (CSV) + Backup Guidance**
-   - CSV export of all data
+   - CSV export of all data (UTF-8 BOM for Excel compatibility)
    - Backup guidance (how to backup finance file)
+
+7. **File Attachments on Line Items** *(Phase 11)*
+   - Users can attach files (images, PDFs, documents) to any line item/transaction
+   - Attachments stored as encrypted BLOBs inside the SQLCipher database (portable with the finance file)
+   - Thumbnail generation for image attachments (Rust backend)
+   - View attachments via popover (thumbnail grid) or full-screen lightbox (gallery with zoom/navigation)
+   - Export attachments back to the file system
+   - Delete attachments with inline confirmation (soft delete)
+   - File size soft warning at 25 MB (no hard limit)
+
+8. **Internationalization (3 Languages)** *(Phase 8)*
+   - English (EN) — default
+   - German (DE)
+   - Hungarian (HU)
+   - Locale-aware currency formatting (CHF/EUR) and date formatting
+   - Language stored in app settings (localStorage), not in the finance file
 
 ---
 
@@ -56,16 +72,18 @@
 
 ---
 
-## Licensing Requirements (CONFIRMED)
+## Licensing Requirements (CONFIRMED — PARTIALLY DEFERRED)
 
 See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_MVP_IMPACTS.md` for MVP scope details.
 
 ### MVP Licensing Scope
 
-**In Scope for MVP** (see LICENSING_MVP_IMPACTS.md for details):
+**Implemented Safeguards** (non-negotiable, completed):
+- Export ALWAYS available, even in Read-Only (NON-NEGOTIABLE) — Safeguard #62 IMPLEMENTED
+- Database open/unlock NEVER blocked by license (NON-NEGOTIABLE) — Safeguard #63 IMPLEMENTED
+
+**Deferred to Post-MVP** — App Mode Plumbing (#61) moved to `out-of-scope`:
 - Read-Only mode as default (fallback when no valid license)
-- Export ALWAYS available, even in Read-Only (NON-NEGOTIABLE)
-- Database open/unlock NEVER blocked by license (NON-NEGOTIABLE)
 - Perpetual license file import/validation (offline)
 - Full Mode activation with valid license
 - Basic license status display in Settings
@@ -147,7 +165,7 @@ See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_MVP_I
 
 ## User Stories
 
-### US-1: Create Finance File
+### US-1: Create Finance File — IMPLEMENTED
 **As a** user  
 **I want to** create a new encrypted finance file  
 **So that** I can start managing my budget securely
@@ -166,7 +184,7 @@ See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_MVP_I
 
 ---
 
-### US-2: Open Finance File
+### US-2: Open Finance File — IMPLEMENTED
 **As a** user  
 **I want to** open an existing encrypted finance file  
 **So that** I can continue managing my budget
@@ -185,7 +203,7 @@ See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_MVP_I
 
 ---
 
-### US-3: Create Template
+### US-3: Create Template — IMPLEMENTED
 **As a** user  
 **I want to** create a template with envelopes and planned amounts  
 **So that** I can reuse it when creating new period budget instances
@@ -206,7 +224,7 @@ See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_MVP_I
 
 ---
 
-### US-4: Create Period from Template
+### US-4: Create Period from Template — IMPLEMENTED
 **As a** user  
 **I want to** create a new period from a template  
 **So that** I don't have to recreate envelope distributions
@@ -227,7 +245,7 @@ See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_MVP_I
 
 ---
 
-### US-5: Add Transaction via Double-Click
+### US-5: Add Transaction via Double-Click — IMPLEMENTED
 **As a** user  
 **I want to** add transactions by double-clicking a grid cell  
 **So that** I can quickly log expenses/income
@@ -246,7 +264,7 @@ See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_MVP_I
 
 ---
 
-### US-6: View Rollups in Grid
+### US-6: View Rollups in Grid — IMPLEMENTED
 **As a** user  
 **I want to** see rollups (spent/remaining) in the main grid  
 **So that** I can track my budget at a glance
@@ -266,7 +284,7 @@ See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_MVP_I
 
 ---
 
-### US-7: Export to CSV
+### US-7: Export to CSV — IMPLEMENTED
 **As a** user  
 **I want to** export my data to CSV  
 **So that** I can backup or analyze in Excel
@@ -283,7 +301,7 @@ See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_MVP_I
 
 ---
 
-### US-8: Backup Guidance
+### US-8: Backup Guidance — IMPLEMENTED
 **As a** user  
 **I want to** know how to backup my finance file  
 **So that** I don't lose my data
@@ -292,6 +310,110 @@ See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_MVP_I
 - Settings page has "Backup" section
 - Instructions shown: "Copy your finance file to a safe location"
 - File location displayed (clickable to open in file explorer)
+
+---
+
+### US-9: Attach Files to Line Items — IMPLEMENTED
+**As a** user  
+**I want to** attach files (images, PDFs, documents) to my transactions  
+**So that** I can keep receipts and supporting documents with my budget entries
+
+**Acceptance Criteria**:
+- Each line item row in the CategoryLedgerModal shows an attachment indicator
+- Clicking the indicator (or "+" icon when no attachments exist) opens the attachment popover
+- User can click "Add" in the popover to open a native file picker (multi-select)
+- Selected files upload and are stored as encrypted BLOBs in the SQLCipher database
+- Image attachments get auto-generated thumbnails (Rust backend, `image` crate)
+- MIME type auto-detected via `infer` crate
+- Indicator updates with count badge after upload
+- Attachments travel with the finance file (portable, encrypted)
+
+**Edge Cases**:
+- File > 25 MB → soft warning dialog (FileSizeWarningDialog) with "Upload Anyway" / "Cancel"
+- Zero-byte file → allowed (indicator still shows)
+- Long filename → truncated in popover/lightbox display
+- Non-image file (PDF, DOC, etc.) → file icon fallback, no thumbnail generated
+- Multiple files selected → uploaded sequentially, results reported (uploaded/skipped/errors)
+
+**Implementation Notes**:
+- Frontend: `useAttachmentUpload` hook, `AttachmentIndicator.tsx`, `FileSizeWarningDialog.tsx`
+- Backend: `add_attachment` command in `encrypted_db.rs`, thumbnail generation, MIME detection
+- Types: `AttachmentMeta`, `AttachmentSummary`, `FileMetaInfo` in `attachment.types.ts`
+- Soft limit constant: `FILE_SIZE_SOFT_LIMIT = 25 * 1024 * 1024` in `formatFileSize.ts`
+
+---
+
+### US-10: View Attachments — IMPLEMENTED
+**As a** user  
+**I want to** view my attached files  
+**So that** I can review receipts and documents without leaving the app
+
+**Acceptance Criteria**:
+- Clicking the attachment indicator opens a popover (320px wide, max 400px tall)
+- Popover shows a list of attachments with thumbnails/icons, filename, and file size
+- Clicking "View" on an image opens a full-screen lightbox gallery
+- Lightbox supports zoom, keyboard/arrow navigation, and a thumbnail strip
+- Clicking "View" on a non-image file opens it in the system default app
+- Popover closes on outside click or Escape key
+- Lightbox closes on Escape key or close button
+
+**Edge Cases**:
+- Single image → lightbox opens directly (no navigation arrows)
+- Non-image file in lightbox → large file icon with "Open in system app" and "Save to disk" buttons
+- No attachments → indicator shows "+" icon, popover opens with "Add files" prompt
+
+**Implementation Notes**:
+- Frontend: `AttachmentPopover.tsx`, `AttachmentLightbox.tsx` (uses `yet-another-react-lightbox`)
+- Batch queries: `getAttachmentSummaries()` for efficient indicator rendering (count + first thumbnail)
+- Full data loaded on demand: `getAttachmentData()` returns base64 data URL for lightbox
+
+> **Note**: The original plan included a separate Settings toggle for popover vs. lightbox mode (TASK-11.10 / #95). This was removed in favor of a **unified flow**: popover for quick access and management, lightbox for full-screen image viewing. The two modes complement each other rather than being alternatives.
+
+---
+
+### US-11: Export Attachment to File System — IMPLEMENTED
+**As a** user  
+**I want to** export an attachment back to my file system  
+**So that** I can use the original file outside the app
+
+**Acceptance Criteria**:
+- Export button available in the attachment popover (per-attachment)
+- Export button available in the lightbox view
+- Clicking "Export" opens a native save dialog with the original filename as default
+- File is written to the chosen location from the encrypted database BLOB
+- Success/error feedback provided
+
+**Edge Cases**:
+- User cancels save dialog → no file written, no error
+- Disk full or write permission error → error message shown
+- Exporting non-image file → same flow (save dialog → file written)
+
+**Implementation Notes**:
+- Backend: `export_attachment` command reads BLOB from DB, writes to `save_path`
+- Frontend: `attachmentService.exportAttachment()` + `attachmentService.pickExportPath()`
+
+---
+
+### US-12: Delete Attachment — IMPLEMENTED
+**As a** user  
+**I want to** delete an attachment I no longer need  
+**So that** I can keep my finance file tidy and reduce file size
+
+**Acceptance Criteria**:
+- Delete button available per-attachment in the popover
+- Clicking "Delete" shows an inline confirmation prompt within the popover
+- Confirming deletes the attachment (soft delete — sets `deleted_at` timestamp)
+- Attachment count badge updates immediately
+- If all attachments deleted, indicator reverts to "+" icon
+
+**Edge Cases**:
+- Cancel delete confirmation → no action taken
+- Delete last attachment → popover stays open, shows empty state with "Add files" prompt
+- Soft-deleted attachments are excluded from all queries (filtered by `deleted_at IS NULL`)
+
+**Implementation Notes**:
+- Backend: `delete_attachment` command sets `deleted_at` timestamp (soft delete)
+- Frontend: Inline confirmation in `AttachmentPopover.tsx`
 
 ---
 
@@ -330,6 +452,35 @@ See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_MVP_I
 - **No templates**: Show message, link to create template
 - **No periods**: Show empty grid with "Create Period" button
 - **No transactions**: Show 0 in grid cells
+- **No attachments**: Show "+" icon on attachment indicator
+
+### Attachments — Large Files
+- **Scenario**: User selects a file larger than 25 MB
+- **Solution**: Show warning dialog (FileSizeWarningDialog) with file name, size, and 25 MB soft limit
+- **Options**: "Upload Anyway" (proceed) or "Cancel" (skip file)
+- **No hard limit**: Users can always upload if they choose to
+
+### Attachments — Zero-Byte Files
+- **Scenario**: User attaches a zero-byte file
+- **Solution**: Allow upload (no validation error); indicator shows count; popover shows filename with "0 B" size
+
+### Attachments — Long Filenames
+- **Scenario**: Attachment filename is very long
+- **Solution**: Truncate display in popover and lightbox; full filename available as tooltip; original filename preserved in database and on export
+
+### Attachments — Non-Image Files
+- **Scenario**: User attaches a PDF, DOC, XLS, or other non-image file
+- **Solution**: No thumbnail generated; file icon fallback shown in indicator and popover
+- **Viewing**: "View" action opens the file in the system default application
+- **Lightbox**: Shows large file icon with "Open in system app" and "Save to disk" buttons
+
+### Attachments — Duplicate Filenames
+- **Scenario**: User attaches multiple files with the same name
+- **Solution**: Each attachment has a unique `attachment_id`; duplicates allowed; all shown in popover list
+
+### Attachments — Deleted Parent Line Item
+- **Scenario**: User deletes a line item that has attachments
+- **Solution**: Attachments cascade with the parent line item (soft-deleted line items hide their attachments from queries)
 
 ---
 
@@ -338,6 +489,7 @@ See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_MVP_I
 ### Initial Languages (MVP)
 - **English** (EN) - default
 - **German** (DE)
+- **Hungarian** (HU)
 
 ### Language Storage (CONFIRMED)
 - Language preference stored in **app settings (localStorage)**, NOT in finance file
@@ -392,17 +544,26 @@ See `.cursor/LICENSING.md` for authoritative source and `.cursor/LICENSING_MVP_I
 ### Keyboard Navigation
 - **Grid**: Arrow keys to navigate cells
 - **Modal**: Tab to navigate fields, Enter to save, Esc to cancel
+- **Popover**: Escape to close, Tab to navigate actions
+- **Lightbox**: Arrow keys for prev/next, Escape to close
+- **Attachment indicator**: Enter/Space to open popover
 - **Focus**: Visible focus indicators
 
 ### Screen Readers
 - **Labels**: All inputs have aria-labels
 - **Roles**: Grid has role="grid", cells have role="gridcell"
 - **Announcements**: Changes announced (e.g., "Transaction added")
+- **Attachment indicator**: `aria-label` includes attachment count
 
 ---
 
 ## References
 
+- See **MVP_PLAN.md** for implementation roadmap and phase details
 - See **UI_FLOWS.md** for user journey flows
 - See **UX_INTERACTIONS.md** for interaction patterns
-- See **MVP_PLAN.md** for implementation roadmap
+- See **DATA_MODEL.md** for database schema (9 tables, migration v5)
+- See **ARCHITECTURE_CURRENT.md** for technical architecture
+- See **TEST_PLAN.md** for manual and automated test coverage
+- See **LICENSING.md** for authoritative licensing spec
+- See **LICENSING_MVP_IMPACTS.md** for MVP licensing breakdown

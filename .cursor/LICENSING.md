@@ -263,9 +263,9 @@ Rationale: prevents punishing honest users who recovered/reissued their license 
 
 ## 12. Open Questions (If needed later)
 
-- Exact encryption technology for the portable DB (likely SQLite encryption).
-- Payment provider choice and webhook integration.
-- Whether Premium requires Basic Paid OR Perpetual (current: Premium requires Base access, either).
-- Final policy on “bugfix updates forever” distribution mechanics.
+- ~~Exact encryption technology for the portable DB~~ — **RESOLVED**: SQLCipher with Argon2id key derivation (implemented in Phase 1).
+- Payment provider choice and webhook integration. *(Deferred — post-MVP)*
+- ~~Whether Premium requires Basic Paid OR Perpetual~~ — **RESOLVED**: Premium requires Base access (either Perpetual OR Basic Paid). Confirmed.
+- Final policy on “bugfix updates forever” distribution mechanics. *(Deferred — post-MVP)*
 
 ---

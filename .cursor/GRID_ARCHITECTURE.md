@@ -2,7 +2,7 @@
 
 > **Task**: TASK-4.1: Design Grid Component  
 > **Created**: 2026-02-07  
-> **Status**: CONFIRMED
+> **Status**: IMPLEMENTED
 
 ---
 
@@ -70,37 +70,41 @@ The main grid displays **one period budget instance at a time**. Each row repres
 
 ```
 src/components/features/BudgetGrid/
-├── PeriodGrid.tsx              # Top-level container: data loading, selection, keyboard, modal trigger
-├── PeriodGridTable.tsx         # Semantic <table> with role="grid", scroll wrapper
-├── PeriodGridHeader.tsx        # <thead>: column headers with sticky positioning
+├── PeriodGrid.tsx              # Top-level container: data loading, period selector
+├── PeriodGridTable.tsx         # Semantic <table> with role="grid", scroll wrapper, keyboard handler, selection
+├── PeriodGridHeader.tsx        # <thead>: column headers with sticky positioning, resize handles
 ├── PeriodGridBody.tsx          # <tbody>: maps rows, renders PeriodGridRow + totals row
 ├── PeriodGridRow.tsx           # <tr>: one cell per column, click/dblclick handlers
 ├── PeriodGridCell.tsx          # <td>: role="gridcell", formatted value, color, tooltip
 ├── PeriodGridSkeleton.tsx      # Loading skeleton (same table layout, placeholder cells)
 ├── PeriodGridEmpty.tsx         # Empty state when no periods/categories exist
-└── types.ts                    # GridColumnId, SelectedCell, column config types
+├── AttachmentIndicator.tsx     # 📎 icon showing attachment count per line item
+├── AttachmentPopover.tsx       # Popover listing thumbnails/details when indicator is clicked
+├── AttachmentLightbox.tsx      # Full-screen image/file viewer opened from popover
+├── CategoryLedgerModal.tsx     # Modal for viewing/editing line items, includes attachment management
+└── types.ts                    # GridColumnId, SelectedCell, ColumnWidths, column config types + constants
 ```
 
 ### Component Responsibilities
 
 #### `PeriodGrid` (Container)
-- Fetches grid data via `getGridData(budgetInstanceId)` from `fileService.ts`
+- Fetches grid data via `fetchGridData(budgetInstanceId)` async thunk
 - Dispatches Redux actions to store/update grid data
-- Owns local state: `selectedCell`, `ledgerModal`
-- Registers keyboard handler (`useEffect` on `keydown`)
 - Renders: `PeriodGridSkeleton` when loading, `PeriodGridEmpty` when no data, `PeriodGridTable` with data
-- Passes `selectedCell`, `onSelectCell`, `onOpenLedger` down to children
+- Delegates selection, keyboard navigation, and modal management to `PeriodGridTable`
 
 #### `PeriodGridTable` (Layout)
 - Renders a scrollable wrapper `<div>` with `overflow-auto` and constrained height
 - Renders a single `<table>` with `role="grid"`, `aria-label`, and `tabIndex={0}`
 - Composes `PeriodGridHeader` and `PeriodGridBody`
 
-#### `PeriodGridHeader` (Column Headers)
+#### `PeriodGridHeader` (Column Headers + Resize Handles)
 - Renders `<thead>` with one `<tr>` containing `<th>` for each column
 - First `<th>` gets `sticky left-0` + `sticky top-0` (corner cell)
 - All `<th>` get `sticky top-0` for frozen header row
 - Displays column names: Category | Received Date | Received Amount | Spent Amount | Remaining
+- Renders resize handles between resizable columns (see `COLUMN_RESIZE_SPEC.md`)
+- Handles mouse drag, keyboard resize (Arrow keys when focused), and snap-to-content logic
 
 #### `PeriodGridBody` (Rows)
 - Maps `rows[]` to `<PeriodGridRow>` components
@@ -130,6 +134,12 @@ src/components/features/BudgetGrid/
 - "Create Period" call-to-action button
 - If periods exist but no categories: "No categories in this period."
 
+#### `AttachmentIndicator` (Attachment Count Badge)
+- Rendered inside `CategoryLedgerModal` next to each line item
+- Displays a 📎 icon with attachment count if attachments > 0
+- Click opens `AttachmentPopover` for that line item
+- See `UI_FLOWS.md` Flow 13–15 for full attachment flows
+
 #### `types.ts` (Grid Types)
 
 ```typescript
@@ -156,7 +166,7 @@ export interface SelectedCell {
   columnId: GridColumnId;
 }
 
-/** Ledger modal state (which category + received/spent) */
+/** Ledger modal state — which category + received/spent */
 export interface LedgerModalState {
   budgetInstanceCategoryId: number;
   kind: "received" | "spent";
@@ -170,17 +180,48 @@ export interface GridColumnConfig {
   openable: boolean;
   /** Alignment: "left" for text, "right" for numbers */
   align: "left" | "right";
+  /** Whether this column is frozen/sticky during horizontal scroll */
+  frozen: boolean;
+  /** Whether the column has resize handles and user-adjustable width */
+  resizable: boolean;
+  /** Default width in pixels */
+  defaultWidth: number;
 }
+
+/** Minimum column width in pixels (prevents columns from being dragged to zero). */
+export const MIN_COLUMN_WIDTH = 60;
 
 /** Column configuration for rendering */
 export const COLUMN_CONFIG: readonly GridColumnConfig[] = [
-  { id: "category", label: "Category", openable: false, align: "left" },
-  { id: "received_date", label: "Received Date", openable: false, align: "left" },
-  { id: "received_amount", label: "Received Amount", openable: true, align: "right" },
-  { id: "spent_amount", label: "Spent Amount", openable: true, align: "right" },
-  { id: "remaining", label: "Remaining", openable: false, align: "right" },
+  { id: "category",        label: "Category",        openable: false, align: "left",  frozen: true,  resizable: false, defaultWidth: 200 },
+  { id: "received_date",   label: "Received Date",   openable: false, align: "left",  frozen: true,  resizable: false, defaultWidth: 160 },
+  { id: "received_amount", label: "Received Amount",  openable: true,  align: "right", frozen: false, resizable: true,  defaultWidth: 150 },
+  { id: "spent_amount",    label: "Spent Amount",     openable: true,  align: "right", frozen: false, resizable: true,  defaultWidth: 150 },
+  { id: "remaining",       label: "Remaining",        openable: false, align: "right", frozen: false, resizable: false, defaultWidth: 150 },
 ] as const;
+
+/** Index of the last frozen column (used to apply right-side shadow separator) */
+export const LAST_FROZEN_COL_INDEX = COLUMN_CONFIG.reduce<number>(
+  (last, col, i) => (col.frozen ? i : last), -1
+);
+
+/** Map of column IDs to their current widths in pixels. */
+export type ColumnWidths = Record<GridColumnId, number>;
+
+/** Partial map of column IDs to their optimal (content-fit) widths. */
+export type OptimalWidths = Partial<Record<GridColumnId, number>>;
+
+/** The grid font string used for measureText calculations. */
+export const GRID_FONT = '14px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+
+/** Horizontal cell padding in pixels (px-4 = 16px each side = 32px total). */
+export const CELL_PADDING = 32;
+
+/** Extra buffer in pixels for measureText inaccuracies. */
+export const MEASURE_BUFFER = 4;
 ```
+
+> **Note**: The `MAGNETIC_THRESHOLD = 8` constant used for snap-to-content resize is defined locally in `PeriodGridHeader.tsx`.
 
 ---
 
@@ -216,17 +257,30 @@ interface BudgetState {
 - Period changes (user navigates to different period)
 - Modal saves/deletes line items (modal close → dispatch `fetchGridData`)
 
-### Local React State (UI-Only)
+### Redux (Additional UI State)
 
-These stay in `PeriodGrid` component, NOT in Redux:
+The `budgetSlice` also manages the following grid-related UI state:
 
 ```typescript
-// In PeriodGrid.tsx
-const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);
+// In budgetSlice.ts
+selectedCell: SelectedCell | null;       // Currently selected grid cell
+columnWidths: ColumnWidths;              // Per-column widths (persisted via settingsService)
+optimalWidths: OptimalWidths;            // Content-fit widths for snap resize
+showSpentMinus: boolean;                 // Whether spent amounts display minus sign
+```
+
+**Why Redux for `selectedCell`**: The selection state needs to be cleared when the period changes or grid data reloads, which is dispatched from `budgetSlice` reducers (e.g., `setCurrentBudgetInstanceId`, `fetchGridData.pending`).
+
+### Local React State (UI-Only)
+
+Stays in `PeriodGrid` component, NOT in Redux:
+
+```typescript
+// In PeriodGrid.tsx (or PeriodGridTable.tsx)
 const [ledgerModal, setLedgerModal] = useState<LedgerModalState | null>(null);
 ```
 
-**Why local**: Selection and modal state are transient UI concerns. They don't need to persist across navigation or be shared with other components. Keeping them local simplifies the store and avoids unnecessary re-renders.
+**Why local**: Modal open/close state is a transient UI concern that doesn't need to persist or be shared.
 
 ---
 
@@ -351,7 +405,7 @@ Single `useEffect` in `PeriodGrid` that registers a `keydown` listener on the gr
 | `ArrowUp` | Move selection to previous row | Grid focused, no modal |
 | `Tab` | Next cell (right, wrap to next row) | Grid focused, no modal |
 | `Shift+Tab` | Previous cell (left, wrap to previous row) | Grid focused, no modal |
-| `Enter` | Move down (same as ArrowDown) | Grid focused, no modal |
+| `Enter` | Open ledger modal (if openable cell), else move down | Grid focused, no modal |
 | `F2` | Open ledger modal for current cell | Cell is received_amount or spent_amount |
 | `Escape` | Close modal (if open) OR deselect cell | Always |
 | `Ctrl+Home` | Select first cell (row 0, category column) | Grid focused |
@@ -665,9 +719,10 @@ If sorting, filtering, or column visibility features are needed:
 
 ## References
 
-- **UX_INTERACTIONS.md** — Excel-like interaction patterns
-- **UI_FLOWS.md** — Flow 5 (Main Grid Interactions), Flow 6 (Transaction Entry Modal)
-- **PRODUCT_REQUIREMENTS.md** — MVP columns, rollup requirements
-- **DATA_MODEL.md** — `GridCategoryRow` schema, rollup SQL queries
+- **UX_INTERACTIONS.md** — Excel-like interaction patterns, column resize, attachment interactions
+- **UI_FLOWS.md** — Flow 5 (Main Grid Interactions), Flow 6 (Transaction Entry), Flows 13–15 (Attachments)
+- **COLUMN_RESIZE_SPEC.md** — Detailed column resize behavior and implementation
+- **DATA_MODEL.md** — `GridCategoryRow` schema, rollup SQL queries, Attachment entity
+- **DOMAIN_MODEL.md** — Entity relationships (LineItem → Attachment)
 - **RULES.md** — Coding standards, state management conventions
 - **skills/ui-grid-patterns/SKILL.md** — Grid UI patterns reference

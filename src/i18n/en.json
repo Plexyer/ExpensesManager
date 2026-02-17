@@ -174,13 +174,7 @@
     "preview": "Preview",
     "previewOn": "CHF -125.00",
     "previewOff": "CHF 125.00",
-    "attachments": "Attachments",
-    "attachmentsDesc": "Choose how attached files are displayed when viewing transaction attachments.",
-    "attachmentViewMode": "Attachment view mode",
-    "attachmentPopover": "Compact Popup",
-    "attachmentPopoverDesc": "Show attachments in a compact popup near the transaction row. Best for quick browsing.",
-    "attachmentLightbox": "Full-Screen Gallery",
-    "attachmentLightboxDesc": "Show attachments in a full-screen gallery with zoom and navigation. Best for detailed viewing."
+    "attachments": "Attachments"
   },
   "export": {
     "title": "Export",
