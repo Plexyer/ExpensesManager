@@ -29,40 +29,36 @@ SCOPE GUARDRAILS
 - Do not introduce new architecture unless required to complete the task.
 - If you discover missing info that blocks correct implementation, STOP and ask under "NEEDED_FROM_USER" rather than guessing.
 
-PROJECT CONSTRAINTS (must respect)
-- Storage: single portable encrypted finance file
-  - Encrypted SQLite file (SQLCipher preferred).
-  - Master password required to create/open.
-- MVP scope only:
-  - No custom columns, no reconciliation, no PDF reports, no advanced imports.
-- Envelope-first with one "Account" column included.
+CONTEXT GATHERING (REQUIRED)
+Before making changes, you MUST read these `.cursor/` files to understand the project and its conventions:
+1) `.cursor/RULES.md` — Coding standards, security rules, testing rules, no-guessing policy. **Highest priority — these rules override any assumptions.**
+2) `.cursor/PROJECT_OVERVIEW.md` — Full project context: tech stack, current state, all implemented features, component inventory, 38 backend commands, schema summary.
+3) `.cursor/ARCHITECTURE_CURRENT.md` — Detailed current architecture: frontend components, backend modules, state management patterns, service layer, database access patterns.
+4) `.cursor/DATA_MODEL.md` — Database schema: 9 tables, 16 indexes, migration history (v1–v5), column definitions, foreign key relationships.
+5) `.cursor/BUILD_AND_RUN.md` — How to build, test (`npm run test`, `cargo test`), and run the app. Test infrastructure details.
+6) `.cursor/MVP_PLAN.md` — Implementation roadmap with all phases and completed tasks.
+7) `.cursor/agents.md` — Subagent mapping, delegation rules, CONFIRMED/INFERRED output format conventions.
+8) `.cursor/MCP_RECOMMENDATIONS.md` — Reference only; do not install/configure MCPs unless I explicitly ask.
 
-MANDATORY: USE THE `.cursor/` SYSTEM
-Before making changes, you MUST consult and follow these (if they exist):
-1) `.cursor/RULES.md` (highest priority)
-2) `.cursor/MVP_PLAN.md`
-3) Relevant `.cursor/commands/` runbooks
-4) Relevant `.cursor/skills/` playbooks
-5) `.cursor/agents.md` + relevant `.cursor/agents/*` subagents
-6) `.cursor/MCP_RECOMMENDATIONS.md` (reference only; do not install/configure MCPs unless I explicitly ask)
+Depending on the task domain, also consult:
+- `.cursor/commands/command_add_tauri_command.md` — Pattern for adding Rust Tauri commands to `encrypted_db.rs`
+- `.cursor/commands/command_add_db_migration.md` — Pattern for adding DB migrations to `migrations.rs`
+- `.cursor/commands/command_add_ui_component.md` — Pattern for adding React/TypeScript UI components
+- `.cursor/commands/command_add_tests.md` — Test patterns (Vitest + `renderWithProviders`)
+- `.cursor/skills/` playbooks — Domain-specific guides (grid patterns, encryption, i18n, export, etc.)
 
 SUBAGENT POLICY (IMPORTANT)
 - You SHOULD spin up subagents when the selected task touches their domain OR risk is non-trivial.
 - Use only the minimum number needed.
 - Subagents advise; YOU implement.
-- Typical mapping:
-  - DB/encryption/schema → `sqlite_encryption_designer`, `data_modeler`
-  - UI grid/modal → `react_grid_architect`, `ux_flow_writer`
-  - Security/privacy → `security_privacy_reviewer`
-  - Performance-sensitive UI → `performance_specialist`
-  - Test approach → `testing_qa`
-  - Export → `export_csv_engineer`
+- See `.cursor/agents.md` for the full subagent-to-domain mapping and delegation rules.
 
 TASK IMPLEMENTATION POLICY (REQUIRED — USES GITHUB)
 Before implementing:
-1) Use the GitHub MCP to read the selected task issue by its number (e.g., `#37`).
-2) Confirm the issue is still open (not already closed/completed).
-3) If the issue is closed or cannot be found, STOP and ask.
+1) Re-read the plan from the most recent `plan-mvp-next` output. Extract: acceptance criteria, implementation approach, files to change, and any subagent recommendations.
+2) Use the GitHub MCP to read the selected task issue by its number (e.g., `#37`).
+3) Confirm the issue is still open (not already closed/completed).
+4) If the issue is closed or cannot be found, STOP and ask.
 
 During implementation:
 - Optionally add a comment to the GitHub issue noting work has started.
@@ -86,16 +82,19 @@ If blocked / incomplete:
 
 WORKFLOW (follow in order)
 1) RESTATE THE TASK
+- Re-read the plan from the `plan-mvp-next` output.
 - Re-state the selected task (GitHub issue number + title) and acceptance criteria.
 
 2) PRE-CHECK ON GITHUB
 - Use the GitHub MCP to read the issue and confirm it is still open.
 - If it is already closed, STOP and tell me (do not implement again).
 
-3) CONTEXT CHECK (repo + cursor docs)
-- Identify exact integration points:
-  - React components/state, Tauri commands, Rust modules, DB layer, migrations, etc.
-- Confirm conventions (format/lint/build) used by repo.
+3) CONTEXT CHECK
+- Read the files listed in CONTEXT GATHERING above (at minimum: `RULES.md`, `PROJECT_OVERVIEW.md`, `ARCHITECTURE_CURRENT.md`).
+- Identify exact integration points using `ARCHITECTURE_CURRENT.md` (frontend components, backend commands, services).
+- Identify schema details using `DATA_MODEL.md` (tables, columns, migrations).
+- Confirm coding conventions from `RULES.md` (TypeScript patterns, Rust patterns, Tailwind, accessibility).
+- Consult relevant `.cursor/commands/` runbooks for implementation patterns.
 
 4) DECIDE IF SUBAGENTS ARE NEEDED
 - List which subagents you will invoke (if any) and why.
@@ -103,21 +102,31 @@ WORKFLOW (follow in order)
 
 5) IMPLEMENTATION (smallest possible change set)
 - Implement only what's needed to satisfy acceptance criteria.
-- Respect existing conventions.
+- Respect existing conventions from `RULES.md`.
 - Add basic error handling + user-visible feedback where relevant.
 - Do not add new dependencies without approval.
 
 6) TESTING
-- If the repo has tests, add/adjust the most relevant minimal tests.
-- If not, provide a thorough manual test checklist.
+- Run `npm run test` to verify no regressions after your changes.
+- If the task warrants new tests, add them following the patterns in `.cursor/commands/command_add_tests.md`:
+  - Frontend: Vitest + React Testing Library + `renderWithProviders` from `src/test/test-utils.tsx`
+  - Backend: Inline `#[cfg(test)]` modules in Rust source files
+- If automated tests are not feasible, provide a thorough manual test checklist.
 
 7) SELF-REVIEW
 - Verify scope: no extra features.
 - Verify security: no secrets logged; no sensitive finance data exposed.
-- Verify MVP constraints respected.
+- Verify conventions: code follows `RULES.md` standards.
 - Verify no new dependencies added.
+- Verify tests pass: `npm run test` runs clean.
 
-8) UPDATE GITHUB ISSUE (REQUIRED)
+8) UPDATE DOCUMENTATION (if needed)
+- If your changes affect architecture (new components, new services, new commands): update `.cursor/ARCHITECTURE_CURRENT.md`.
+- If your changes affect the database schema (new tables, new columns, new migrations): update `.cursor/DATA_MODEL.md`.
+- If your changes add major features or commands: update `.cursor/PROJECT_OVERVIEW.md`.
+- If no documentation changes are needed, skip this step.
+
+9) UPDATE GITHUB ISSUE (REQUIRED)
 - Add a comment with "Implementation Notes" to the GitHub issue.
 - Close the issue as completed (ONLY if all acceptance criteria are met).
 - If blocked, add a comment explaining and keep the issue open.
@@ -151,8 +160,14 @@ F) HOW TO VERIFY (manual)
 G) TESTS
 - Tests added/updated (or "none" + why)
 - If none: "Future test suggestion" (1–3 bullets)
+- Test suite status: `npm run test` result (pass/fail)
 
-H) NOTES / FOLLOW-UPS
+H) DOCUMENTATION UPDATED
+- `.cursor/ARCHITECTURE_CURRENT.md`: yes/no (reason)
+- `.cursor/DATA_MODEL.md`: yes/no (reason)
+- `.cursor/PROJECT_OVERVIEW.md`: yes/no (reason)
+
+I) NOTES / FOLLOW-UPS
 - Follow-up tasks or bugs (GitHub issue numbers if applicable)
 - Risks introduced + mitigations
 - NEEDED_FROM_USER (only if you had to stop)

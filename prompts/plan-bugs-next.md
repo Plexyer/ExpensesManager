@@ -17,13 +17,22 @@ TRACKING POLICY (IMPORTANT)
 - Do NOT read, update, or reference `.cursor/Bugs.md` or `.cursor/BACKLOG.md` for bug information.
 - The single source of truth for bugs is the GitHub issue tracker.
 
-MANDATORY: USE THE `.cursor/` SYSTEM
-Before planning, you MUST consult and follow these (if they exist):
-1) `.cursor/RULES.md` (highest priority)
-2) `.cursor/MVP_PLAN.md`
-3) Relevant `.cursor/commands/` runbooks
-4) Relevant `.cursor/skills/` playbooks
-5) `.cursor/agents.md` + relevant `.cursor/agents/*` subagents
+CONTEXT GATHERING (REQUIRED)
+Before planning, you MUST read these `.cursor/` files to understand the project. Read them in this order:
+1) `.cursor/PROJECT_OVERVIEW.md` — Full project context: tech stack, current state, all implemented features, component inventory, backend commands, schema summary. This is the single best context file.
+2) `.cursor/RULES.md` — Coding standards, security rules, testing rules, no-guessing policy, accessibility rules. **Highest priority for conventions.**
+3) `.cursor/ARCHITECTURE_CURRENT.md` — Detailed current architecture: frontend components, backend modules, state management patterns, service layer, database access patterns. Essential for identifying where bugs originate.
+4) `.cursor/DATA_MODEL.md` — Database schema: 9 tables, 16 indexes, migration history (v1–v5), column definitions, foreign key relationships. Essential for data-layer bugs.
+5) `.cursor/BUILD_AND_RUN.md` — How to build, test (`npm run test`, `cargo test`), and run the app. Useful for the test plan section.
+6) `.cursor/agents.md` — Subagent mapping, delegation rules, CONFIRMED/INFERRED output format conventions.
+7) Relevant `.cursor/commands/` runbooks — Patterns for implementation (Tauri commands, DB migrations, UI components, tests).
+8) Relevant `.cursor/skills/` playbooks — Domain-specific playbooks (grid patterns, encryption, i18n, export, etc.).
+9) `.cursor/MCP_RECOMMENDATIONS.md` — Reference only; do not install/configure MCPs.
+
+Additionally, these files provide supplementary context when relevant to the bug domain:
+- `.cursor/ENCRYPTION_SPEC.md` — SQLCipher encryption details (for encryption-related bugs).
+- `.cursor/UI_FLOWS.md` — User interaction flows (for UX-related bugs).
+- `.cursor/DOMAIN_MODEL.md` — Domain concepts and relationships.
 
 BUG SELECTION POLICY (REQUIRED — USES GITHUB)
 - You MUST use the GitHub MCP to list open issues labeled `bug` in `Plexyer/ExpensesManager`.
@@ -39,17 +48,22 @@ BUG SELECTION POLICY (REQUIRED — USES GITHUB)
   - Smaller / less risky change first, IF priorities are equal.
 - Only select issues with state `OPEN`.
 - Reference the bug by its **GitHub issue number** (e.g., `#11`) and its **title** (verbatim from the issue).
+- If NO open bugs exist (no issues with `bug` label and state `OPEN`), STOP and inform the user. Do not invent or suggest new bugs.
 
 SUBAGENT POLICY (PLANNING)
 - You SHOULD invoke subagents when planning touches their domain OR when uncertainty/risk is non-trivial.
 - Use the minimum number needed. Subagents advise; you synthesize the final plan.
+- See `.cursor/agents.md` for the full subagent-to-domain mapping and delegation rules.
+
+NOTE: The plan you produce will be consumed by `implement-selected-bugfix.md`. Write root-cause hypotheses, fix approach, acceptance criteria, and file paths clearly so the implementation agent can act on them without re-doing your analysis.
 
 WORKFLOW (follow in order)
 1) READ CONTEXT
-- Summarize what exists today relevant to fixing bugs:
-  - React UI + state (grid/period selection), Tauri commands, Rust modules,
-    DB/encryption/persistence paths, window lifecycle handling, logging patterns.
+- Read the files listed in CONTEXT GATHERING above (at minimum: `PROJECT_OVERVIEW.md`, `RULES.md`, `ARCHITECTURE_CURRENT.md`).
+- Summarize the current state **relevant to the bug domain** (UI, backend, DB, encryption, etc.):
+  - Frontend components/state, backend commands, database schema, services involved in the bug area.
 - Label CONFIRMED vs INFERRED, with file paths.
+- If the context files already cover what you need, do NOT perform redundant repo scans.
 
 2) PICK THE NEXT BUG (from GitHub)
 - Use the GitHub MCP to list open issues with the `bug` label.
@@ -78,7 +92,8 @@ WORKFLOW (follow in order)
   - Fix approach + rollback/mitigation if risky
   - Regression surface analysis
 - Include acceptance criteria as checkboxes (objective + testable).
-- Identify exact likely files/areas touched (paths).
+- Identify exact likely files/areas touched (full paths where possible).
+- Note which `.cursor/commands/` or `.cursor/skills/` playbooks the implementation agent should consult.
 
 REQUIRED OUTPUT FORMAT
 A) SELECTED BUG
@@ -96,7 +111,7 @@ B) BUG DETAILS
 - Possible root causes (if present):
 - Dependencies / prerequisites:
 
-C) CURRENT STATE (repo)
+C) CURRENT STATE (from `.cursor/` docs + repo)
 - CONFIRMED (with file paths):
 - INFERRED:
 - GAPS / UNKNOWN:
@@ -111,17 +126,18 @@ E) FIX PLAN (no code edits)
 For each step include:
 - Goal
 - Approach (include validation of root-cause hypotheses)
-- Files/areas involved
+- Files/areas involved (exact paths if possible)
 - Error handling & UX states
 - Performance considerations
 - Regression checks
+- Relevant `.cursor/commands/` or `.cursor/skills/` playbooks to consult
 
 F) ACCEPTANCE CRITERIA (checkbox list)
 - [ ] ...
 
 G) TEST PLAN
 - Manual verification steps (include original behavior + edge cases)
-- Automated tests to add (only if test infra exists)
+- Automated tests to add (repo uses Vitest + React Testing Library; see `.cursor/BUILD_AND_RUN.md` for commands and `.cursor/commands/command_add_tests.md` for patterns)
 
 H) RISKS & DECISIONS
 - Risks
