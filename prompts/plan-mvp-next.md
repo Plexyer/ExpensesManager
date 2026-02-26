@@ -20,6 +20,18 @@ TRACKING POLICY (IMPORTANT)
 - Do NOT read, update, or reference `.cursor/BACKLOG.md` or `.cursor/Bugs.md` for task information.
 - The single source of truth for tasks and their status is the GitHub issue tracker.
 
+TOOLING-FIRST POLICY (REQUIRED)
+- Before doing manual analysis, run a Tool Selection Pass and choose the smallest useful set of tools for the current task.
+- Prefer tool-assisted work over ad-hoc/manual work when it improves speed, confidence, or reproducibility.
+- Use `.cursor/skills/` playbooks when a relevant domain skill exists.
+- Use `.cursor/commands/` runbooks for established implementation/testing patterns.
+- Use `.cursor/agents.md` to choose subagents only when they reduce risk or uncertainty.
+- Use GitHub MCP tools for all issue discovery, reading, and status operations.
+- Use documentation plugins (Context7 variants) when you need authoritative external library/framework references.
+- Use browser MCP/plugins for UI-flow validation when task scope includes interaction or rendering behavior.
+- Do NOT install, reconfigure, or enable MCPs/plugins unless explicitly requested by the user.
+- Keep tool usage proportional: do not invoke tools that do not materially help the selected task.
+
 CONTEXT GATHERING (REQUIRED)
 Before planning, you MUST read these `.cursor/` files to understand the project. Read them in this order:
 1) `.cursor/PROJECT_OVERVIEW.md` — Full project context: tech stack, current state, all implemented features, component inventory, backend commands, schema summary. This is the single best context file.
@@ -74,11 +86,17 @@ WORKFLOW (follow in order)
 - Select the next task following the ordering rules above.
 - Output the GitHub issue number + Title verbatim.
 
-3) SUBAGENT INVOCATION (if useful)
+3) TOOL SELECTION PASS (REQUIRED)
+- List candidate tools relevant to the selected task:
+  - skills, command runbooks, subagents, MCP tools, plugins.
+- Select only the tools you will use and explain why each is needed.
+- Execute with the minimum useful set; avoid redundant exploration.
+
+4) SUBAGENT INVOCATION (if useful)
 - List which subagents you will invoke (if any) and why.
 - Invoke them before finalizing the plan if they can reduce risk.
 
-4) PRODUCE A DETAILED PLAN FOR ONLY THAT TASK
+5) PRODUCE A DETAILED PLAN FOR ONLY THAT TASK
 - Break into small PR-sized steps.
 - Include acceptance criteria written as checkboxes that the implement prompt can use to decide done vs blocked.
 - Include exact expected files/areas touched (full paths where possible).
@@ -103,7 +121,15 @@ C) SUBAGENT FINDINGS (only if used)
 - Key recommendations:
 - Risks flagged:
 
-D) IMPLEMENTATION PLAN (small PR-sized steps; no code edits)
+D) TOOLS USED / WHY (REQUIRED)
+- Skills used:
+- Command runbooks used:
+- Subagents used:
+- MCP tools used:
+- Plugins used:
+- Why these tools were selected for this task:
+
+E) IMPLEMENTATION PLAN (small PR-sized steps; no code edits)
 For each step include:
 - Goal
 - Approach
@@ -116,16 +142,16 @@ For each step include:
 - Performance considerations
 - Relevant `.cursor/commands/` or `.cursor/skills/` playbooks to consult
 
-E) ACCEPTANCE CRITERIA (must be checkbox list)
+F) ACCEPTANCE CRITERIA (must be checkbox list)
 - [ ] criterion 1 ...
 - [ ] criterion 2 ...
 (These criteria must match the selected task and be objectively testable.)
 
-F) TEST PLAN
+G) TEST PLAN
 - Manual verification steps
 - Automated tests to add (repo uses Vitest + React Testing Library; see `.cursor/BUILD_AND_RUN.md` for commands and `.cursor/commands/command_add_tests.md` for patterns)
 
-G) RISKS & DECISIONS
+H) RISKS & DECISIONS
 - Risks
 - Decisions needed
 - NEEDED_FROM_USER (questions only if truly blocking)

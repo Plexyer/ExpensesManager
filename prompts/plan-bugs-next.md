@@ -17,6 +17,18 @@ TRACKING POLICY (IMPORTANT)
 - Do NOT read, update, or reference `.cursor/Bugs.md` or `.cursor/BACKLOG.md` for bug information.
 - The single source of truth for bugs is the GitHub issue tracker.
 
+TOOLING-FIRST POLICY (REQUIRED)
+- Before doing manual analysis, run a Tool Selection Pass and choose the smallest useful set of tools for the current bug.
+- Prefer tool-assisted work over ad-hoc/manual work when it improves speed, confidence, or reproducibility.
+- Use `.cursor/skills/` playbooks when a relevant domain skill exists.
+- Use `.cursor/commands/` runbooks for established implementation/testing patterns.
+- Use `.cursor/agents.md` to choose subagents only when they reduce risk or uncertainty.
+- Use GitHub MCP tools for all bug discovery, reading, and status operations.
+- Use documentation plugins (Context7 variants) when you need authoritative external library/framework references.
+- Use browser MCP/plugins for UI-flow or reproduction verification when bug scope includes interaction/rendering behavior.
+- Do NOT install, reconfigure, or enable MCPs/plugins unless explicitly requested by the user.
+- Keep tool usage proportional: do not invoke tools that do not materially help the selected bug.
+
 CONTEXT GATHERING (REQUIRED)
 Before planning, you MUST read these `.cursor/` files to understand the project. Read them in this order:
 1) `.cursor/PROJECT_OVERVIEW.md` — Full project context: tech stack, current state, all implemented features, component inventory, backend commands, schema summary. This is the single best context file.
@@ -71,7 +83,13 @@ WORKFLOW (follow in order)
 - Select the highest-priority open bug.
 - Output the GitHub issue number + Title verbatim.
 
-3) EXTRACT BUG DETAILS (from the GitHub issue)
+3) TOOL SELECTION PASS (REQUIRED)
+- List candidate tools relevant to the selected bug:
+  - skills, command runbooks, subagents, MCP tools, plugins.
+- Select only the tools you will use and explain why each is needed.
+- Execute with the minimum useful set; avoid redundant exploration.
+
+4) EXTRACT BUG DETAILS (from the GitHub issue)
 - Read the selected issue via the GitHub MCP.
 - Extract and restate:
   - **Priority**, **Status**, **Area**
@@ -81,11 +99,11 @@ WORKFLOW (follow in order)
   - Any "Possible Root Causes" (if present)
 - If anything critical is missing for planning (e.g., no repro), ask in NEEDED_FROM_USER.
 
-4) SUBAGENTS (if useful)
+5) SUBAGENTS (if useful)
 - List which subagents you will invoke and why.
 - Invoke them before finalizing the plan if they can reduce risk.
 
-5) PRODUCE A DETAILED PLAN FOR ONLY THAT BUG FIX
+6) PRODUCE A DETAILED PLAN FOR ONLY THAT BUG FIX
 - Break into small PR-sized steps.
 - Include:
   - Root-cause hypotheses + how to validate each
@@ -122,7 +140,15 @@ D) SUBAGENT FINDINGS (only if used)
 - Recommendations:
 - Risks flagged:
 
-E) FIX PLAN (no code edits)
+E) TOOLS USED / WHY (REQUIRED)
+- Skills used:
+- Command runbooks used:
+- Subagents used:
+- MCP tools used:
+- Plugins used:
+- Why these tools were selected for this bug:
+
+F) FIX PLAN (no code edits)
 For each step include:
 - Goal
 - Approach (include validation of root-cause hypotheses)
@@ -132,14 +158,14 @@ For each step include:
 - Regression checks
 - Relevant `.cursor/commands/` or `.cursor/skills/` playbooks to consult
 
-F) ACCEPTANCE CRITERIA (checkbox list)
+G) ACCEPTANCE CRITERIA (checkbox list)
 - [ ] ...
 
-G) TEST PLAN
+H) TEST PLAN
 - Manual verification steps (include original behavior + edge cases)
 - Automated tests to add (repo uses Vitest + React Testing Library; see `.cursor/BUILD_AND_RUN.md` for commands and `.cursor/commands/command_add_tests.md` for patterns)
 
-H) RISKS & DECISIONS
+I) RISKS & DECISIONS
 - Risks
 - Decisions needed
 - NEEDED_FROM_USER (only if blocking)

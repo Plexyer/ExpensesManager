@@ -16,6 +16,18 @@ TRACKING POLICY (IMPORTANT)
 - After fixing a bug, document your work ONLY by adding a comment to the GitHub issue and closing it.
 - The single source of truth for bugs is the GitHub issue tracker.
 
+TOOLING-FIRST POLICY (REQUIRED)
+- Before coding, run a Tool Selection Pass and choose the smallest useful set of tools for the selected bug fix.
+- Prefer tool-assisted work over ad-hoc/manual work when it improves speed, confidence, or reproducibility.
+- Use `.cursor/skills/` playbooks when a relevant domain skill exists.
+- Use `.cursor/commands/` runbooks for established implementation/testing patterns.
+- Use `.cursor/agents.md` to choose subagents only when they reduce risk or uncertainty.
+- Use GitHub MCP tools for all issue reads/comments/close operations.
+- Use documentation plugins (Context7 variants) when external library/framework behavior must be verified.
+- Use browser MCP/plugins when bug reproduction/verification requires UI interactions or behavior checks.
+- Do NOT install, reconfigure, or enable MCPs/plugins unless explicitly requested by the user.
+- Keep tool usage proportional: do not invoke tools that do not materially help the selected bug.
+
 STRICT DEPENDENCY RULE (IMPORTANT)
 - You MUST NOT add any new dependencies (npm, cargo, system libs, etc.) without asking me first.
 - If a dependency seems necessary:
@@ -95,35 +107,41 @@ WORKFLOW (follow in order)
 - Confirm coding conventions from `RULES.md`.
 - Consult relevant `.cursor/commands/` runbooks for implementation patterns.
 
-4) SUBAGENTS (if needed)
+4) TOOL SELECTION PASS (REQUIRED)
+- List candidate tools relevant to the selected bug:
+  - skills, command runbooks, subagents, MCP tools, plugins.
+- Select only the tools you will use and explain why each is needed.
+- Execute with the minimum useful set; avoid redundant exploration.
+
+5) SUBAGENTS (if needed)
 - Invoke and summarize findings before editing code.
 
-5) IMPLEMENTATION
+6) IMPLEMENTATION
 - Smallest possible change set to satisfy acceptance criteria.
 - Respect existing conventions from `RULES.md`.
 - No new dependencies without approval.
 
-6) TESTING
+7) TESTING
 - Run `npm run test` to verify no regressions after your changes.
 - If the fix warrants new tests, add them following the patterns in `.cursor/commands/command_add_tests.md`:
   - Frontend: Vitest + React Testing Library + `renderWithProviders` from `src/test/test-utils.tsx`
   - Backend: Inline `#[cfg(test)]` modules in Rust source files
 - If automated tests are not feasible, provide a thorough manual verification checklist.
 
-7) SELF-REVIEW
+8) SELF-REVIEW
 - Verify scope: no extra features or unrelated refactors.
 - Verify security: no secrets logged; no sensitive finance data exposed.
 - Verify conventions: code follows `RULES.md` standards.
 - Verify no new dependencies added.
 - Verify tests pass: `npm run test` runs clean.
 
-8) UPDATE DOCUMENTATION (if needed)
+9) UPDATE DOCUMENTATION (if needed)
 - If the fix changes architecture (new components, new services, new commands): update `.cursor/ARCHITECTURE_CURRENT.md`.
 - If the fix changes the database schema (new tables, new columns, new migrations): update `.cursor/DATA_MODEL.md`.
 - If the fix adds/modifies major commands or components: update `.cursor/PROJECT_OVERVIEW.md`.
 - If no documentation changes are needed, skip this step.
 
-9) UPDATE GITHUB ISSUE (REQUIRED)
+10) UPDATE GITHUB ISSUE (REQUIRED)
 - Add a comment with "Fix Notes" to the GitHub issue.
 - Close the issue as completed (ONLY if all acceptance criteria are met).
 - If blocked, add a comment explaining and keep the issue open.
@@ -142,31 +160,39 @@ B) GITHUB ISSUE STATUS
 - Comment added after fix?: yes/no
 - Issue closed as completed?: yes/no
 
-C) SUBAGENTS USED (if any)
+C) TOOLS USED / WHY (REQUIRED)
+- Skills used:
+- Command runbooks used:
+- Subagents used:
+- MCP tools used:
+- Plugins used:
+- Why these tools were selected for this bug:
+
+D) SUBAGENTS USED (if any)
 - Which subagents:
 - Key findings:
 - What was applied:
 
-D) SUMMARY OF CHANGES
+E) SUMMARY OF CHANGES
 - 1–8 bullets describing what was implemented.
 
-E) FILES CHANGED
+F) FILES CHANGED
 - List every file touched with a short note.
 
-F) HOW TO VERIFY (manual)
+G) HOW TO VERIFY (manual)
 - Step-by-step checklist (include original repro + edge cases).
 
-G) TESTS
+H) TESTS
 - Tests added/updated (or "none" + why)
 - Future test suggestion (1–3 bullets) if none
 - Test suite status: `npm run test` result (pass/fail)
 
-H) DOCUMENTATION UPDATED
+I) DOCUMENTATION UPDATED
 - `.cursor/ARCHITECTURE_CURRENT.md`: yes/no (reason)
 - `.cursor/DATA_MODEL.md`: yes/no (reason)
 - `.cursor/PROJECT_OVERVIEW.md`: yes/no (reason)
 
-I) NOTES / FOLLOW-UPS
+J) NOTES / FOLLOW-UPS
 - Follow-up bugs (GitHub issue numbers if applicable)
 - Risks + mitigations
 - NEEDED_FROM_USER (only if you had to stop)

@@ -83,7 +83,7 @@ Schema managed by `src-tauri/src/migrations.rs` (CURRENT_SCHEMA_VERSION = 5).
 #### Pages (4 routes in `src/App.tsx`)
 | Route | Page | Description |
 |-------|------|-------------|
-| `/` | `DashboardPage.tsx` | Dashboard with onboarding (file create/open) |
+| `/` | `DashboardPage.tsx` | Dashboard shell with onboarding gate and registry-driven foundation widgets |
 | `/periods` | `HomePage.tsx` | Main budget grid (PeriodGrid component) |
 | `/templates` | `TemplatesPage.tsx` | Template management with category drag-and-drop |
 | `/settings` | `SettingsPage.tsx` | Language, display, export, and backup settings |
@@ -108,6 +108,15 @@ Schema managed by `src-tauri/src/migrations.rs` (CURRENT_SCHEMA_VERSION = 5).
 - `AttachmentLightbox.tsx` — Full-screen gallery with navigation and export
 - `PeriodGridSkeleton.tsx` — Loading skeleton
 - `PeriodGridEmpty.tsx` — Empty state
+
+**Dashboard** (`features/Dashboard/`):
+- `DashboardShell.tsx` — Dashboard container that renders widgets from registry/config
+- `DashboardWidgetCard.tsx` — Shared widget card wrapper with accessible heading/content structure
+- `DashboardStateViews.tsx` — Shared loading/empty/error state views for widgets
+- `CurrentPeriodKpiWidget.tsx` — Current period KPI widget (received/spent/remaining) with client-side aggregation
+- `OverspentCategoriesWidget.tsx` — Alert widget for categories with `remaining < 0` and quick navigation to period details
+- `widgetRegistry.tsx` — Registry source of truth for dashboard widgets
+- `types.ts` — Widget contract types (id/title/span/render)
 
 **Onboarding** (`features/Onboarding/`):
 - `Onboarding.tsx` — File creation/opening flow

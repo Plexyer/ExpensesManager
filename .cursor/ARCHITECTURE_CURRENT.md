@@ -80,7 +80,7 @@ i18n (`src/i18n/index.ts`) is initialized before rendering. Language preference 
 
 | Path | Page Component | Purpose |
 |------|---------------|---------|
-| `/` | `DashboardPage` | Dashboard placeholder (future summary view) |
+| `/` | `DashboardPage` | Dashboard shell with registry-driven foundation widgets |
 | `/periods` | `HomePage` | Main budget grid — period list + PeriodGrid |
 | `/templates` | `TemplatesPage` | Template management — CRUD, category assignment, drag-and-drop reorder |
 | `/settings` | `SettingsPage` | Language, export, backup, period table settings |
@@ -93,7 +93,12 @@ Navigation is via `AppHeader` component (`src/components/common/AppHeader.tsx`) 
 AppHeader (navigation tabs)
 
 DashboardPage
-  -> Placeholder content
+  -> Onboarding (when no file open)
+  -> DashboardShell (when file open)
+     -> DashboardWidgetCard (registry-driven)
+     -> CurrentPeriodKpiWidget (received/spent/remaining totals)
+     -> OverspentCategoriesWidget (remaining<0 alert list + period details CTA)
+     -> DashboardStateViews (loading/empty/error)
 
 HomePage
   -> Onboarding (when no file open)
