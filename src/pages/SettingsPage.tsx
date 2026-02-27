@@ -3,6 +3,7 @@ import { useAppSelector } from "../store/hooks";
 import AppHeader from "../components/common/AppHeader";
 import Onboarding from "../components/features/Onboarding/Onboarding";
 import BackupSettings from "../components/features/Settings/BackupSettings";
+import DashboardPreferencesSettings from "../components/features/Settings/DashboardPreferencesSettings";
 import ExportSettings from "../components/features/Settings/ExportSettings";
 import LanguageSettings from "../components/features/Settings/LanguageSettings";
 import PeriodTableSettings from "../components/features/Settings/PeriodTableSettings";
@@ -31,6 +32,9 @@ const SettingsPage = () => {
 
           {/* Period Table Settings */}
           <PeriodTableSettings />
+
+          {/* Dashboard Preferences */}
+          <DashboardPreferencesSettings />
 
           {/* Export Settings */}
           <ExportSettings />

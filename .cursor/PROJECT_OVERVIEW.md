@@ -144,6 +144,7 @@ Schema managed by `src-tauri/src/migrations.rs` (CURRENT_SCHEMA_VERSION = 5).
 **Settings** (`features/Settings/`):
 - `LanguageSettings.tsx` — Language selector (EN/DE/HU)
 - `PeriodTableSettings.tsx` — Grid display preferences (snap mode, column sizing)
+- `DashboardPreferencesSettings.tsx` — Dashboard widget visibility and layout preferences in Settings
 - `ExportSettings.tsx` — CSV export UI
 - `BackupSettings.tsx` — Backup guidance
 

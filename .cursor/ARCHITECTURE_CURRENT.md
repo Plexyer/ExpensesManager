@@ -130,6 +130,7 @@ TemplatesPage
 SettingsPage
   -> LanguageSettings
   -> PeriodTableSettings (snap mode, spent minus)
+  -> DashboardPreferencesSettings (dashboard widget visibility/order preferences)
   -> ExportSettings
   -> BackupSettings
 ```

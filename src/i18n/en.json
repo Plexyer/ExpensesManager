@@ -281,7 +281,16 @@
     "preview": "Preview",
     "previewOn": "CHF -125.00",
     "previewOff": "CHF 125.00",
-    "attachments": "Attachments"
+    "attachments": "Attachments",
+    "dashboardPreferences": "Dashboard Preferences",
+    "dashboardPreferencesDesc": "Manage widget visibility and layout order for your dashboard.",
+    "dashboardPreferencesReset": "Reset to default",
+    "dashboardPreferencesListLabel": "Dashboard widget preferences",
+    "dashboardWidgetVisibilityToggleLabel": "Toggle visibility for {{widget}} widget",
+    "dashboardPreferencesLoadError": "Could not load dashboard preferences. Showing defaults.",
+    "dashboardPreferencesSaveError": "Could not save dashboard preferences.",
+    "dashboardMoveUp": "Move up",
+    "dashboardMoveDown": "Move down"
   },
   "export": {
     "title": "Export",

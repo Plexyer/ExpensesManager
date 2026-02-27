@@ -280,7 +280,16 @@
     "preview": "Előnézet",
     "previewOn": "CHF -125.00",
     "previewOff": "CHF 125.00",
-    "attachments": "Mellékletek"
+    "attachments": "Mellékletek",
+    "dashboardPreferences": "Irányítópult beállítások",
+    "dashboardPreferencesDesc": "Kezelje az irányítópult widgetek láthatóságát és sorrendjét.",
+    "dashboardPreferencesReset": "Visszaállítás alapértelmezettre",
+    "dashboardPreferencesListLabel": "Irányítópult widget beállítások",
+    "dashboardWidgetVisibilityToggleLabel": "A(z) {{widget}} widget láthatóságának kapcsolása",
+    "dashboardPreferencesLoadError": "Az irányítópult beállítások betöltése sikertelen. Alapértelmezett értékek láthatók.",
+    "dashboardPreferencesSaveError": "Az irányítópult beállítások mentése sikertelen.",
+    "dashboardMoveUp": "Mozgatás fel",
+    "dashboardMoveDown": "Mozgatás le"
   },
   "export": {
     "title": "Exportálás",

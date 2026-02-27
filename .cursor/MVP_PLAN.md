@@ -580,6 +580,7 @@ This phase expands the dashboard from a shell into a configurable, insight-orien
 | TASK-13.10: Cross-period trend widget (recent N periods) | #127 | 2026-02-27 | Added configurable multi-period trend visualization for received/spent/net totals using existing period and grid rollups |
 | TASK-13.11: Allocation vs actual widget | #125 | 2026-02-27 | Added current-period allocation-versus-actual variance widget with clear over/under/on-target states and category drill-through |
 | TASK-13.12: Largest changes vs previous period widget | #131 | 2026-02-27 | Added current-vs-previous category delta widget with selectable metric modes and mismatch-safe comparisons |
+| TASK-13.15: Dashboard preferences (visibility/layout settings) | #132 | 2026-02-27 | Added Settings-based dashboard preferences controls for widget visibility/order with reset and persisted `ui_settings` integration |
 
 ### Chart Library Decision (TASK-13.5)
 - **Selected:** `recharts`

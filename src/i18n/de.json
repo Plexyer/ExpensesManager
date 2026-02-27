@@ -280,7 +280,16 @@
     "preview": "Vorschau",
     "previewOn": "CHF -125.00",
     "previewOff": "CHF 125.00",
-    "attachments": "Anhänge"
+    "attachments": "Anhänge",
+    "dashboardPreferences": "Dashboard-Einstellungen",
+    "dashboardPreferencesDesc": "Verwalten Sie die Sichtbarkeit und Reihenfolge der Widgets im Dashboard.",
+    "dashboardPreferencesReset": "Auf Standard zurücksetzen",
+    "dashboardPreferencesListLabel": "Dashboard-Widget-Einstellungen",
+    "dashboardWidgetVisibilityToggleLabel": "Sichtbarkeit für Widget {{widget}} umschalten",
+    "dashboardPreferencesLoadError": "Dashboard-Einstellungen konnten nicht geladen werden. Standardwerte werden angezeigt.",
+    "dashboardPreferencesSaveError": "Dashboard-Einstellungen konnten nicht gespeichert werden.",
+    "dashboardMoveUp": "Nach oben",
+    "dashboardMoveDown": "Nach unten"
   },
   "export": {
     "title": "Export",
