@@ -6,15 +6,10 @@ import CrossPeriodTrendWidget from "../CrossPeriodTrendWidget";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
 
 const mockUseAppSelector = vi.hoisted(() => vi.fn());
-const mockListPeriods = vi.hoisted(() => vi.fn());
 const mockListDashboardTimeSeries = vi.hoisted(() => vi.fn());
 
 vi.mock("../../../../store/hooks", () => ({
   useAppSelector: mockUseAppSelector,
-}));
-
-vi.mock("../../../../services/periodService", () => ({
-  listPeriods: mockListPeriods,
 }));
 
 vi.mock("../../../../services/lineItemService", () => ({
@@ -47,48 +42,33 @@ describe("CrossPeriodTrendWidget", () => {
   });
 
   it("renders loading state", () => {
-    mockListPeriods.mockReturnValue(new Promise(() => {}));
-    mockListDashboardTimeSeries.mockResolvedValue([]);
+    mockListDashboardTimeSeries.mockReturnValue(new Promise(() => {}));
 
     renderWithProviders(<CrossPeriodTrendWidget />);
     expect(screen.getByText(/loading widget data/i)).toBeInTheDocument();
   });
 
-  it("renders error state when period loading fails", async () => {
-    mockListPeriods.mockRejectedValue(new Error("boom"));
-    mockListDashboardTimeSeries.mockResolvedValue([]);
+  it("renders error state when aggregate loading fails", async () => {
+    mockListDashboardTimeSeries.mockRejectedValue(new Error("boom"));
 
     renderWithProviders(<CrossPeriodTrendWidget />);
     expect(await screen.findByText(/could not be loaded/i)).toBeInTheDocument();
   });
 
-  it("renders empty state when no periods exist", async () => {
-    mockListPeriods.mockResolvedValue([]);
+  it("renders empty state when no timeline buckets exist", async () => {
     mockListDashboardTimeSeries.mockResolvedValue([]);
 
     renderWithProviders(<CrossPeriodTrendWidget />);
     expect(await screen.findByText(/no data to display yet/i)).toBeInTheDocument();
   });
 
-  it("renders insufficient-data state when only one period is available", async () => {
-    mockListPeriods.mockResolvedValue([
-      {
-        budget_instance_id: 1,
-        cadence: "monthly",
-        start_date: "2026-01-01",
-        end_date: "2026-01-31",
-        template_id: 1,
-        template_name: "January",
-        income_arrival_date: null,
-        created_at: "2026-01-01",
-      },
-    ]);
+  it("renders insufficient-data state when only one bucket is available", async () => {
     mockListDashboardTimeSeries.mockResolvedValue([
       {
-        bucket_key: "period:1",
-        bucket_label: "January",
+        bucket_key: "2026-01-01",
+        bucket_label: "2026-01-01",
         bucket_start_date: "2026-01-01",
-        bucket_end_date: "2026-01-31",
+        bucket_end_date: "2026-01-01",
         received_total: 100,
         spent_total: 60,
         net_total: 40,
@@ -102,45 +82,23 @@ describe("CrossPeriodTrendWidget", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders chart for two or more periods", async () => {
-    mockListPeriods.mockResolvedValue([
-      {
-        budget_instance_id: 3,
-        cadence: "monthly",
-        start_date: "2026-03-01",
-        end_date: "2026-03-31",
-        template_id: 1,
-        template_name: "March",
-        income_arrival_date: null,
-        created_at: "2026-03-01",
-      },
-      {
-        budget_instance_id: 2,
-        cadence: "monthly",
-        start_date: "2026-02-01",
-        end_date: "2026-02-28",
-        template_id: 1,
-        template_name: "February",
-        income_arrival_date: null,
-        created_at: "2026-02-01",
-      },
-    ]);
+  it("renders chart for two or more timeline buckets", async () => {
     mockListDashboardTimeSeries.mockResolvedValue([
       {
-        bucket_key: "period:2",
+        bucket_key: "2026-02-01",
         bucket_label: "February",
         bucket_start_date: "2026-02-01",
-        bucket_end_date: "2026-02-28",
+        bucket_end_date: "2026-02-01",
         received_total: 1002,
         spent_total: 452,
         net_total: 550,
         currency: "CHF",
       },
       {
-        bucket_key: "period:3",
+        bucket_key: "2026-03-01",
         bucket_label: "March",
         bucket_start_date: "2026-03-01",
-        bucket_end_date: "2026-03-31",
+        bucket_end_date: "2026-03-01",
         received_total: 1003,
         spent_total: 453,
         net_total: 550,
@@ -150,90 +108,30 @@ describe("CrossPeriodTrendWidget", () => {
 
     renderWithProviders(<CrossPeriodTrendWidget />);
     expect(await screen.findByTestId("line-chart")).toBeInTheDocument();
-    expect(screen.getByText(/showing 2 of 2 periods/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/showing 2 of 2 timeline buckets/i)
+    ).toBeInTheDocument();
   });
 
-  it("loads all periods when the default scope is set to all", async () => {
-    mockListPeriods.mockResolvedValue([
-      {
-        budget_instance_id: 4,
-        cadence: "monthly",
-        start_date: "2026-04-01",
-        end_date: "2026-04-30",
-        template_id: 1,
-        template_name: "April",
-        income_arrival_date: null,
-        created_at: "2026-04-01",
-      },
-      {
-        budget_instance_id: 3,
-        cadence: "monthly",
-        start_date: "2026-03-01",
-        end_date: "2026-03-31",
-        template_id: 1,
-        template_name: "March",
-        income_arrival_date: null,
-        created_at: "2026-03-01",
-      },
-      {
-        budget_instance_id: 2,
-        cadence: "monthly",
-        start_date: "2026-02-01",
-        end_date: "2026-02-28",
-        template_id: 1,
-        template_name: "February",
-        income_arrival_date: null,
-        created_at: "2026-02-01",
-      },
-      {
-        budget_instance_id: 1,
-        cadence: "monthly",
-        start_date: "2026-01-01",
-        end_date: "2026-01-31",
-        template_id: 1,
-        template_name: "January",
-        income_arrival_date: null,
-        created_at: "2026-01-01",
-      },
-    ]);
+  it("uses weekly all-history defaults on first load", async () => {
     mockListDashboardTimeSeries.mockResolvedValue([
       {
-        bucket_key: "period:1",
-        bucket_label: "January",
+        bucket_key: "2026-01-01",
+        bucket_label: "2026-01-01",
         bucket_start_date: "2026-01-01",
-        bucket_end_date: "2026-01-31",
+        bucket_end_date: "2026-01-01",
         received_total: 101,
         spent_total: 51,
         net_total: 50,
         currency: "CHF",
       },
       {
-        bucket_key: "period:2",
-        bucket_label: "February",
+        bucket_key: "2026-02-01",
+        bucket_label: "2026-02-01",
         bucket_start_date: "2026-02-01",
-        bucket_end_date: "2026-02-28",
+        bucket_end_date: "2026-02-01",
         received_total: 102,
         spent_total: 52,
-        net_total: 50,
-        currency: "CHF",
-      },
-      {
-        bucket_key: "period:3",
-        bucket_label: "March",
-        bucket_start_date: "2026-03-01",
-        bucket_end_date: "2026-03-31",
-        received_total: 103,
-        spent_total: 53,
-        net_total: 50,
-        currency: "CHF",
-      },
-      {
-        bucket_key: "period:4",
-        bucket_label: "April",
-        bucket_start_date: "2026-04-01",
-        bucket_end_date: "2026-04-30",
-        received_total: 104,
-        spent_total: 54,
         net_total: 50,
         currency: "CHF",
       },
@@ -244,75 +142,34 @@ describe("CrossPeriodTrendWidget", () => {
 
     expect(mockListDashboardTimeSeries).toHaveBeenCalledTimes(1);
     expect(mockListDashboardTimeSeries).toHaveBeenCalledWith({
-      granularity: "period",
-      limit: undefined,
+      granularity: "weekly",
+      limit: 104,
+      start_date: undefined,
+      end_date: undefined,
     });
-    expect(screen.getByText(/showing 4 of 4 periods/i)).toBeInTheDocument();
   });
 
-  it("reloads trend data when period count changes", async () => {
+  it("reloads trend data when granularity changes", async () => {
     const user = userEvent.setup();
-    mockListPeriods.mockResolvedValue([
-      {
-        budget_instance_id: 3,
-        cadence: "monthly",
-        start_date: "2026-03-01",
-        end_date: "2026-03-31",
-        template_id: 1,
-        template_name: "March",
-        income_arrival_date: null,
-        created_at: "2026-03-01",
-      },
-      {
-        budget_instance_id: 2,
-        cadence: "monthly",
-        start_date: "2026-02-01",
-        end_date: "2026-02-28",
-        template_id: 1,
-        template_name: "February",
-        income_arrival_date: null,
-        created_at: "2026-02-01",
-      },
-      {
-        budget_instance_id: 1,
-        cadence: "monthly",
-        start_date: "2026-01-01",
-        end_date: "2026-01-31",
-        template_id: 1,
-        template_name: "January",
-        income_arrival_date: null,
-        created_at: "2026-01-01",
-      },
-    ]);
     mockListDashboardTimeSeries.mockResolvedValue([
       {
-        bucket_key: "period:1",
+        bucket_key: "2026-01-01",
         bucket_label: "January",
         bucket_start_date: "2026-01-01",
-        bucket_end_date: "2026-01-31",
+        bucket_end_date: "2026-01-01",
         received_total: 200,
         spent_total: 80,
         net_total: 120,
         currency: "CHF",
       },
       {
-        bucket_key: "period:2",
+        bucket_key: "2026-02-01",
         bucket_label: "February",
         bucket_start_date: "2026-02-01",
-        bucket_end_date: "2026-02-28",
+        bucket_end_date: "2026-02-01",
         received_total: 220,
         spent_total: 90,
         net_total: 130,
-        currency: "CHF",
-      },
-      {
-        bucket_key: "period:3",
-        bucket_label: "March",
-        bucket_start_date: "2026-03-01",
-        bucket_end_date: "2026-03-31",
-        received_total: 240,
-        spent_total: 95,
-        net_total: 145,
         currency: "CHF",
       },
     ]);
@@ -320,16 +177,59 @@ describe("CrossPeriodTrendWidget", () => {
     renderWithProviders(<CrossPeriodTrendWidget />);
     await screen.findByTestId("line-chart");
 
-    const periodCountSelect = screen.getByRole("combobox", {
-      name: /periods to show/i,
+    const granularitySelect = screen.getByRole("combobox", {
+      name: /granularity/i,
     });
-    await user.selectOptions(periodCountSelect, "3");
+    await user.selectOptions(granularitySelect, "daily");
 
-    expect(mockListPeriods).toHaveBeenCalledTimes(2);
     expect(mockListDashboardTimeSeries).toHaveBeenCalledTimes(2);
     expect(mockListDashboardTimeSeries).toHaveBeenLastCalledWith({
-      granularity: "period",
-      limit: 3,
+      granularity: "daily",
+      limit: 180,
+      start_date: undefined,
+      end_date: undefined,
+    });
+  });
+
+  it("passes date range when timeframe is changed from all history", async () => {
+    const user = userEvent.setup();
+    mockListDashboardTimeSeries.mockResolvedValue([
+      {
+        bucket_key: "2026-01-01",
+        bucket_label: "2026-01-01",
+        bucket_start_date: "2026-01-01",
+        bucket_end_date: "2026-01-01",
+        received_total: 200,
+        spent_total: 80,
+        net_total: 120,
+        currency: "CHF",
+      },
+      {
+        bucket_key: "2026-01-02",
+        bucket_label: "2026-01-02",
+        bucket_start_date: "2026-01-02",
+        bucket_end_date: "2026-01-02",
+        received_total: 220,
+        spent_total: 90,
+        net_total: 130,
+        currency: "CHF",
+      },
+    ]);
+
+    renderWithProviders(<CrossPeriodTrendWidget />);
+    await screen.findByTestId("line-chart");
+
+    const timeframeSelect = screen.getByRole("combobox", {
+      name: /timeframe/i,
+    });
+    await user.selectOptions(timeframeSelect, "30d");
+
+    expect(mockListDashboardTimeSeries).toHaveBeenCalledTimes(2);
+    expect(mockListDashboardTimeSeries).toHaveBeenLastCalledWith({
+      granularity: "weekly",
+      limit: 104,
+      start_date: expect.any(String),
+      end_date: expect.any(String),
     });
   });
 });
