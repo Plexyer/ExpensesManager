@@ -112,6 +112,7 @@ Schema managed by `src-tauri/src/migrations.rs` (CURRENT_SCHEMA_VERSION = 5).
 **Dashboard** (`features/Dashboard/`):
 - `DashboardShell.tsx` — Dashboard container that renders widgets from registry/config
 - `DashboardWidgetCard.tsx` — Shared widget card wrapper with accessible heading/content structure
+- `dashboardWidgetSettings.ts` — Dashboard widget visibility persistence + sanitize helpers (`ui_settings` based)
 - `DashboardStateViews.tsx` — Shared loading/empty/error state views for widgets
 - `CurrentPeriodKpiWidget.tsx` — Current period KPI widget (received/spent/remaining) with client-side aggregation
 - `RecentPeriodsWidget.tsx` — Quick-access widget for recent periods with active-period indication

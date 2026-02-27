@@ -95,7 +95,7 @@ AppHeader (navigation tabs)
 DashboardPage
   -> Onboarding (when no file open)
   -> DashboardShell (when file open)
-     -> DashboardWidgetCard (registry-driven)
+     -> DashboardWidgetCard (registry-driven, user-configurable visibility)
      -> CurrentPeriodKpiWidget (received/spent/remaining totals)
      -> RecentPeriodsWidget (recent period quick access with active marker + open action)
      -> OverspentCategoriesWidget (remaining<0 alert list + period details CTA)

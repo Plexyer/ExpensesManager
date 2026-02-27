@@ -1,8 +1,17 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import DashboardShell from "../DashboardShell";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
 import { dashboardWidgetRegistry } from "../widgetRegistry";
+
+const mockGetUiSetting = vi.hoisted(() => vi.fn());
+const mockSetUiSetting = vi.hoisted(() => vi.fn());
+
+vi.mock("../../../../services/settingsService", () => ({
+  getUiSetting: mockGetUiSetting,
+  setUiSetting: mockSetUiSetting,
+}));
 
 vi.mock("../CurrentPeriodKpiWidget", () => ({
   default: () => <div>KPI Widget</div>,
@@ -21,6 +30,12 @@ vi.mock("../InactiveCategoriesWidget", () => ({
 }));
 
 describe("DashboardShell", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetUiSetting.mockResolvedValue(null);
+    mockSetUiSetting.mockResolvedValue(undefined);
+  });
+
   it("renders dashboard shell heading and description", () => {
     renderWithProviders(<DashboardShell />);
 
@@ -44,6 +59,31 @@ describe("DashboardShell", () => {
     expect(screen.getByText("Recent Periods Widget")).toBeInTheDocument();
     expect(screen.getByText("Overspent Widget")).toBeInTheDocument();
     expect(screen.getByText("Inactive Categories Widget")).toBeInTheDocument();
+  });
+
+  it("supports remove, add and reset widget controls", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<DashboardShell />);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /remove current period overview widget/i,
+      })
+    );
+
+    expect(screen.queryByText("KPI Widget")).not.toBeInTheDocument();
+
+    const addWidgetSelect = screen.getByRole("combobox", {
+      name: /add widget/i,
+    });
+    await user.selectOptions(addWidgetSelect, "current-period-overview");
+    await user.click(screen.getByRole("button", { name: /add widget/i }));
+
+    expect(screen.getByText("KPI Widget")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /reset to default/i }));
+    expect(screen.getByText("KPI Widget")).toBeInTheDocument();
+    expect(mockSetUiSetting).toHaveBeenCalled();
   });
 });
 

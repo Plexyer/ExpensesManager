@@ -46,7 +46,7 @@ describe("DashboardPage", () => {
     expect(screen.getByTestId("onboarding")).toBeInTheDocument();
   });
 
-  it("shows dashboard shell when file is open", () => {
+  it("shows dashboard shell when file is open", async () => {
     mockedUseAppSelector.mockImplementation(
       (selector: (state: unknown) => unknown) =>
         selector({
@@ -65,7 +65,7 @@ describe("DashboardPage", () => {
     renderWithProviders(<DashboardPage />);
 
     expect(screen.getByTestId("app-header")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
   });
 });
 
