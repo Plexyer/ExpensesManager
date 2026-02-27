@@ -157,6 +157,7 @@
     "trendRegion": "Periodenübergreifender Trend",
     "trendChartLabel": "Trenddiagramm der letzten Perioden",
     "trendPeriodCountLabel": "Anzuzeigende Perioden",
+    "trendAllPeriodsOption": "Alle Perioden",
     "trendPeriodsShown": "Zeige {{shown}} von {{total}} Perioden",
     "trendInsufficientPeriods": "Für die Trendanzeige werden mindestens zwei Perioden benötigt.",
     "trendReceivedLine": "Einnahmen",

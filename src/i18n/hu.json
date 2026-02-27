@@ -157,6 +157,7 @@
     "trendRegion": "Időszakok közti trend",
     "trendChartLabel": "Legutóbbi időszakok trenddiagramja",
     "trendPeriodCountLabel": "Megjelenítendő időszakok",
+    "trendAllPeriodsOption": "Minden időszak",
     "trendPeriodsShown": "{{shown}} / {{total}} időszak megjelenítése",
     "trendInsufficientPeriods": "A trend megjelenítéséhez legalább két időszak szükséges.",
     "trendReceivedLine": "Bevétel",

@@ -154,6 +154,75 @@ describe("CrossPeriodTrendWidget", () => {
     expect(screen.getByText(/showing 2 of 2 periods/i)).toBeInTheDocument();
   });
 
+  it("loads all periods when the default scope is set to all", async () => {
+    mockListPeriods.mockResolvedValue([
+      {
+        budget_instance_id: 4,
+        cadence: "monthly",
+        start_date: "2026-04-01",
+        end_date: "2026-04-30",
+        template_id: 1,
+        template_name: "April",
+        income_arrival_date: null,
+        created_at: "2026-04-01",
+      },
+      {
+        budget_instance_id: 3,
+        cadence: "monthly",
+        start_date: "2026-03-01",
+        end_date: "2026-03-31",
+        template_id: 1,
+        template_name: "March",
+        income_arrival_date: null,
+        created_at: "2026-03-01",
+      },
+      {
+        budget_instance_id: 2,
+        cadence: "monthly",
+        start_date: "2026-02-01",
+        end_date: "2026-02-28",
+        template_id: 1,
+        template_name: "February",
+        income_arrival_date: null,
+        created_at: "2026-02-01",
+      },
+      {
+        budget_instance_id: 1,
+        cadence: "monthly",
+        start_date: "2026-01-01",
+        end_date: "2026-01-31",
+        template_id: 1,
+        template_name: "January",
+        income_arrival_date: null,
+        created_at: "2026-01-01",
+      },
+    ]);
+    mockGetGridData.mockImplementation(async (budgetInstanceId: number) => ({
+      budget_instance_id: budgetInstanceId,
+      rows: [
+        {
+          budget_instance_category_id: budgetInstanceId,
+          global_category_id: budgetInstanceId,
+          category_name: "Category",
+          default_amount: 0,
+          default_currency: "CHF",
+          sort_order: 1,
+          received_total: 100 + budgetInstanceId,
+          spent_total: 50 + budgetInstanceId,
+          remaining: 50,
+          first_received_date: null,
+          last_received_date: null,
+        },
+      ],
+    }));
+
+    renderWithProviders(<CrossPeriodTrendWidget />);
+    expect(await screen.findByTestId("line-chart")).toBeInTheDocument();
+
+    expect(mockGetGridData).toHaveBeenCalledTimes(4);
+    expect(screen.getByText(/showing 4 of 4 periods/i)).toBeInTheDocument();
+  });
+
   it("reloads trend data when period count changes", async () => {
     const user = userEvent.setup();
     mockListPeriods.mockResolvedValue([

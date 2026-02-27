@@ -19,9 +19,10 @@ import {
   getDedupedPeriods,
 } from "./dashboardRequestDeduper";
 
-const PERIOD_COUNT_OPTIONS = [3, 6, 12];
-const DEFAULT_PERIOD_COUNT = 6;
-const MAX_PERIOD_COUNT = 12;
+const PERIOD_COUNT_OPTIONS = [3, 6, 12] as const;
+const ALL_PERIODS_OPTION = "all" as const;
+type PeriodSelection = (typeof PERIOD_COUNT_OPTIONS)[number] | typeof ALL_PERIODS_OPTION;
+const DEFAULT_PERIOD_SELECTION: PeriodSelection = ALL_PERIODS_OPTION;
 
 interface TrendPoint {
   label: string;
@@ -45,7 +46,8 @@ const CrossPeriodTrendWidget = () => {
   const [status, setStatus] = useState<TrendStatus>("idle");
   const [totalPeriodCount, setTotalPeriodCount] = useState(0);
   const [trendPoints, setTrendPoints] = useState<TrendPoint[]>([]);
-  const [selectedPeriodCount, setSelectedPeriodCount] = useState(DEFAULT_PERIOD_COUNT);
+  const [selectedPeriodCount, setSelectedPeriodCount] =
+    useState<PeriodSelection>(DEFAULT_PERIOD_SELECTION);
 
   useEffect(() => {
     if (!isFileOpen) {
@@ -63,11 +65,10 @@ const CrossPeriodTrendWidget = () => {
       try {
         const periods = await getDedupedPeriods();
         const sortedPeriods = sortPeriodsDescending(periods);
-        const boundedCount = Math.min(
-          Math.max(selectedPeriodCount, 1),
-          MAX_PERIOD_COUNT
-        );
-        const selectedPeriods = sortedPeriods.slice(0, boundedCount).reverse();
+        const selectedPeriods =
+          selectedPeriodCount === ALL_PERIODS_OPTION
+            ? [...sortedPeriods].reverse()
+            : sortedPeriods.slice(0, selectedPeriodCount).reverse();
 
         const points = await Promise.all(
           selectedPeriods.map(async (period) => {
@@ -156,10 +157,24 @@ const CrossPeriodTrendWidget = () => {
             className="rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-xs text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             value={String(selectedPeriodCount)}
             onChange={(event) => {
-              setSelectedPeriodCount(Number.parseInt(event.target.value, 10));
+              const nextValue = event.target.value;
+              if (nextValue === ALL_PERIODS_OPTION) {
+                setSelectedPeriodCount(ALL_PERIODS_OPTION);
+                return;
+              }
+
+              const parsedValue = Number.parseInt(nextValue, 10);
+              setSelectedPeriodCount(
+                PERIOD_COUNT_OPTIONS.includes(parsedValue as (typeof PERIOD_COUNT_OPTIONS)[number])
+                  ? (parsedValue as (typeof PERIOD_COUNT_OPTIONS)[number])
+                  : DEFAULT_PERIOD_SELECTION
+              );
             }}
             aria-label={t("dashboard.trendPeriodCountLabel")}
           >
+            <option value={ALL_PERIODS_OPTION}>
+              {t("dashboard.trendAllPeriodsOption")}
+            </option>
             {PERIOD_COUNT_OPTIONS.map((option) => (
               <option key={option} value={option}>
                 {option}

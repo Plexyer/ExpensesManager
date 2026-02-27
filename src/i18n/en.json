@@ -158,6 +158,7 @@
     "trendRegion": "Cross-period trend",
     "trendChartLabel": "Recent periods trend chart",
     "trendPeriodCountLabel": "Periods to show",
+    "trendAllPeriodsOption": "All periods",
     "trendPeriodsShown": "Showing {{shown}} of {{total}} periods",
     "trendInsufficientPeriods": "At least two periods are required to display a trend.",
     "trendReceivedLine": "Received",
