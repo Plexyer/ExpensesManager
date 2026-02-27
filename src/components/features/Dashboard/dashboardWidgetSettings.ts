@@ -18,8 +18,16 @@ export const normalizeDashboardWidgetIds = (
 
     const allowedIds = new Set(allWidgetIds);
     const parsedStringIds = parsed.filter((id): id is string => typeof id === "string");
-    const selectedIds = new Set(parsedStringIds.filter((id) => allowedIds.has(id)));
-    const normalized = allWidgetIds.filter((id) => selectedIds.has(id));
+    const normalized: string[] = [];
+    const seen = new Set<string>();
+
+    for (const widgetId of parsedStringIds) {
+      if (!allowedIds.has(widgetId) || seen.has(widgetId)) {
+        continue;
+      }
+      seen.add(widgetId);
+      normalized.push(widgetId);
+    }
 
     // If persisted content contains only stale/invalid IDs, recover to defaults.
     if (parsedStringIds.length > 0 && normalized.length === 0) {

@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  DragDropContext,
+  Draggable,
+  Droppable,
+  type DropResult,
+} from "@hello-pangea/dnd";
 import DashboardWidgetCard from "./DashboardWidgetCard";
 import { dashboardWidgetRegistry } from "./widgetRegistry";
 import {
@@ -9,6 +15,13 @@ import {
 
 const areWidgetIdsEqual = (left: string[], right: string[]): boolean =>
   left.length === right.length && left.every((id, index) => id === right[index]);
+
+const moveItem = (items: string[], fromIndex: number, toIndex: number): string[] => {
+  const reordered = [...items];
+  const [movedItem] = reordered.splice(fromIndex, 1);
+  reordered.splice(toIndex, 0, movedItem);
+  return reordered;
+};
 
 const DashboardShell = () => {
   const { t } = useTranslation();
@@ -45,13 +58,15 @@ const DashboardShell = () => {
     };
   }, [allWidgetIds, t]);
 
-  const activeWidgetSet = useMemo(
-    () => new Set(activeWidgetIds),
-    [activeWidgetIds]
-  );
+  const activeWidgetSet = useMemo(() => new Set(activeWidgetIds), [activeWidgetIds]);
   const activeWidgets = useMemo(
-    () => dashboardWidgetRegistry.filter((widget) => activeWidgetSet.has(widget.id)),
-    [activeWidgetSet]
+    () =>
+      activeWidgetIds
+        .map((widgetId) =>
+          dashboardWidgetRegistry.find((widgetDefinition) => widgetDefinition.id === widgetId)
+        )
+        .filter((widget): widget is (typeof dashboardWidgetRegistry)[number] => Boolean(widget)),
+    [activeWidgetIds]
   );
   const inactiveWidgets = useMemo(
     () => dashboardWidgetRegistry.filter((widget) => !activeWidgetSet.has(widget.id)),
@@ -78,13 +93,11 @@ const DashboardShell = () => {
   };
 
   const handleAddWidget = () => {
-    if (!selectedInactiveWidgetId) {
+    if (!selectedInactiveWidgetId || activeWidgetSet.has(selectedInactiveWidgetId)) {
       return;
     }
 
-    const nextIds = allWidgetIds.filter(
-      (widgetId) => widgetId === selectedInactiveWidgetId || activeWidgetSet.has(widgetId)
-    );
+    const nextIds = [...activeWidgetIds, selectedInactiveWidgetId];
 
     setSettingsError(null);
     setActiveWidgetIds(nextIds);
@@ -103,6 +116,31 @@ const DashboardShell = () => {
     setSettingsError(null);
     setActiveWidgetIds(allWidgetIds);
     void persistWidgetIds(allWidgetIds);
+  };
+
+  const handleReorder = (sourceIndex: number, destinationIndex: number) => {
+    if (
+      sourceIndex < 0 ||
+      destinationIndex < 0 ||
+      sourceIndex >= activeWidgetIds.length ||
+      destinationIndex >= activeWidgetIds.length ||
+      sourceIndex === destinationIndex
+    ) {
+      return;
+    }
+
+    const nextIds = moveItem(activeWidgetIds, sourceIndex, destinationIndex);
+    setSettingsError(null);
+    setActiveWidgetIds(nextIds);
+    void persistWidgetIds(nextIds);
+  };
+
+  const handleDragEnd = (result: DropResult) => {
+    if (!result.destination) {
+      return;
+    }
+
+    handleReorder(result.source.index, result.destination.index);
   };
 
   return (
@@ -167,34 +205,89 @@ const DashboardShell = () => {
         )}
       </header>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2" role="list" aria-label={t("dashboard.widgetsRegion", { defaultValue: "Dashboard widgets" })}>
-        {activeWidgets.map((widget) => (
-          <div
-            key={widget.id}
-            className={widget.span === "double" ? "xl:col-span-2" : ""}
-            role="listitem"
-          >
-            <div className="mb-2 flex justify-end">
-              <button
-                type="button"
-                className="rounded-md border border-slate-600 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                onClick={() => handleRemoveWidget(widget.id)}
-                aria-label={t("dashboard.removeWidgetActionLabel", {
-                  widget: t(widget.titleKey),
-                })}
-              >
-                {t("dashboard.removeWidgetAction")}
-              </button>
+      <DragDropContext onDragEnd={handleDragEnd}>
+        <Droppable droppableId="dashboard-widgets">
+          {(droppableProvided) => (
+            <div
+              ref={droppableProvided.innerRef}
+              {...droppableProvided.droppableProps}
+              className="grid grid-cols-1 gap-4 xl:grid-cols-2"
+              role="list"
+              aria-label={t("dashboard.widgetsRegion", { defaultValue: "Dashboard widgets" })}
+            >
+              {activeWidgets.map((widget, index) => (
+                <Draggable key={widget.id} draggableId={widget.id} index={index}>
+                  {(draggableProvided, snapshot) => (
+                    <div
+                      ref={draggableProvided.innerRef}
+                      {...draggableProvided.draggableProps}
+                      className={`${widget.span === "double" ? "xl:col-span-2" : ""} ${
+                        snapshot.isDragging ? "opacity-95" : ""
+                      }`}
+                      role="listitem"
+                    >
+                      <div className="mb-2 flex flex-wrap justify-end gap-2">
+                        <button
+                          type="button"
+                          {...draggableProvided.dragHandleProps}
+                          className="rounded-md border border-slate-600 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                          aria-label={t("dashboard.reorderWidgetHandle", {
+                            widget: t(widget.titleKey),
+                          })}
+                        >
+                          {t("dashboard.reorderWidgetAction")}
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-md border border-slate-600 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-60"
+                          onClick={() => handleReorder(index, index - 1)}
+                          disabled={index === 0}
+                          aria-label={t("dashboard.moveWidgetUpActionLabel", {
+                            widget: t(widget.titleKey),
+                          })}
+                        >
+                          {t("dashboard.moveWidgetUpAction")}
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-md border border-slate-600 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-60"
+                          onClick={() => handleReorder(index, index + 1)}
+                          disabled={index === activeWidgets.length - 1}
+                          aria-label={t("dashboard.moveWidgetDownActionLabel", {
+                            widget: t(widget.titleKey),
+                          })}
+                        >
+                          {t("dashboard.moveWidgetDownAction")}
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-md border border-slate-600 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                          onClick={() => handleRemoveWidget(widget.id)}
+                          aria-label={t("dashboard.removeWidgetActionLabel", {
+                            widget: t(widget.titleKey),
+                          })}
+                        >
+                          {t("dashboard.removeWidgetAction")}
+                        </button>
+                      </div>
+                      <DashboardWidgetCard widget={widget} />
+                    </div>
+                  )}
+                </Draggable>
+              ))}
+              {droppableProvided.placeholder}
+              {activeWidgets.length === 0 && (
+                <div
+                  className="rounded-lg border border-dashed border-slate-600 bg-slate-900/30 p-4 text-sm text-slate-300 xl:col-span-2"
+                  role="status"
+                >
+                  {t("dashboard.noWidgetsSelected")}
+                </div>
+              )}
             </div>
-            <DashboardWidgetCard widget={widget} />
-          </div>
-        ))}
-        {activeWidgets.length === 0 && (
-          <div className="rounded-lg border border-dashed border-slate-600 bg-slate-900/30 p-4 text-sm text-slate-300 xl:col-span-2" role="status">
-            {t("dashboard.noWidgetsSelected")}
-          </div>
-        )}
-      </div>
+          )}
+        </Droppable>
+      </DragDropContext>
     </section>
   );
 };

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
+import { within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import DashboardShell from "../DashboardShell";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
@@ -84,6 +85,32 @@ describe("DashboardShell", () => {
     await user.click(screen.getByRole("button", { name: /reset to default/i }));
     expect(screen.getByText("KPI Widget")).toBeInTheDocument();
     expect(mockSetUiSetting).toHaveBeenCalled();
+  });
+
+  it("supports keyboard reorder controls and persists custom order", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<DashboardShell />);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /move current period overview widget down/i,
+      })
+    );
+
+    const renderedCards = screen.getAllByRole("article");
+    const firstWidgetTitle = within(renderedCards[0]).getByRole("heading", {
+      level: 3,
+    });
+    expect(firstWidgetTitle).toHaveTextContent("Recent Periods");
+    expect(mockSetUiSetting).toHaveBeenCalledWith(
+      "dashboard_selected_widget_ids",
+      JSON.stringify([
+        "recent-periods",
+        "current-period-overview",
+        "alerts",
+        "inactive-categories",
+      ])
+    );
   });
 });
 

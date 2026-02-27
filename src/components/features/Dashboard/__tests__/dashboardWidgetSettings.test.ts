@@ -13,19 +13,19 @@ describe("normalizeDashboardWidgetIds", () => {
     expect(normalizeDashboardWidgetIds(null, allWidgetIds)).toEqual(allWidgetIds);
   });
 
-  it("keeps only allowed IDs in registry order", () => {
+  it("keeps only allowed IDs in persisted order", () => {
     const raw = JSON.stringify(["alerts", "current-period-overview"]);
     expect(normalizeDashboardWidgetIds(raw, allWidgetIds)).toEqual([
-      "current-period-overview",
       "alerts",
+      "current-period-overview",
     ]);
   });
 
   it("dedupes duplicate IDs", () => {
     const raw = JSON.stringify(["alerts", "alerts", "recent-periods"]);
     expect(normalizeDashboardWidgetIds(raw, allWidgetIds)).toEqual([
-      "recent-periods",
       "alerts",
+      "recent-periods",
     ]);
   });
 
