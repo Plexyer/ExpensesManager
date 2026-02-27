@@ -57,6 +57,10 @@ vi.mock("../AttachmentCoverageWidget", () => ({
   default: () => <div>Attachment Coverage Widget</div>,
 }));
 
+vi.mock("../ForecastRunwayInsightsWidget", () => ({
+  default: () => <div>Forecast Runway Widget</div>,
+}));
+
 describe("DashboardShell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -105,6 +109,7 @@ describe("DashboardShell", () => {
     expect(await screen.findByText("Allocation vs Actual Widget")).toBeInTheDocument();
     expect(await screen.findByText("Largest Changes Widget")).toBeInTheDocument();
     expect(await screen.findByText("Attachment Coverage Widget")).toBeInTheDocument();
+    expect(await screen.findByText("Forecast Runway Widget")).toBeInTheDocument();
   });
 
   it("supports remove, add and reset widget controls", async () => {
@@ -159,6 +164,7 @@ describe("DashboardShell", () => {
         "allocation-vs-actual",
         "largest-changes-previous-period",
         "attachment-coverage",
+        "forecast-runway-insights",
       ])
     );
   });

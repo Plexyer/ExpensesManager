@@ -9,6 +9,7 @@ import CrossPeriodTrendWidget from "./CrossPeriodTrendWidget";
 import AllocationVsActualWidget from "./AllocationVsActualWidget";
 import LargestChangesVsPreviousPeriodWidget from "./LargestChangesVsPreviousPeriodWidget";
 import AttachmentCoverageWidget from "./AttachmentCoverageWidget";
+import ForecastRunwayInsightsWidget from "./ForecastRunwayInsightsWidget";
 
 export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
   {
@@ -76,6 +77,14 @@ export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
     descriptionKey: "dashboard.widgetAttachmentCoverageDesc",
     span: "single",
     render: () => <AttachmentCoverageWidget />,
+  },
+  {
+    id: "forecast-runway-insights",
+    titleKey: "dashboard.widgetForecastRunwayTitle",
+    descriptionKey: "dashboard.widgetForecastRunwayDesc",
+    span: "double",
+    loadingPriority: "deferred",
+    render: () => <ForecastRunwayInsightsWidget />,
   },
 ];
 

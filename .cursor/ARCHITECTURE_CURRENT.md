@@ -109,6 +109,7 @@ DashboardPage
      -> AllocationVsActualWidget (current-period allocation/spent variance ranking + period details CTA)
      -> LargestChangesVsPreviousPeriodWidget (current-vs-previous period category deltas with metric selection)
      -> AttachmentCoverageWidget (received/spent/overall attachment coverage with total attachment count)
+     -> ForecastRunwayInsightsWidget (short-horizon runway outlook with explicit assumptions and confidence guidance)
      -> DashboardStateViews (loading/empty/error)
 
 HomePage

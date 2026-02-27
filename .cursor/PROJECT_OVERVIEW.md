@@ -132,6 +132,7 @@ Schema managed by `src-tauri/src/migrations.rs` (CURRENT_SCHEMA_VERSION = 6).
 - `AllocationVsActualWidget.tsx` — Current period allocation-versus-actual variance widget with ranked category view and period drill-through
 - `LargestChangesVsPreviousPeriodWidget.tsx` — Category delta widget comparing current period against previous period with selectable metric mode
 - `AttachmentCoverageWidget.tsx` — Attachment coverage widget for received, spent, and overall transactions including total attachment count
+- `ForecastRunwayInsightsWidget.tsx` — Forecast/runway insights widget with transparent assumptions, confidence signaling, and sparse-data safeguards
 - `dashboardRequestDeduper.ts` — In-flight request dedupe helper for shared dashboard `listPeriods` / `getGridData` calls
 - `dashboardPerformanceBudget.ts` — Dashboard performance budget constants and deferred-widget staging timing
 - `widgetRegistry.tsx` — Registry source of truth for dashboard widgets
