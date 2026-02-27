@@ -169,17 +169,18 @@ Schema managed by `src-tauri/src/migrations.rs` (CURRENT_SCHEMA_VERSION = 6).
 
 Typed hooks: `useAppSelector`, `useAppDispatch` in `src/store/hooks.ts`.
 
-#### Services (8 service modules in `src/services/`)
+#### Services (9 service modules in `src/services/`)
 | Service | Purpose |
 |---------|---------|
 | `fileService.ts` | File operations — DB create/open/close, grid data loading |
 | `periodService.ts` | Period CRUD (create from template, list, get, delete) |
 | `categoryService.ts` | Global category CRUD |
 | `templateService.ts` | Template CRUD + template category management |
-| `lineItemService.ts` | Line item CRUD (received/spent transactions) |
+| `lineItemService.ts` | Line item CRUD + global recent transaction feed (received/spent transactions) |
 | `attachmentService.ts` | Attachment CRUD + file pickers + export |
 | `settingsService.ts` | UI settings persistence (key-value via `ui_settings` table) |
 | `exportService.ts` | CSV export (UTF-8 BOM for Excel compatibility) |
+| `accountService.ts` | Financial account CRUD + net-worth snapshot retrieval |
 
 #### Hooks
 - `useAttachmentUpload.ts` — Upload hook with file picker + size warning integration
@@ -205,13 +206,13 @@ Typed hooks: `useAppSelector`, `useAppDispatch` in `src/store/hooks.ts`.
 
 | Module | Purpose |
 |--------|---------|
-| `lib.rs` | Tauri app builder, plugin registration, 42 command registrations |
+| `lib.rs` | Tauri app builder, plugin registration, 43 command registrations |
 | `encrypted_db.rs` | All Tauri commands — DB lifecycle, CRUD for categories/templates/periods/line items/attachments, account/net-worth foundation, export, UI settings |
 | `kdf.rs` | Argon2id key derivation (64 MB memory, 3 iterations, 4 threads) |
 | `file_header.rs` | Custom file header format — magic bytes `EFM1`, salt, KDF params, password hint |
 | `migrations.rs` | Database schema migrations v1–v6, version tracking via `_meta` table |
 
-**42 Tauri commands** grouped by domain:
+**43 Tauri commands** grouped by domain:
 - **DB lifecycle** (6): `create_encrypted_db`, `open_encrypted_db`, `get_db_info`, `close_db`, `save_db`, `diagnose_db_file`
 - **Grid data** (1): `get_grid_data`
 - **Global categories** (3): `create_global_category`, `list_global_categories`, `delete_global_category`
@@ -219,7 +220,7 @@ Typed hooks: `useAppSelector`, `useAppDispatch` in `src/store/hooks.ts`.
 - **Template categories** (5): `get_template_categories`, `add_category_to_template`, `remove_category_from_template`, `update_template_category_amount`, `reorder_template_categories`
 - **Periods** (4): `create_period_from_template`, `list_periods`, `get_period`, `delete_period`
 - **Financial accounts** (4): `create_financial_account`, `list_financial_accounts`, `upsert_account_balance_snapshot`, `get_net_worth_snapshot`
-- **Line items** (4): `list_line_items`, `create_line_item`, `update_line_item`, `delete_line_item`
+- **Line items** (5): `list_recent_transactions_feed`, `list_line_items`, `create_line_item`, `update_line_item`, `delete_line_item`
 - **Attachments** (7): `add_attachment`, `list_attachments`, `get_attachment_counts`, `get_attachment_summaries`, `delete_attachment`, `export_attachment`, `get_attachment_data`
 - **File metadata** (1): `get_file_sizes`
 - **UI settings** (2): `get_ui_setting`, `set_ui_setting`

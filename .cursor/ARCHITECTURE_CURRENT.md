@@ -45,7 +45,7 @@
                         v
 +-----------------------+---------------------+
 |            Rust Backend                      |
-|  - encrypted_db.rs (42 Tauri commands)       |
+|  - encrypted_db.rs (43 Tauri commands)       |
 |  - kdf.rs (Argon2id key derivation)          |
 |  - file_header.rs (EFM1 file format)         |
 |  - migrations.rs (schema v1-v6)              |
@@ -171,7 +171,7 @@ All services wrap Tauri `invoke()` calls and live in `src/services/`:
 | `periodService` | `periodService.ts` | `create_period_from_template`, `list_periods`, `get_period`, `delete_period`, `get_grid_data` |
 | `categoryService` | `categoryService.ts` | `create_global_category`, `list_global_categories`, `delete_global_category` |
 | `templateService` | `templateService.ts` | Template + template category CRUD commands |
-| `lineItemService` | `lineItemService.ts` | `list_line_items`, `create_line_item`, `update_line_item`, `delete_line_item` |
+| `lineItemService` | `lineItemService.ts` | `list_recent_transactions_feed`, `list_line_items`, `create_line_item`, `update_line_item`, `delete_line_item` |
 | `attachmentService` | `attachmentService.ts` | `add_attachment`, `list_attachments`, `get_attachment_counts`, `delete_attachment`, `export_attachment`, `get_attachment_data` |
 | `settingsService` | `settingsService.ts` | `get_ui_setting`, `set_ui_setting` |
 | `exportService` | `exportService.ts` | `export_to_csv`, `export_csv_to_file` |
@@ -226,7 +226,7 @@ All services wrap Tauri `invoke()` calls and live in `src/services/`:
 
 | Module | Lines | Purpose |
 |--------|-------|---------|
-| `lib.rs` | ~86 | App initialization, plugin registration, 42 command registration, exit handler |
+| `lib.rs` | ~87 | App initialization, plugin registration, 43 command registration, exit handler |
 | `encrypted_db.rs` | ~6,300 | All Tauri commands: DB lifecycle, CRUD for all entities, account/net-worth foundations, export, settings |
 | `kdf.rs` | ~231 | Argon2id key derivation (64 MB, 3 iter, 4 threads, 32-byte output) |
 | `file_header.rs` | ~312 | EFM1 file format: magic bytes, version, salt, KDF params, password hint |
@@ -240,7 +240,7 @@ tauri::Builder::default()
   -> plugin: tauri_plugin_opener
   -> plugin: tauri_plugin_dialog
   -> manage: DbState::new()
-  -> invoke_handler: 42 commands from encrypted_db module
+  -> invoke_handler: 43 commands from encrypted_db module
   -> run event handler: save_if_open() on Exit (BUG-004 fix)
 ```
 
@@ -260,7 +260,7 @@ struct OpenFileState {
 
 The app extracts the encrypted SQLite data from the `.financedb` file into a temp file, opens it with SQLCipher, and writes it back on save/close/exit.
 
-### Command Groups (42 total)
+### Command Groups (43 total)
 
 | Group | Commands | Count |
 |-------|----------|-------|
@@ -270,7 +270,7 @@ The app extracts the encrypted SQLite data from the `.financedb` file into a tem
 | Template Categories | `get_template_categories`, `add_category_to_template`, `remove_category_from_template`, `update_template_category_amount`, `reorder_template_categories` | 5 |
 | Periods | `create_period_from_template`, `list_periods`, `get_period`, `delete_period` | 4 |
 | Financial Accounts | `create_financial_account`, `list_financial_accounts`, `upsert_account_balance_snapshot`, `get_net_worth_snapshot` | 4 |
-| Line Items | `list_line_items`, `create_line_item`, `update_line_item`, `delete_line_item` | 4 |
+| Line Items | `list_recent_transactions_feed`, `list_line_items`, `create_line_item`, `update_line_item`, `delete_line_item` | 5 |
 | Attachments | `add_attachment`, `list_attachments`, `get_attachment_counts`, `get_attachment_summaries`, `delete_attachment`, `export_attachment`, `get_attachment_data` | 7 |
 | UI Settings | `get_ui_setting`, `set_ui_setting` | 2 |
 | Export | `export_to_csv`, `export_csv_to_file` | 2 |

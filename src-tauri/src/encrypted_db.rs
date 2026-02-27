@@ -2380,6 +2380,159 @@ pub struct LineItem {
     pub updated_at: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RecentTransactionFeedItem {
+    pub line_item_id: i64,
+    pub budget_instance_category_id: i64,
+    pub budget_instance_id: i64,
+    pub global_category_id: i64,
+    pub category_name: String,
+    pub period_start_date: String,
+    pub period_end_date: Option<String>,
+    pub template_name: Option<String>,
+    pub kind: String,
+    pub occurred_at: String,
+    pub description: Option<String>,
+    pub amount: f64,
+    pub currency: String,
+    pub notes: Option<String>,
+    pub is_template_default: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListRecentTransactionsFeedArgs {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+const RECENT_TRANSACTIONS_DEFAULT_LIMIT: i64 = 25;
+const RECENT_TRANSACTIONS_MAX_LIMIT: i64 = 200;
+
+fn normalize_recent_feed_args(
+    args: &ListRecentTransactionsFeedArgs,
+) -> Result<(i64, i64), EncryptedDbError> {
+    let limit = args.limit.unwrap_or(RECENT_TRANSACTIONS_DEFAULT_LIMIT);
+    let offset = args.offset.unwrap_or(0);
+
+    if limit <= 0 {
+        return Err(EncryptedDbError::DatabaseError(
+            "limit must be greater than 0.".to_string(),
+        ));
+    }
+    if limit > RECENT_TRANSACTIONS_MAX_LIMIT {
+        return Err(EncryptedDbError::DatabaseError(format!(
+            "limit must be <= {}.",
+            RECENT_TRANSACTIONS_MAX_LIMIT
+        )));
+    }
+    if offset < 0 {
+        return Err(EncryptedDbError::DatabaseError(
+            "offset must be >= 0.".to_string(),
+        ));
+    }
+
+    Ok((limit, offset))
+}
+
+/// Lists recent transactions globally across periods and categories.
+/// Returns non-deleted line items with period/category context for dashboard feeds.
+#[tauri::command]
+pub fn list_recent_transactions_feed(
+    args: ListRecentTransactionsFeedArgs,
+    db_state: State<DbState>,
+) -> Result<Vec<RecentTransactionFeedItem>, String> {
+    list_recent_transactions_feed_internal(&args, &db_state).map_err(|e| e.to_string())
+}
+
+fn list_recent_transactions_feed_internal(
+    args: &ListRecentTransactionsFeedArgs,
+    db_state: &State<DbState>,
+) -> Result<Vec<RecentTransactionFeedItem>, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    list_recent_transactions_feed_with_conn(args, conn)
+}
+
+fn list_recent_transactions_feed_with_conn(
+    args: &ListRecentTransactionsFeedArgs,
+    conn: &Connection,
+) -> Result<Vec<RecentTransactionFeedItem>, EncryptedDbError> {
+    let (limit, offset) = normalize_recent_feed_args(args)?;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT
+            li.line_item_id,
+            li.budget_instance_category_id,
+            bic.budget_instance_id,
+            bic.global_category_id,
+            gc.name AS category_name,
+            pbi.start_date AS period_start_date,
+            pbi.end_date AS period_end_date,
+            bt.name AS template_name,
+            li.kind,
+            li.occurred_at,
+            li.description,
+            li.amount,
+            li.currency,
+            li.notes,
+            li.is_template_default,
+            li.created_at,
+            li.updated_at
+        FROM category_line_items li
+        JOIN budget_instance_categories bic
+          ON bic.budget_instance_category_id = li.budget_instance_category_id
+        JOIN global_categories gc
+          ON gc.global_category_id = bic.global_category_id
+        JOIN period_budget_instances pbi
+          ON pbi.budget_instance_id = bic.budget_instance_id
+        LEFT JOIN budget_templates bt
+          ON bt.template_id = pbi.template_id
+        WHERE li.deleted_at IS NULL
+        ORDER BY li.occurred_at DESC, li.line_item_id DESC
+        LIMIT ? OFFSET ?
+        "#,
+    )?;
+
+    let rows = stmt.query_map(rusqlite::params![limit, offset], |row| {
+        Ok(RecentTransactionFeedItem {
+            line_item_id: row.get(0)?,
+            budget_instance_category_id: row.get(1)?,
+            budget_instance_id: row.get(2)?,
+            global_category_id: row.get(3)?,
+            category_name: row.get(4)?,
+            period_start_date: row.get(5)?,
+            period_end_date: row.get(6)?,
+            template_name: row.get(7)?,
+            kind: row.get(8)?,
+            occurred_at: row.get(9)?,
+            description: row.get(10)?,
+            amount: row.get(11)?,
+            currency: row.get(12)?,
+            notes: row.get(13)?,
+            is_template_default: row.get::<_, i64>(14)? != 0,
+            created_at: row.get(15)?,
+            updated_at: row.get(16)?,
+        })
+    })?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+
+    Ok(items)
+}
+
 /// Lists line items for a specific category within a budget instance, filtered by kind.
 /// Returns non-deleted items ordered by occurred_at descending.
 #[tauri::command]
@@ -6487,5 +6640,125 @@ mod tests {
         assert_eq!(snapshot.account_balances[0].as_of_date.as_deref(), Some("2026-02-10"));
         assert!((snapshot.account_balances[0].balance_amount - 2000.0).abs() < 0.01);
         assert_eq!(snapshot.as_of_date, "2026-02-15");
+    }
+
+    #[test]
+    fn test_recent_transactions_feed_returns_joined_context_and_order() {
+        let conn = setup_grid_test_db();
+        let (budget_instance_id, bic_id, _global_cat_id) = insert_grid_test_data(&conn);
+
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency, description, notes) VALUES (?, 'spent', '2026-02-02T10:00:00', 50.00, 'CHF', 'Groceries', 'A')",
+            [bic_id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency, description, notes) VALUES (?, 'received', '2026-02-03T09:00:00', 200.00, 'CHF', 'Refund', 'B')",
+            [bic_id],
+        )
+        .unwrap();
+
+        let items = list_recent_transactions_feed_with_conn(
+            &ListRecentTransactionsFeedArgs {
+                limit: Some(10),
+                offset: Some(0),
+            },
+            &conn,
+        )
+        .unwrap();
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].kind, "received");
+        assert_eq!(items[0].budget_instance_id, budget_instance_id);
+        assert_eq!(items[0].category_name, "Groceries");
+        assert_eq!(items[0].period_start_date, "2026-02-01");
+        assert!(items[0].template_name.is_some());
+        assert_eq!(items[1].kind, "spent");
+    }
+
+    #[test]
+    fn test_recent_transactions_feed_excludes_deleted_items() {
+        let conn = setup_grid_test_db();
+        let (_budget_instance_id, bic_id, _global_cat_id) = insert_grid_test_data(&conn);
+
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'spent', '2026-02-05T10:00:00', 10.00, 'CHF')",
+            [bic_id],
+        )
+        .unwrap();
+        let keep_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency, deleted_at) VALUES (?, 'spent', '2026-02-06T10:00:00', 20.00, 'CHF', datetime('now'))",
+            [bic_id],
+        )
+        .unwrap();
+
+        let items = list_recent_transactions_feed_with_conn(
+            &ListRecentTransactionsFeedArgs {
+                limit: Some(10),
+                offset: Some(0),
+            },
+            &conn,
+        )
+        .unwrap();
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].line_item_id, keep_id);
+    }
+
+    #[test]
+    fn test_recent_transactions_feed_limit_and_offset() {
+        let conn = setup_grid_test_db();
+        let (_budget_instance_id, bic_id, _global_cat_id) = insert_grid_test_data(&conn);
+
+        for day in 1..=3 {
+            conn.execute(
+                "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'spent', ?, 10.00, 'CHF')",
+                rusqlite::params![bic_id, format!("2026-02-0{}T10:00:00", day)],
+            )
+            .unwrap();
+        }
+
+        let first_page = list_recent_transactions_feed_with_conn(
+            &ListRecentTransactionsFeedArgs {
+                limit: Some(2),
+                offset: Some(0),
+            },
+            &conn,
+        )
+        .unwrap();
+        assert_eq!(first_page.len(), 2);
+
+        let second_page = list_recent_transactions_feed_with_conn(
+            &ListRecentTransactionsFeedArgs {
+                limit: Some(2),
+                offset: Some(2),
+            },
+            &conn,
+        )
+        .unwrap();
+        assert_eq!(second_page.len(), 1);
+    }
+
+    #[test]
+    fn test_recent_transactions_feed_rejects_invalid_limit() {
+        let conn = setup_grid_test_db();
+        let result = list_recent_transactions_feed_with_conn(
+            &ListRecentTransactionsFeedArgs {
+                limit: Some(0),
+                offset: Some(0),
+            },
+            &conn,
+        );
+        assert!(result.is_err());
+
+        let over_max = list_recent_transactions_feed_with_conn(
+            &ListRecentTransactionsFeedArgs {
+                limit: Some(RECENT_TRANSACTIONS_MAX_LIMIT + 1),
+                offset: Some(0),
+            },
+            &conn,
+        );
+        assert!(over_max.is_err());
     }
 }

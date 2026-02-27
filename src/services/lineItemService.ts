@@ -3,6 +3,8 @@ import type {
   LineItem,
   CreateLineItemArgs,
   UpdateLineItemArgs,
+  ListRecentTransactionsFeedArgs,
+  RecentTransactionFeedItem,
 } from "../types/lineItem.types";
 
 // ============================================================================
@@ -25,6 +27,22 @@ export const listLineItems = async (
   return await invoke<LineItem[]>("list_line_items", {
     budgetInstanceCategoryId,
     kind,
+  });
+};
+
+/**
+ * Lists globally recent transactions across periods/categories for dashboard
+ * activity feeds.
+ *
+ * @param args - Optional paging args (`limit`, `offset`)
+ * @returns Array of recent transaction rows with joined context
+ * @throws Error if no database is open or args are invalid
+ */
+export const listRecentTransactionsFeed = async (
+  args?: ListRecentTransactionsFeedArgs
+): Promise<RecentTransactionFeedItem[]> => {
+  return await invoke<RecentTransactionFeedItem[]>("list_recent_transactions_feed", {
+    args: args ?? {},
   });
 };
 

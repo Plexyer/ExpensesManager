@@ -50,3 +50,36 @@ export interface UpdateLineItemArgs {
   description?: string | null;
   notes?: string | null;
 }
+
+/**
+ * Arguments for listing global recent transactions feed entries.
+ * Matches Rust `ListRecentTransactionsFeedArgs`.
+ */
+export interface ListRecentTransactionsFeedArgs {
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * A recent transaction entry across periods/categories with joined context
+ * for dashboard activity use-cases.
+ */
+export interface RecentTransactionFeedItem {
+  line_item_id: number;
+  budget_instance_category_id: number;
+  budget_instance_id: number;
+  global_category_id: number;
+  category_name: string;
+  period_start_date: string;
+  period_end_date: string | null;
+  template_name: string | null;
+  kind: "received" | "spent";
+  occurred_at: string;
+  description: string | null;
+  amount: number;
+  currency: string;
+  notes: string | null;
+  is_template_default: boolean;
+  created_at: string;
+  updated_at: string;
+}

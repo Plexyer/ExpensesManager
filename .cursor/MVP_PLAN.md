@@ -583,6 +583,7 @@ This phase expands the dashboard from a shell into a configurable, insight-orien
 | TASK-13.13: Attachment coverage widget | #130 | 2026-02-26 | Added received/spent/overall attachment coverage metrics with template-default inclusion and total attachment counts |
 | TASK-13.15: Dashboard preferences (visibility/layout settings) | #132 | 2026-02-27 | Added Settings-based dashboard preferences controls for widget visibility/order with reset and persisted `ui_settings` integration |
 | TASK-13.16: Dashboard performance & loading strategy | #129 | 2026-02-26 | Added shell-level dashboard data bootstrap, staged critical/deferred widget loading, and in-flight request dedupe for service-driven widgets |
+| TASK-13.17: Backend endpoint — global recent transactions feed | #134 | 2026-02-26 | Added global recent-transactions command with bounded pagination and joined period/category context, plus frontend line-item feed service/types |
 | TASK-13.21: Net worth/account balance dashboard foundations | #138 | 2026-02-26 | Added schema v6 account tables, financial account/net-worth backend commands, frontend account service/types, and dashboard adapter plumbing for future widgets |
 
 ### Chart Library Decision (TASK-13.5)
