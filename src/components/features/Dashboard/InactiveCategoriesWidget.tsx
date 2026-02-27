@@ -1,49 +1,20 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { fetchGridData, fetchPeriods } from "../../../store/slices/budgetSlice";
-import { useAppDispatch, useAppSelector } from "../../../store/hooks";
+import { useAppSelector } from "../../../store/hooks";
 import DashboardStateViews from "./DashboardStateViews";
 
 const InactiveCategoriesWidget = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const dispatch = useAppDispatch();
-  const { isFileOpen } = useAppSelector((state) => state.file);
   const {
     periods,
     periodsStatus,
     periodsError,
-    currentBudgetInstanceId,
     gridData,
     gridDataStatus,
     gridDataError,
   } = useAppSelector((state) => state.budget);
-
-  useEffect(() => {
-    if (!isFileOpen || periodsStatus !== "idle") {
-      return;
-    }
-    void dispatch(fetchPeriods());
-  }, [dispatch, isFileOpen, periodsStatus]);
-
-  useEffect(() => {
-    if (!isFileOpen || currentBudgetInstanceId === null) {
-      return;
-    }
-    if (
-      gridDataStatus === "idle" ||
-      gridData?.budget_instance_id !== currentBudgetInstanceId
-    ) {
-      void dispatch(fetchGridData(currentBudgetInstanceId));
-    }
-  }, [
-    currentBudgetInstanceId,
-    dispatch,
-    gridData?.budget_instance_id,
-    gridDataStatus,
-    isFileOpen,
-  ]);
 
   const inactiveRows = useMemo(
     () =>
@@ -57,12 +28,17 @@ const InactiveCategoriesWidget = () => {
     navigate("/periods");
   };
 
-  if (periodsStatus === "loading" || gridDataStatus === "loading") {
-    return <DashboardStateViews state="loading" />;
-  }
-
   if (periodsError || gridDataError) {
     return <DashboardStateViews state="error" />;
+  }
+
+  if (
+    periodsStatus === "idle" ||
+    periodsStatus === "loading" ||
+    gridDataStatus === "idle" ||
+    gridDataStatus === "loading"
+  ) {
+    return <DashboardStateViews state="loading" />;
   }
 
   if (!periods.length || !gridData?.rows.length) {

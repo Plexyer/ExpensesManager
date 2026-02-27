@@ -3,6 +3,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LargestChangesVsPreviousPeriodWidget from "../LargestChangesVsPreviousPeriodWidget";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
+import { resetDashboardRequestDeduperForTests } from "../dashboardRequestDeduper";
 
 const mockUseAppSelector = vi.hoisted(() => vi.fn());
 const mockListPeriods = vi.hoisted(() => vi.fn());
@@ -32,6 +33,7 @@ vi.mock("react-router-dom", async (importOriginal) => {
 describe("LargestChangesVsPreviousPeriodWidget", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetDashboardRequestDeduperForTests();
     mockUseAppSelector.mockImplementation((selector: (state: unknown) => unknown) =>
       selector({
         file: { isFileOpen: true },

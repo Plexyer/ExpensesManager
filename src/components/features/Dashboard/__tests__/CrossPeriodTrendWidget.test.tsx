@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import CrossPeriodTrendWidget from "../CrossPeriodTrendWidget";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
+import { resetDashboardRequestDeduperForTests } from "../dashboardRequestDeduper";
 
 const mockUseAppSelector = vi.hoisted(() => vi.fn());
 const mockListPeriods = vi.hoisted(() => vi.fn());
@@ -39,6 +40,7 @@ vi.mock("recharts", () => ({
 describe("CrossPeriodTrendWidget", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetDashboardRequestDeduperForTests();
     mockUseAppSelector.mockImplementation((selector: (state: unknown) => unknown) =>
       selector({
         file: { isFileOpen: true },

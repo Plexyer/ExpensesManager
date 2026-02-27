@@ -10,12 +10,14 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { getGridData } from "../../../services/fileService";
-import { listPeriods } from "../../../services/periodService";
 import { useAppSelector } from "../../../store/hooks";
 import { formatCurrency } from "../../../utils/currency";
 import type { PeriodBudgetInstance } from "../../../types/period.types";
 import DashboardStateViews from "./DashboardStateViews";
+import {
+  getDedupedGridData,
+  getDedupedPeriods,
+} from "./dashboardRequestDeduper";
 
 const PERIOD_COUNT_OPTIONS = [3, 6, 12];
 const DEFAULT_PERIOD_COUNT = 6;
@@ -59,7 +61,7 @@ const CrossPeriodTrendWidget = () => {
       setStatus("loading");
 
       try {
-        const periods = await listPeriods();
+        const periods = await getDedupedPeriods();
         const sortedPeriods = sortPeriodsDescending(periods);
         const boundedCount = Math.min(
           Math.max(selectedPeriodCount, 1),
@@ -69,7 +71,7 @@ const CrossPeriodTrendWidget = () => {
 
         const points = await Promise.all(
           selectedPeriods.map(async (period) => {
-            const gridData = await getGridData(period.budget_instance_id);
+            const gridData = await getDedupedGridData(period.budget_instance_id);
             const totals = gridData.rows.reduce(
               (acc, row) => {
                 acc.received += row.received_total;

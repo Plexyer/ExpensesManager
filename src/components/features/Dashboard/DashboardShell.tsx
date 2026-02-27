@@ -8,10 +8,14 @@ import {
 } from "@hello-pangea/dnd";
 import DashboardWidgetCard from "./DashboardWidgetCard";
 import { dashboardWidgetRegistry } from "./widgetRegistry";
+import DashboardStateViews from "./DashboardStateViews";
 import {
   loadDashboardWidgetIds,
   saveDashboardWidgetIds,
 } from "./dashboardWidgetSettings";
+import { fetchGridData, fetchPeriods } from "../../../store/slices/budgetSlice";
+import { useAppDispatch, useAppSelector } from "../../../store/hooks";
+import { DASHBOARD_DEFERRED_WIDGET_DELAY_MS } from "./dashboardPerformanceBudget";
 
 const areWidgetIdsEqual = (left: string[], right: string[]): boolean =>
   left.length === right.length && left.every((id, index) => id === right[index]);
@@ -25,13 +29,54 @@ const moveItem = (items: string[], fromIndex: number, toIndex: number): string[]
 
 const DashboardShell = () => {
   const { t } = useTranslation();
+  const dispatch = useAppDispatch();
+  const { isFileOpen } = useAppSelector((state) => state.file);
+  const { periodsStatus, currentBudgetInstanceId, gridData, gridDataStatus } =
+    useAppSelector((state) => state.budget);
   const allWidgetIds = useMemo(
     () => dashboardWidgetRegistry.map((widget) => widget.id),
     []
   );
+  const [areDeferredWidgetsReady, setAreDeferredWidgetsReady] = useState(false);
   const [activeWidgetIds, setActiveWidgetIds] = useState<string[]>(allWidgetIds);
   const [selectedInactiveWidgetId, setSelectedInactiveWidgetId] = useState<string>("");
   const [settingsError, setSettingsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isFileOpen || periodsStatus !== "idle") {
+      return;
+    }
+    void dispatch(fetchPeriods());
+  }, [dispatch, isFileOpen, periodsStatus]);
+
+  useEffect(() => {
+    if (!isFileOpen || periodsStatus !== "succeeded" || currentBudgetInstanceId === null) {
+      return;
+    }
+    if (
+      gridDataStatus === "idle" ||
+      gridData?.budget_instance_id !== currentBudgetInstanceId
+    ) {
+      void dispatch(fetchGridData(currentBudgetInstanceId));
+    }
+  }, [
+    currentBudgetInstanceId,
+    dispatch,
+    gridData?.budget_instance_id,
+    gridDataStatus,
+    isFileOpen,
+    periodsStatus,
+  ]);
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      setAreDeferredWidgetsReady(true);
+    }, DASHBOARD_DEFERRED_WIDGET_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, []);
 
   useEffect(() => {
     let isCancelled = false;
@@ -270,7 +315,17 @@ const DashboardShell = () => {
                           {t("dashboard.removeWidgetAction")}
                         </button>
                       </div>
-                      <DashboardWidgetCard widget={widget} />
+                      {!areDeferredWidgetsReady &&
+                      widget.loadingPriority === "deferred" ? (
+                        <DashboardWidgetCard
+                          widget={{
+                            ...widget,
+                            render: () => <DashboardStateViews state="loading" />,
+                          }}
+                        />
+                      ) : (
+                        <DashboardWidgetCard widget={widget} />
+                      )}
                     </div>
                   )}
                 </Draggable>

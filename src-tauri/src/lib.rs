@@ -43,6 +43,11 @@ pub fn run() {
             encrypted_db::list_periods,
             encrypted_db::get_period,
             encrypted_db::delete_period,
+            // Financial account commands
+            encrypted_db::create_financial_account,
+            encrypted_db::list_financial_accounts,
+            encrypted_db::upsert_account_balance_snapshot,
+            encrypted_db::get_net_worth_snapshot,
             // Line item commands
             encrypted_db::list_line_items,
             encrypted_db::create_line_item,

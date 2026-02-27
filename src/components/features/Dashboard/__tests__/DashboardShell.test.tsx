@@ -8,6 +8,13 @@ import { dashboardWidgetRegistry } from "../widgetRegistry";
 
 const mockGetUiSetting = vi.hoisted(() => vi.fn());
 const mockSetUiSetting = vi.hoisted(() => vi.fn());
+const mockUseAppSelector = vi.hoisted(() => vi.fn());
+const mockDispatch = vi.hoisted(() => vi.fn());
+
+vi.mock("../../../../store/hooks", () => ({
+  useAppSelector: mockUseAppSelector,
+  useAppDispatch: () => mockDispatch,
+}));
 
 vi.mock("../../../../services/settingsService", () => ({
   getUiSetting: mockGetUiSetting,
@@ -46,9 +53,24 @@ vi.mock("../LargestChangesVsPreviousPeriodWidget", () => ({
   default: () => <div>Largest Changes Widget</div>,
 }));
 
+vi.mock("../AttachmentCoverageWidget", () => ({
+  default: () => <div>Attachment Coverage Widget</div>,
+}));
+
 describe("DashboardShell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseAppSelector.mockImplementation((selector: (state: unknown) => unknown) =>
+      selector({
+        file: { isFileOpen: true },
+        budget: {
+          periodsStatus: "succeeded",
+          currentBudgetInstanceId: 1,
+          gridData: { budget_instance_id: 1, rows: [] },
+          gridDataStatus: "succeeded",
+        },
+      })
+    );
     mockGetUiSetting.mockResolvedValue(null);
     mockSetUiSetting.mockResolvedValue(undefined);
   });
@@ -69,17 +91,20 @@ describe("DashboardShell", () => {
     expect(renderedCards).toHaveLength(dashboardWidgetRegistry.length);
   });
 
-  it("renders placeholder widget states and registered widgets", () => {
+  it("renders placeholder widget states and registered widgets", async () => {
     renderWithProviders(<DashboardShell />);
 
     expect(screen.getByText("KPI Widget")).toBeInTheDocument();
     expect(screen.getByText("Recent Periods Widget")).toBeInTheDocument();
     expect(screen.getByText("Overspent Widget")).toBeInTheDocument();
-    expect(screen.getByText("Inactive Categories Widget")).toBeInTheDocument();
-    expect(screen.getByText("Category Breakdown Widget")).toBeInTheDocument();
-    expect(screen.getByText("Cross-Period Trend Widget")).toBeInTheDocument();
-    expect(screen.getByText("Allocation vs Actual Widget")).toBeInTheDocument();
-    expect(screen.getByText("Largest Changes Widget")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Inactive Categories Widget")
+    ).toBeInTheDocument();
+    expect(await screen.findByText("Category Breakdown Widget")).toBeInTheDocument();
+    expect(await screen.findByText("Cross-Period Trend Widget")).toBeInTheDocument();
+    expect(await screen.findByText("Allocation vs Actual Widget")).toBeInTheDocument();
+    expect(await screen.findByText("Largest Changes Widget")).toBeInTheDocument();
+    expect(await screen.findByText("Attachment Coverage Widget")).toBeInTheDocument();
   });
 
   it("supports remove, add and reset widget controls", async () => {
@@ -133,6 +158,7 @@ describe("DashboardShell", () => {
         "cross-period-trend",
         "allocation-vs-actual",
         "largest-changes-previous-period",
+        "attachment-coverage",
       ])
     );
   });

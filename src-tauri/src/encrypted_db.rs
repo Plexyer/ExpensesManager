@@ -19,7 +19,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use image::codecs::jpeg::JpegEncoder;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -1915,6 +1915,449 @@ fn get_ui_setting_internal(
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(EncryptedDbError::from(e)),
     }
+}
+
+// ============================================================================
+// Financial Account Commands (Net-Worth Foundations)
+// ============================================================================
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FinancialAccount {
+    pub account_id: i64,
+    pub name: String,
+    pub account_type: String,
+    pub currency: String,
+    pub is_active: bool,
+    pub display_order: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateFinancialAccountArgs {
+    pub name: String,
+    pub account_type: String,
+    pub currency: String,
+    pub display_order: Option<i64>,
+    pub is_active: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AccountBalanceSnapshot {
+    pub snapshot_id: i64,
+    pub account_id: i64,
+    pub as_of_date: String,
+    pub balance_amount: f64,
+    pub note: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpsertAccountBalanceSnapshotArgs {
+    pub account_id: i64,
+    pub as_of_date: String,
+    pub balance_amount: f64,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NetWorthAccountBalance {
+    pub account_id: i64,
+    pub name: String,
+    pub account_type: String,
+    pub currency: String,
+    pub as_of_date: Option<String>,
+    pub balance_amount: f64,
+    pub signed_balance_amount: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NetWorthCurrencyTotal {
+    pub currency: String,
+    pub assets_total: f64,
+    pub liabilities_total: f64,
+    pub net_total: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NetWorthSnapshot {
+    pub as_of_date: String,
+    pub account_balances: Vec<NetWorthAccountBalance>,
+    pub totals_by_currency: Vec<NetWorthCurrencyTotal>,
+}
+
+fn validate_account_type(account_type: &str) -> Result<(), EncryptedDbError> {
+    if account_type == "asset" || account_type == "liability" {
+        return Ok(());
+    }
+
+    Err(EncryptedDbError::DatabaseError(format!(
+        "Invalid account_type '{}'. Expected 'asset' or 'liability'.",
+        account_type
+    )))
+}
+
+fn normalize_currency(currency: &str) -> Result<String, EncryptedDbError> {
+    let trimmed = currency.trim().to_uppercase();
+    if trimmed.len() != 3 {
+        return Err(EncryptedDbError::DatabaseError(format!(
+            "Invalid currency '{}'. Expected a 3-letter ISO code.",
+            currency
+        )));
+    }
+
+    Ok(trimmed)
+}
+
+fn resolve_snapshot_date(
+    conn: &Connection,
+    requested_as_of_date: Option<&str>,
+) -> Result<String, EncryptedDbError> {
+    if let Some(as_of_date) = requested_as_of_date {
+        let trimmed = as_of_date.trim();
+        if trimmed.is_empty() {
+            return Err(EncryptedDbError::DatabaseError(
+                "as_of_date cannot be empty.".to_string(),
+            ));
+        }
+        return Ok(trimmed.to_string());
+    }
+
+    let from_snapshots: Option<String> = conn.query_row(
+        "SELECT MAX(as_of_date) FROM account_balance_snapshots",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if let Some(snapshot_date) = from_snapshots {
+        return Ok(snapshot_date);
+    }
+
+    let today: String = conn.query_row("SELECT date('now')", [], |row| row.get(0))?;
+    Ok(today)
+}
+
+#[tauri::command]
+pub fn create_financial_account(
+    args: CreateFinancialAccountArgs,
+    db_state: State<DbState>,
+) -> Result<FinancialAccount, String> {
+    create_financial_account_internal(&args, &db_state).map_err(|e| e.to_string())
+}
+
+fn create_financial_account_internal(
+    args: &CreateFinancialAccountArgs,
+    db_state: &State<DbState>,
+) -> Result<FinancialAccount, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    create_financial_account_with_conn(args, conn)
+}
+
+fn create_financial_account_with_conn(
+    args: &CreateFinancialAccountArgs,
+    conn: &Connection,
+) -> Result<FinancialAccount, EncryptedDbError> {
+    let name = args.name.trim();
+    if name.is_empty() {
+        return Err(EncryptedDbError::DatabaseError(
+            "Account name cannot be empty.".to_string(),
+        ));
+    }
+
+    validate_account_type(&args.account_type)?;
+    let currency = normalize_currency(&args.currency)?;
+    let display_order = args.display_order.unwrap_or(0);
+    let is_active = args.is_active.unwrap_or(true);
+
+    conn.execute(
+        r#"
+        INSERT INTO financial_accounts (name, account_type, currency, is_active, display_order)
+        VALUES (?, ?, ?, ?, ?)
+        "#,
+        rusqlite::params![
+            name,
+            &args.account_type,
+            currency,
+            if is_active { 1 } else { 0 },
+            display_order
+        ],
+    )?;
+
+    let account_id = conn.last_insert_rowid();
+    conn.query_row(
+        r#"
+        SELECT account_id, name, account_type, currency, is_active, display_order, created_at, updated_at
+        FROM financial_accounts
+        WHERE account_id = ?
+        "#,
+        [account_id],
+        |row| {
+            let is_active_value: i64 = row.get(4)?;
+            Ok(FinancialAccount {
+                account_id: row.get(0)?,
+                name: row.get(1)?,
+                account_type: row.get(2)?,
+                currency: row.get(3)?,
+                is_active: is_active_value == 1,
+                display_order: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+            })
+        },
+    )
+    .map_err(EncryptedDbError::from)
+}
+
+#[tauri::command]
+pub fn list_financial_accounts(db_state: State<DbState>) -> Result<Vec<FinancialAccount>, String> {
+    list_financial_accounts_internal(&db_state).map_err(|e| e.to_string())
+}
+
+fn list_financial_accounts_internal(
+    db_state: &State<DbState>,
+) -> Result<Vec<FinancialAccount>, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    list_financial_accounts_with_conn(conn)
+}
+
+fn list_financial_accounts_with_conn(
+    conn: &Connection,
+) -> Result<Vec<FinancialAccount>, EncryptedDbError> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT account_id, name, account_type, currency, is_active, display_order, created_at, updated_at
+        FROM financial_accounts
+        ORDER BY is_active DESC, display_order ASC, account_id ASC
+        "#,
+    )?;
+
+    let accounts = stmt
+        .query_map([], |row| {
+            let is_active_value: i64 = row.get(4)?;
+            Ok(FinancialAccount {
+                account_id: row.get(0)?,
+                name: row.get(1)?,
+                account_type: row.get(2)?,
+                currency: row.get(3)?,
+                is_active: is_active_value == 1,
+                display_order: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(accounts)
+}
+
+#[tauri::command]
+pub fn upsert_account_balance_snapshot(
+    args: UpsertAccountBalanceSnapshotArgs,
+    db_state: State<DbState>,
+) -> Result<AccountBalanceSnapshot, String> {
+    upsert_account_balance_snapshot_internal(&args, &db_state).map_err(|e| e.to_string())
+}
+
+fn upsert_account_balance_snapshot_internal(
+    args: &UpsertAccountBalanceSnapshotArgs,
+    db_state: &State<DbState>,
+) -> Result<AccountBalanceSnapshot, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    upsert_account_balance_snapshot_with_conn(args, conn)
+}
+
+fn upsert_account_balance_snapshot_with_conn(
+    args: &UpsertAccountBalanceSnapshotArgs,
+    conn: &Connection,
+) -> Result<AccountBalanceSnapshot, EncryptedDbError> {
+    if args.balance_amount < 0.0 {
+        return Err(EncryptedDbError::DatabaseError(
+            "balance_amount must be non-negative. Store liabilities as positive values.".to_string(),
+        ));
+    }
+
+    let as_of_date = args.as_of_date.trim();
+    if as_of_date.is_empty() {
+        return Err(EncryptedDbError::DatabaseError(
+            "as_of_date cannot be empty.".to_string(),
+        ));
+    }
+
+    let account_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM financial_accounts WHERE account_id = ?",
+            [args.account_id],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+    if !account_exists {
+        return Err(EncryptedDbError::DatabaseError(format!(
+            "Account {} not found.",
+            args.account_id
+        )));
+    }
+
+    conn.execute(
+        r#"
+        INSERT INTO account_balance_snapshots (account_id, as_of_date, balance_amount, note)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(account_id, as_of_date)
+        DO UPDATE SET
+            balance_amount = excluded.balance_amount,
+            note = excluded.note,
+            updated_at = datetime('now')
+        "#,
+        rusqlite::params![args.account_id, as_of_date, args.balance_amount, &args.note],
+    )?;
+
+    conn.query_row(
+        r#"
+        SELECT snapshot_id, account_id, as_of_date, balance_amount, note, created_at, updated_at
+        FROM account_balance_snapshots
+        WHERE account_id = ? AND as_of_date = ?
+        "#,
+        rusqlite::params![args.account_id, as_of_date],
+        |row| {
+            Ok(AccountBalanceSnapshot {
+                snapshot_id: row.get(0)?,
+                account_id: row.get(1)?,
+                as_of_date: row.get(2)?,
+                balance_amount: row.get(3)?,
+                note: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        },
+    )
+    .map_err(EncryptedDbError::from)
+}
+
+#[tauri::command]
+pub fn get_net_worth_snapshot(
+    as_of_date: Option<String>,
+    db_state: State<DbState>,
+) -> Result<NetWorthSnapshot, String> {
+    get_net_worth_snapshot_internal(as_of_date.as_deref(), &db_state).map_err(|e| e.to_string())
+}
+
+fn get_net_worth_snapshot_internal(
+    as_of_date: Option<&str>,
+    db_state: &State<DbState>,
+) -> Result<NetWorthSnapshot, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    get_net_worth_snapshot_with_conn(as_of_date, conn)
+}
+
+fn get_net_worth_snapshot_with_conn(
+    as_of_date: Option<&str>,
+    conn: &Connection,
+) -> Result<NetWorthSnapshot, EncryptedDbError> {
+    let snapshot_date = resolve_snapshot_date(conn, as_of_date)?;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT
+            fa.account_id,
+            fa.name,
+            fa.account_type,
+            fa.currency,
+            s.as_of_date,
+            s.balance_amount
+        FROM financial_accounts fa
+        LEFT JOIN (
+            SELECT s1.account_id, s1.as_of_date, s1.balance_amount
+            FROM account_balance_snapshots s1
+            INNER JOIN (
+                SELECT account_id, MAX(as_of_date) AS max_as_of_date
+                FROM account_balance_snapshots
+                WHERE as_of_date <= ?
+                GROUP BY account_id
+            ) latest
+              ON latest.account_id = s1.account_id
+             AND latest.max_as_of_date = s1.as_of_date
+        ) s ON s.account_id = fa.account_id
+        WHERE fa.is_active = 1
+        ORDER BY fa.display_order ASC, fa.account_id ASC
+        "#,
+    )?;
+
+    let account_balances = stmt
+        .query_map([&snapshot_date], |row| {
+            let account_type: String = row.get(2)?;
+            let balance_amount: Option<f64> = row.get(5)?;
+            let raw_balance = balance_amount.unwrap_or(0.0);
+            let signed_balance_amount = if account_type == "liability" {
+                -raw_balance
+            } else {
+                raw_balance
+            };
+
+            Ok(NetWorthAccountBalance {
+                account_id: row.get(0)?,
+                name: row.get(1)?,
+                account_type,
+                currency: row.get(3)?,
+                as_of_date: row.get(4)?,
+                balance_amount: raw_balance,
+                signed_balance_amount,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut grouped: BTreeMap<String, (f64, f64)> = BTreeMap::new();
+    for account in &account_balances {
+        let entry = grouped.entry(account.currency.clone()).or_insert((0.0, 0.0));
+        if account.account_type == "liability" {
+            entry.1 += account.balance_amount;
+        } else {
+            entry.0 += account.balance_amount;
+        }
+    }
+
+    let totals_by_currency = grouped
+        .into_iter()
+        .map(|(currency, (assets_total, liabilities_total))| NetWorthCurrencyTotal {
+            currency,
+            assets_total,
+            liabilities_total,
+            net_total: assets_total - liabilities_total,
+        })
+        .collect();
+
+    Ok(NetWorthSnapshot {
+        as_of_date: snapshot_date,
+        account_balances,
+        totals_by_currency,
+    })
 }
 
 // ============================================================================
@@ -5844,5 +6287,205 @@ mod tests {
             result.is_empty(),
             "Deleted attachments should be excluded from summaries"
         );
+    }
+
+    fn setup_financial_accounts_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS _meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            INSERT OR REPLACE INTO _meta (key, value) VALUES ('created_at', datetime('now'));
+            INSERT OR REPLACE INTO _meta (key, value) VALUES ('format_version', '1');",
+        )
+        .unwrap();
+        crate::migrations::apply_initial_schema(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn test_create_and_list_financial_accounts() {
+        let conn = setup_financial_accounts_test_db();
+
+        let savings = create_financial_account_with_conn(
+            &CreateFinancialAccountArgs {
+                name: "Savings".to_string(),
+                account_type: "asset".to_string(),
+                currency: "chf".to_string(),
+                display_order: Some(2),
+                is_active: Some(true),
+            },
+            &conn,
+        )
+        .unwrap();
+
+        let credit_card = create_financial_account_with_conn(
+            &CreateFinancialAccountArgs {
+                name: "Credit Card".to_string(),
+                account_type: "liability".to_string(),
+                currency: "CHF".to_string(),
+                display_order: Some(1),
+                is_active: Some(true),
+            },
+            &conn,
+        )
+        .unwrap();
+
+        let accounts = list_financial_accounts_with_conn(&conn).unwrap();
+        assert_eq!(accounts.len(), 2);
+        assert_eq!(accounts[0].account_id, credit_card.account_id);
+        assert_eq!(accounts[1].account_id, savings.account_id);
+        assert_eq!(accounts[0].currency, "CHF");
+    }
+
+    #[test]
+    fn test_upsert_account_balance_snapshot_updates_existing_row() {
+        let conn = setup_financial_accounts_test_db();
+        let account = create_financial_account_with_conn(
+            &CreateFinancialAccountArgs {
+                name: "Checking".to_string(),
+                account_type: "asset".to_string(),
+                currency: "CHF".to_string(),
+                display_order: Some(0),
+                is_active: Some(true),
+            },
+            &conn,
+        )
+        .unwrap();
+
+        let first = upsert_account_balance_snapshot_with_conn(
+            &UpsertAccountBalanceSnapshotArgs {
+                account_id: account.account_id,
+                as_of_date: "2026-02-01".to_string(),
+                balance_amount: 1200.0,
+                note: Some("initial".to_string()),
+            },
+            &conn,
+        )
+        .unwrap();
+
+        let second = upsert_account_balance_snapshot_with_conn(
+            &UpsertAccountBalanceSnapshotArgs {
+                account_id: account.account_id,
+                as_of_date: "2026-02-01".to_string(),
+                balance_amount: 950.0,
+                note: Some("corrected".to_string()),
+            },
+            &conn,
+        )
+        .unwrap();
+
+        assert_eq!(
+            first.snapshot_id, second.snapshot_id,
+            "Upsert should update the existing snapshot row"
+        );
+        assert!((second.balance_amount - 950.0).abs() < 0.01);
+
+        let snapshot_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM account_balance_snapshots", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(snapshot_count, 1);
+    }
+
+    #[test]
+    fn test_get_net_worth_snapshot_aggregates_by_currency() {
+        let conn = setup_financial_accounts_test_db();
+        let asset_account = create_financial_account_with_conn(
+            &CreateFinancialAccountArgs {
+                name: "Brokerage".to_string(),
+                account_type: "asset".to_string(),
+                currency: "CHF".to_string(),
+                display_order: Some(1),
+                is_active: Some(true),
+            },
+            &conn,
+        )
+        .unwrap();
+        let liability_account = create_financial_account_with_conn(
+            &CreateFinancialAccountArgs {
+                name: "Mortgage".to_string(),
+                account_type: "liability".to_string(),
+                currency: "CHF".to_string(),
+                display_order: Some(2),
+                is_active: Some(true),
+            },
+            &conn,
+        )
+        .unwrap();
+
+        upsert_account_balance_snapshot_with_conn(
+            &UpsertAccountBalanceSnapshotArgs {
+                account_id: asset_account.account_id,
+                as_of_date: "2026-02-15".to_string(),
+                balance_amount: 5200.0,
+                note: None,
+            },
+            &conn,
+        )
+        .unwrap();
+        upsert_account_balance_snapshot_with_conn(
+            &UpsertAccountBalanceSnapshotArgs {
+                account_id: liability_account.account_id,
+                as_of_date: "2026-02-15".to_string(),
+                balance_amount: 1800.0,
+                note: None,
+            },
+            &conn,
+        )
+        .unwrap();
+
+        let snapshot = get_net_worth_snapshot_with_conn(Some("2026-02-15"), &conn).unwrap();
+        assert_eq!(snapshot.totals_by_currency.len(), 1);
+        let totals = &snapshot.totals_by_currency[0];
+        assert_eq!(totals.currency, "CHF");
+        assert!((totals.assets_total - 5200.0).abs() < 0.01);
+        assert!((totals.liabilities_total - 1800.0).abs() < 0.01);
+        assert!((totals.net_total - 3400.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_get_net_worth_snapshot_uses_latest_snapshot_at_or_before_as_of_date() {
+        let conn = setup_financial_accounts_test_db();
+        let account = create_financial_account_with_conn(
+            &CreateFinancialAccountArgs {
+                name: "Savings".to_string(),
+                account_type: "asset".to_string(),
+                currency: "CHF".to_string(),
+                display_order: Some(0),
+                is_active: Some(true),
+            },
+            &conn,
+        )
+        .unwrap();
+
+        upsert_account_balance_snapshot_with_conn(
+            &UpsertAccountBalanceSnapshotArgs {
+                account_id: account.account_id,
+                as_of_date: "2026-02-10".to_string(),
+                balance_amount: 2000.0,
+                note: None,
+            },
+            &conn,
+        )
+        .unwrap();
+        upsert_account_balance_snapshot_with_conn(
+            &UpsertAccountBalanceSnapshotArgs {
+                account_id: account.account_id,
+                as_of_date: "2026-02-20".to_string(),
+                balance_amount: 3000.0,
+                note: None,
+            },
+            &conn,
+        )
+        .unwrap();
+
+        let snapshot = get_net_worth_snapshot_with_conn(Some("2026-02-15"), &conn).unwrap();
+        assert_eq!(snapshot.account_balances.len(), 1);
+        assert_eq!(snapshot.account_balances[0].as_of_date.as_deref(), Some("2026-02-10"));
+        assert!((snapshot.account_balances[0].balance_amount - 2000.0).abs() < 0.01);
+        assert_eq!(snapshot.as_of_date, "2026-02-15");
     }
 }

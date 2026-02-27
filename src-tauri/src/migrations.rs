@@ -17,7 +17,7 @@ use rusqlite::Connection;
 use thiserror::Error;
 
 /// Current schema version. Increment when adding new migrations.
-pub const CURRENT_SCHEMA_VERSION: u32 = 5;
+pub const CURRENT_SCHEMA_VERSION: u32 = 6;
 
 /// Errors that can occur during migrations.
 #[derive(Debug, Error)]
@@ -104,6 +104,7 @@ fn apply_migration(conn: &Connection, version: u32) -> Result<(), MigrationError
         3 => apply_migration_v3(conn),
         4 => apply_migration_v4(conn),
         5 => apply_migration_v5(conn),
+        6 => apply_migration_v6(conn),
         _ => Err(MigrationError::UnknownVersion(version)),
     }
 }
@@ -456,6 +457,72 @@ CREATE INDEX IF NOT EXISTS idx_attachments_line_item
 -- Filtered lookup: Get non-deleted attachments for a line item
 CREATE INDEX IF NOT EXISTS idx_attachments_active
     ON line_item_attachments(line_item_id, deleted_at);
+"#;
+
+/// Migration v6: Create financial account and balance snapshot tables.
+///
+/// Adds a minimal additive account domain used by upcoming net-worth widgets.
+/// Liability balances are stored as positive absolute values and subtracted
+/// at the aggregation layer.
+fn apply_migration_v6(conn: &Connection) -> Result<(), MigrationError> {
+    let tx = conn.unchecked_transaction()?;
+
+    tx.execute_batch(MIGRATION_V6_SQL)?;
+
+    tx.execute(
+        "INSERT OR REPLACE INTO _meta (key, value) VALUES ('schema_version', '6')",
+        [],
+    )?;
+
+    tx.commit()?;
+
+    Ok(())
+}
+
+/// SQL for migration v6: financial account foundation tables.
+const MIGRATION_V6_SQL: &str = r#"
+-- ============================================================================
+-- Migration v6: Financial Accounts + Balance Snapshots
+-- ============================================================================
+-- Adds the account/balance foundation for future net-worth dashboard views.
+-- Liabilities are stored as positive absolute values and subtracted from assets
+-- when computing net-worth totals.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS financial_accounts (
+    account_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    name           TEXT    NOT NULL,
+    account_type   TEXT    NOT NULL CHECK (account_type IN ('asset', 'liability')),
+    currency       TEXT    NOT NULL DEFAULT 'CHF',
+    is_active      INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    display_order  INTEGER NOT NULL DEFAULT 0,
+    created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS account_balance_snapshots (
+    snapshot_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id       INTEGER NOT NULL,
+    as_of_date       TEXT    NOT NULL,
+    balance_amount   REAL    NOT NULL DEFAULT 0,
+    note             TEXT,
+    created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (account_id) REFERENCES financial_accounts(account_id) ON DELETE CASCADE,
+    UNIQUE(account_id, as_of_date)
+);
+
+-- Active accounts sorted for UI usage
+CREATE INDEX IF NOT EXISTS idx_financial_accounts_active_order
+    ON financial_accounts(is_active, display_order, account_id);
+
+-- Latest snapshot retrieval per account at/under an as-of date
+CREATE INDEX IF NOT EXISTS idx_account_balance_snapshots_account_date
+    ON account_balance_snapshots(account_id, as_of_date DESC);
+
+-- Date-bounded snapshot lookups across accounts
+CREATE INDEX IF NOT EXISTS idx_account_balance_snapshots_as_of_date
+    ON account_balance_snapshots(as_of_date);
 "#;
 
 #[cfg(test)]
@@ -1439,6 +1506,110 @@ mod tests {
         assert!(
             tables_v5.contains(&"line_item_attachments".to_string()),
             "line_item_attachments should exist after upgrade to v5"
+        );
+    }
+
+    #[test]
+    fn test_migration_v6_creates_financial_foundation_tables() {
+        let conn = create_test_db();
+        apply_initial_schema(&conn).unwrap();
+
+        let version = get_schema_version(&conn).unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+
+        let tables: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert!(
+            tables.contains(&"financial_accounts".to_string()),
+            "financial_accounts table should exist"
+        );
+        assert!(
+            tables.contains(&"account_balance_snapshots".to_string()),
+            "account_balance_snapshots table should exist"
+        );
+    }
+
+    #[test]
+    fn test_migration_v6_creates_indexes() {
+        let conn = create_test_db();
+        apply_initial_schema(&conn).unwrap();
+
+        let indexes: Vec<String> = conn
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%' ORDER BY name",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert!(
+            indexes.contains(&"idx_financial_accounts_active_order".to_string()),
+            "idx_financial_accounts_active_order should exist"
+        );
+        assert!(
+            indexes.contains(&"idx_account_balance_snapshots_account_date".to_string()),
+            "idx_account_balance_snapshots_account_date should exist"
+        );
+        assert!(
+            indexes.contains(&"idx_account_balance_snapshots_as_of_date".to_string()),
+            "idx_account_balance_snapshots_as_of_date should exist"
+        );
+    }
+
+    #[test]
+    fn test_migration_v5_to_v6_upgrade() {
+        let conn = create_test_db();
+
+        apply_migration_v1(&conn).unwrap();
+        apply_migration_v2(&conn).unwrap();
+        apply_migration_v3(&conn).unwrap();
+        apply_migration_v4(&conn).unwrap();
+        apply_migration_v5(&conn).unwrap();
+        let version_after_v5 = get_schema_version(&conn).unwrap();
+        assert_eq!(version_after_v5, 5);
+
+        let v5_account_tables: Vec<String> = conn
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('financial_accounts', 'account_balance_snapshots') ORDER BY name",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert!(
+            v5_account_tables.is_empty(),
+            "Account tables should not exist before v6 migration"
+        );
+
+        run_pending(&conn).unwrap();
+        let version_after = get_schema_version(&conn).unwrap();
+        assert_eq!(version_after, CURRENT_SCHEMA_VERSION);
+
+        let v6_account_tables: Vec<String> = conn
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('financial_accounts', 'account_balance_snapshots') ORDER BY name",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert!(
+            v6_account_tables.contains(&"financial_accounts".to_string()),
+            "financial_accounts should exist after v6 migration"
+        );
+        assert!(
+            v6_account_tables.contains(&"account_balance_snapshots".to_string()),
+            "account_balance_snapshots should exist after v6 migration"
         );
     }
 }

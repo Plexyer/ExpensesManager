@@ -8,6 +8,7 @@ import CategoryBreakdownWidget from "./CategoryBreakdownWidget";
 import CrossPeriodTrendWidget from "./CrossPeriodTrendWidget";
 import AllocationVsActualWidget from "./AllocationVsActualWidget";
 import LargestChangesVsPreviousPeriodWidget from "./LargestChangesVsPreviousPeriodWidget";
+import AttachmentCoverageWidget from "./AttachmentCoverageWidget";
 
 export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
   {
@@ -15,6 +16,7 @@ export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
     titleKey: "dashboard.widgetCurrentPeriodTitle",
     descriptionKey: "dashboard.widgetCurrentPeriodDesc",
     span: "single",
+    loadingPriority: "critical",
     render: () => <CurrentPeriodKpiWidget />,
   },
   {
@@ -22,6 +24,7 @@ export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
     titleKey: "dashboard.widgetRecentPeriodsTitle",
     descriptionKey: "dashboard.widgetRecentPeriodsDesc",
     span: "single",
+    loadingPriority: "critical",
     render: () => <RecentPeriodsWidget />,
   },
   {
@@ -29,6 +32,7 @@ export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
     titleKey: "dashboard.widgetOverspentTitle",
     descriptionKey: "dashboard.widgetOverspentDesc",
     span: "double",
+    loadingPriority: "critical",
     render: () => <OverspentCategoriesWidget />,
   },
   {
@@ -65,6 +69,13 @@ export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
     descriptionKey: "dashboard.widgetLargestChangesDesc",
     span: "double",
     render: () => <LargestChangesVsPreviousPeriodWidget />,
+  },
+  {
+    id: "attachment-coverage",
+    titleKey: "dashboard.widgetAttachmentCoverageTitle",
+    descriptionKey: "dashboard.widgetAttachmentCoverageDesc",
+    span: "single",
+    render: () => <AttachmentCoverageWidget />,
   },
 ];
 

@@ -45,10 +45,10 @@
                         v
 +-----------------------+---------------------+
 |            Rust Backend                      |
-|  - encrypted_db.rs (38 Tauri commands)       |
+|  - encrypted_db.rs (42 Tauri commands)       |
 |  - kdf.rs (Argon2id key derivation)          |
 |  - file_header.rs (EFM1 file format)         |
-|  - migrations.rs (schema v1-v5)              |
+|  - migrations.rs (schema v1-v6)              |
 +-----------------------+---------------------+
                         |
                         v
@@ -95,7 +95,9 @@ AppHeader (navigation tabs)
 DashboardPage
   -> Onboarding (when no file open)
   -> DashboardShell (when file open)
+     -> central dashboard bootstrap fetch (`fetchPeriods`, `fetchGridData` for active period)
      -> DashboardWidgetCard (registry-driven, user-configurable visibility + order)
+     -> staged rendering (critical widgets first, deferred widgets after short delay)
      -> @hello-pangea/dnd DragDropContext/Droppable/Draggable (widget reordering)
      -> Chart widgets via `recharts` (TASK-13.5 decision)
      -> CurrentPeriodKpiWidget (received/spent/remaining totals)
@@ -106,6 +108,7 @@ DashboardPage
      -> CrossPeriodTrendWidget (recent-period received/spent/net trend with configurable N)
      -> AllocationVsActualWidget (current-period allocation/spent variance ranking + period details CTA)
      -> LargestChangesVsPreviousPeriodWidget (current-vs-previous period category deltas with metric selection)
+     -> AttachmentCoverageWidget (received/spent/overall attachment coverage with total attachment count)
      -> DashboardStateViews (loading/empty/error)
 
 HomePage
@@ -223,11 +226,11 @@ All services wrap Tauri `invoke()` calls and live in `src/services/`:
 
 | Module | Lines | Purpose |
 |--------|-------|---------|
-| `lib.rs` | ~82 | App initialization, plugin registration, 38 command registration, exit handler |
-| `encrypted_db.rs` | ~5,850 | All Tauri commands: DB lifecycle, CRUD for all entities, export, settings |
+| `lib.rs` | ~86 | App initialization, plugin registration, 42 command registration, exit handler |
+| `encrypted_db.rs` | ~6,300 | All Tauri commands: DB lifecycle, CRUD for all entities, account/net-worth foundations, export, settings |
 | `kdf.rs` | ~231 | Argon2id key derivation (64 MB, 3 iter, 4 threads, 32-byte output) |
 | `file_header.rs` | ~312 | EFM1 file format: magic bytes, version, salt, KDF params, password hint |
-| `migrations.rs` | ~1,445 | Schema migrations v1-v5, migration runner, 9 database tables |
+| `migrations.rs` | ~1,600 | Schema migrations v1-v6, migration runner, 11 database tables |
 | `main.rs` | ~6 | Entry point; calls `run()`, sets Windows subsystem attribute |
 
 ### App Initialization (`lib.rs`)
@@ -237,7 +240,7 @@ tauri::Builder::default()
   -> plugin: tauri_plugin_opener
   -> plugin: tauri_plugin_dialog
   -> manage: DbState::new()
-  -> invoke_handler: 38 commands from encrypted_db module
+  -> invoke_handler: 42 commands from encrypted_db module
   -> run event handler: save_if_open() on Exit (BUG-004 fix)
 ```
 
@@ -257,7 +260,7 @@ struct OpenFileState {
 
 The app extracts the encrypted SQLite data from the `.financedb` file into a temp file, opens it with SQLCipher, and writes it back on save/close/exit.
 
-### Command Groups (38 total)
+### Command Groups (42 total)
 
 | Group | Commands | Count |
 |-------|----------|-------|
@@ -266,6 +269,7 @@ The app extracts the encrypted SQLite data from the `.financedb` file into a tem
 | Templates | `create_template`, `list_templates`, `get_template`, `update_template`, `delete_template` | 5 |
 | Template Categories | `get_template_categories`, `add_category_to_template`, `remove_category_from_template`, `update_template_category_amount`, `reorder_template_categories` | 5 |
 | Periods | `create_period_from_template`, `list_periods`, `get_period`, `delete_period` | 4 |
+| Financial Accounts | `create_financial_account`, `list_financial_accounts`, `upsert_account_balance_snapshot`, `get_net_worth_snapshot` | 4 |
 | Line Items | `list_line_items`, `create_line_item`, `update_line_item`, `delete_line_item` | 4 |
 | Attachments | `add_attachment`, `list_attachments`, `get_attachment_counts`, `get_attachment_summaries`, `delete_attachment`, `export_attachment`, `get_attachment_data` | 7 |
 | UI Settings | `get_ui_setting`, `set_ui_setting` | 2 |
@@ -306,7 +310,7 @@ Each `.financedb` file has:
 
 See `ENCRYPTION_SPEC.md` for binary layout details.
 
-### Schema (Migration v5 — 9 tables)
+### Schema (Migration v6 — 11 tables)
 
 | Table | Purpose | Migration |
 |-------|---------|-----------|
@@ -319,6 +323,8 @@ See `ENCRYPTION_SPEC.md` for binary layout details.
 | `category_line_items` | Received/spent transactions with timestamps | v3 |
 | `ui_settings` | Key-value store for user preferences | v4 |
 | `line_item_attachments` | File attachments (BLOB storage, soft-delete) | v5 |
+| `financial_accounts` | Account metadata for asset/liability tracking | v6 |
+| `account_balance_snapshots` | Point-in-time account balances for net-worth aggregation | v6 |
 
 See `DATA_MODEL.md` for full column definitions and `DOMAIN_MODEL.md` for entity relationships.
 

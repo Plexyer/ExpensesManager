@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { getGridData, type GridCategoryRow } from "../../../services/fileService";
-import { listPeriods } from "../../../services/periodService";
+import { type GridCategoryRow } from "../../../services/fileService";
 import { useAppSelector } from "../../../store/hooks";
 import { formatCurrency } from "../../../utils/currency";
 import type { PeriodBudgetInstance } from "../../../types/period.types";
 import DashboardStateViews from "./DashboardStateViews";
+import {
+  getDedupedGridData,
+  getDedupedPeriods,
+} from "./dashboardRequestDeduper";
 
 const MAX_VISIBLE_CHANGES = 6;
 
@@ -128,7 +131,7 @@ const LargestChangesVsPreviousPeriodWidget = () => {
       setStatus("loading");
 
       try {
-        const periods = await listPeriods();
+          const periods = await getDedupedPeriods();
         const sortedPeriods = sortPeriodsDescending(periods);
 
         if (cancelled) {
@@ -170,8 +173,8 @@ const LargestChangesVsPreviousPeriodWidget = () => {
         setHasInsufficientPeriods(false);
 
         const [currentGridData, previousGridData] = await Promise.all([
-          getGridData(currentPeriod.budget_instance_id),
-          getGridData(previousPeriod.budget_instance_id),
+                  getDedupedGridData(currentPeriod.budget_instance_id),
+                  getDedupedGridData(previousPeriod.budget_instance_id),
         ]);
 
         if (cancelled) {

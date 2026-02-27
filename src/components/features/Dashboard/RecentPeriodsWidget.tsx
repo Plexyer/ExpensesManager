@@ -1,8 +1,7 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  fetchPeriods,
   setCurrentBudgetInstanceId,
   setShowPeriodSelector,
 } from "../../../store/slices/budgetSlice";
@@ -26,18 +25,9 @@ const RecentPeriodsWidget = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const { isFileOpen } = useAppSelector((state) => state.file);
   const { periods, periodsStatus, periodsError, currentBudgetInstanceId } = useAppSelector(
     (state) => state.budget
   );
-
-  useEffect(() => {
-    if (!isFileOpen || periodsStatus !== "idle") {
-      return;
-    }
-
-    void dispatch(fetchPeriods());
-  }, [dispatch, isFileOpen, periodsStatus]);
 
   const recentPeriods = useMemo(
     () =>
@@ -53,7 +43,7 @@ const RecentPeriodsWidget = () => {
     navigate("/periods");
   };
 
-  if (periodsStatus === "loading") {
+  if (periodsStatus === "idle" || periodsStatus === "loading") {
     return <DashboardStateViews state="loading" />;
   }
 

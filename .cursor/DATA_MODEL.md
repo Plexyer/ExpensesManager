@@ -1,7 +1,7 @@
 # Data Model
 
-> **Status**: IMPLEMENTED (Schema Version 5)  
-> **Last Updated**: 2026-02-15  
+> **Status**: IMPLEMENTED (Schema Version 6)  
+> **Last Updated**: 2026-02-26  
 > **Source of Truth**: `src-tauri/src/migrations.rs`
 
 ---
@@ -21,7 +21,7 @@
 
 ---
 
-## Database Tables (9 tables at v5)
+## Database Tables (11 tables at v6)
 
 ### 1. `_meta`
 
@@ -298,6 +298,72 @@ CREATE TABLE IF NOT EXISTS line_item_attachments (
 
 ---
 
+### 10. `financial_accounts`
+
+**Introduced:** Migration v6  
+**Purpose:** Stores account metadata used by net-worth/account-balance dashboard features.
+
+```sql
+CREATE TABLE IF NOT EXISTS financial_accounts (
+    account_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    name           TEXT    NOT NULL,
+    account_type   TEXT    NOT NULL CHECK (account_type IN ('asset', 'liability')),
+    currency       TEXT    NOT NULL DEFAULT 'CHF',
+    is_active      INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    display_order  INTEGER NOT NULL DEFAULT 0,
+    created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+```
+
+| Column | Type | Constraints | Description |
+|--------|------|------------|-------------|
+| `account_id` | INTEGER | PK, AUTOINCREMENT | Unique account ID |
+| `name` | TEXT | NOT NULL | User-facing account name |
+| `account_type` | TEXT | NOT NULL, CHECK | Account type: `asset` or `liability` |
+| `currency` | TEXT | NOT NULL, DEFAULT `'CHF'` | Account currency |
+| `is_active` | INTEGER | NOT NULL, CHECK, DEFAULT `1` | Active flag (`1` active, `0` archived) |
+| `display_order` | INTEGER | NOT NULL, DEFAULT `0` | User-configurable sort order |
+| `created_at` | TEXT | NOT NULL, DEFAULT now | Creation timestamp |
+| `updated_at` | TEXT | NOT NULL, DEFAULT now | Last modification timestamp |
+
+---
+
+### 11. `account_balance_snapshots`
+
+**Introduced:** Migration v6  
+**Purpose:** Stores account balances at specific dates for net-worth snapshots and trend views.
+
+```sql
+CREATE TABLE IF NOT EXISTS account_balance_snapshots (
+    snapshot_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id       INTEGER NOT NULL,
+    as_of_date       TEXT    NOT NULL,
+    balance_amount   REAL    NOT NULL DEFAULT 0,
+    note             TEXT,
+    created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (account_id) REFERENCES financial_accounts(account_id) ON DELETE CASCADE,
+    UNIQUE(account_id, as_of_date)
+);
+```
+
+| Column | Type | Constraints | Description |
+|--------|------|------------|-------------|
+| `snapshot_id` | INTEGER | PK, AUTOINCREMENT | Unique snapshot ID |
+| `account_id` | INTEGER | NOT NULL, FK CASCADE | Parent account |
+| `as_of_date` | TEXT | NOT NULL | Snapshot date (`YYYY-MM-DD`) |
+| `balance_amount` | REAL | NOT NULL, DEFAULT `0` | Absolute balance value |
+| `note` | TEXT | NULL | Optional user note |
+| `created_at` | TEXT | NOT NULL, DEFAULT now | Creation timestamp |
+| `updated_at` | TEXT | NOT NULL, DEFAULT now | Last modification timestamp |
+
+**Constraints:**
+- `UNIQUE(account_id, as_of_date)` ensures one snapshot per account and date.
+- Liability balances are stored as absolute positive values; subtraction happens at aggregation time.
+
+---
+
 ## BLOB Storage Strategy
 
 Attachments are stored **directly in the SQLCipher-encrypted database** as BLOB columns:
@@ -315,7 +381,7 @@ Attachments are stored **directly in the SQLCipher-encrypted database** as BLOB 
 
 ---
 
-## Indexes (16 total)
+## Indexes (19 total)
 
 ### Migration v1 Indexes (6)
 
@@ -353,6 +419,14 @@ Attachments are stored **directly in the SQLCipher-encrypted database** as BLOB 
 | `idx_attachments_line_item` | `line_item_attachments` | `line_item_id` | Get all attachments for a line item |
 | `idx_attachments_active` | `line_item_attachments` | `line_item_id, deleted_at` | Get non-deleted attachments for a line item |
 
+### Migration v6 Indexes (3)
+
+| Index | Table | Columns | Purpose |
+|-------|-------|---------|---------|
+| `idx_financial_accounts_active_order` | `financial_accounts` | `is_active, display_order, account_id` | List active accounts in stable UI order |
+| `idx_account_balance_snapshots_account_date` | `account_balance_snapshots` | `account_id, as_of_date DESC` | Fetch latest snapshot per account quickly |
+| `idx_account_balance_snapshots_as_of_date` | `account_balance_snapshots` | `as_of_date` | Date-bounded snapshot filtering |
+
 ---
 
 ## Migration History
@@ -364,6 +438,7 @@ Attachments are stored **directly in the SQLCipher-encrypted database** as BLOB 
 | **v3** | Transaction line items | `category_line_items` | 5 indexes (incl. 1 partial, 1 composite) |
 | **v4** | UI settings persistence | `ui_settings` | — |
 | **v5** | File attachments | `line_item_attachments` | 2 indexes |
+| **v6** | Account balance foundation | `financial_accounts`, `account_balance_snapshots` | 3 indexes |
 
 ### Migration Strategy
 - Schema version tracked in `_meta` table (`schema_version` key)
@@ -371,7 +446,7 @@ Attachments are stored **directly in the SQLCipher-encrypted database** as BLOB 
 - Each migration wrapped in a transaction for atomicity
 - All tables use `CREATE TABLE IF NOT EXISTS` for idempotency
 - Version only updated after successful migration
-- `CURRENT_SCHEMA_VERSION` constant in `migrations.rs` (currently `5`)
+- `CURRENT_SCHEMA_VERSION` constant in `migrations.rs` (currently `6`)
 
 ---
 

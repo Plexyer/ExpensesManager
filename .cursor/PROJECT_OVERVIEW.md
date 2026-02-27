@@ -67,9 +67,9 @@
 
 ## Current State (CONFIRMED from repo — Phases 1–11 complete)
 
-### Database Schema (migration v1–v5)
+### Database Schema (migration v1–v6)
 
-9 tables in the encrypted SQLite database:
+11 tables in the encrypted SQLite database:
 
 | Table | Purpose | Migration |
 |-------|---------|-----------|
@@ -82,8 +82,10 @@
 | `category_line_items` | Received/spent transactions with soft delete | v3 |
 | `ui_settings` | Key-value store for persistent UI preferences | v4 |
 | `line_item_attachments` | File attachments with BLOB storage and thumbnails | v5 |
+| `financial_accounts` | Asset/liability account definitions with currency and ordering | v6 |
+| `account_balance_snapshots` | Balance history per account/date for net-worth snapshots | v6 |
 
-Schema managed by `src-tauri/src/migrations.rs` (CURRENT_SCHEMA_VERSION = 5).
+Schema managed by `src-tauri/src/migrations.rs` (CURRENT_SCHEMA_VERSION = 6).
 
 ### Frontend Architecture
 
@@ -117,7 +119,7 @@ Schema managed by `src-tauri/src/migrations.rs` (CURRENT_SCHEMA_VERSION = 5).
 - `PeriodGridEmpty.tsx` — Empty state
 
 **Dashboard** (`features/Dashboard/`):
-- `DashboardShell.tsx` — Dashboard container that renders widgets from registry/config with add/remove/reset + drag-and-drop/keyboard reordering
+- `DashboardShell.tsx` — Dashboard container that renders widgets from registry/config with add/remove/reset + drag-and-drop/keyboard reordering, central period/grid bootstrap loading, and staged critical-first widget rendering
 - `DashboardWidgetCard.tsx` — Shared widget card wrapper with accessible heading/content structure
 - `dashboardWidgetSettings.ts` — Dashboard widget visibility/order persistence + sanitize helpers (`ui_settings` based)
 - `DashboardStateViews.tsx` — Shared loading/empty/error state views for widgets
@@ -129,6 +131,9 @@ Schema managed by `src-tauri/src/migrations.rs` (CURRENT_SCHEMA_VERSION = 5).
 - `CrossPeriodTrendWidget.tsx` — Recent-period trend widget for received, spent, and net totals with configurable period count
 - `AllocationVsActualWidget.tsx` — Current period allocation-versus-actual variance widget with ranked category view and period drill-through
 - `LargestChangesVsPreviousPeriodWidget.tsx` — Category delta widget comparing current period against previous period with selectable metric mode
+- `AttachmentCoverageWidget.tsx` — Attachment coverage widget for received, spent, and overall transactions including total attachment count
+- `dashboardRequestDeduper.ts` — In-flight request dedupe helper for shared dashboard `listPeriods` / `getGridData` calls
+- `dashboardPerformanceBudget.ts` — Dashboard performance budget constants and deferred-widget staging timing
 - `widgetRegistry.tsx` — Registry source of truth for dashboard widgets
 - `types.ts` — Widget contract types (id/title/span/render)
 
@@ -200,19 +205,20 @@ Typed hooks: `useAppSelector`, `useAppDispatch` in `src/store/hooks.ts`.
 
 | Module | Purpose |
 |--------|---------|
-| `lib.rs` | Tauri app builder, plugin registration, 38 command registrations |
-| `encrypted_db.rs` | All Tauri commands — DB lifecycle, CRUD for categories/templates/periods/line items/attachments, export, UI settings |
+| `lib.rs` | Tauri app builder, plugin registration, 42 command registrations |
+| `encrypted_db.rs` | All Tauri commands — DB lifecycle, CRUD for categories/templates/periods/line items/attachments, account/net-worth foundation, export, UI settings |
 | `kdf.rs` | Argon2id key derivation (64 MB memory, 3 iterations, 4 threads) |
 | `file_header.rs` | Custom file header format — magic bytes `EFM1`, salt, KDF params, password hint |
-| `migrations.rs` | Database schema migrations v1–v5, version tracking via `_meta` table |
+| `migrations.rs` | Database schema migrations v1–v6, version tracking via `_meta` table |
 
-**38 Tauri commands** grouped by domain:
+**42 Tauri commands** grouped by domain:
 - **DB lifecycle** (6): `create_encrypted_db`, `open_encrypted_db`, `get_db_info`, `close_db`, `save_db`, `diagnose_db_file`
 - **Grid data** (1): `get_grid_data`
 - **Global categories** (3): `create_global_category`, `list_global_categories`, `delete_global_category`
 - **Templates** (5): `create_template`, `list_templates`, `get_template`, `update_template`, `delete_template`
 - **Template categories** (5): `get_template_categories`, `add_category_to_template`, `remove_category_from_template`, `update_template_category_amount`, `reorder_template_categories`
 - **Periods** (4): `create_period_from_template`, `list_periods`, `get_period`, `delete_period`
+- **Financial accounts** (4): `create_financial_account`, `list_financial_accounts`, `upsert_account_balance_snapshot`, `get_net_worth_snapshot`
 - **Line items** (4): `list_line_items`, `create_line_item`, `update_line_item`, `delete_line_item`
 - **Attachments** (7): `add_attachment`, `list_attachments`, `get_attachment_counts`, `get_attachment_summaries`, `delete_attachment`, `export_attachment`, `get_attachment_data`
 - **File metadata** (1): `get_file_sizes`
