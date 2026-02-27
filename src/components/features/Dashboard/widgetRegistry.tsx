@@ -6,6 +6,7 @@ import RecentPeriodsWidget from "./RecentPeriodsWidget";
 import InactiveCategoriesWidget from "./InactiveCategoriesWidget";
 import CategoryBreakdownWidget from "./CategoryBreakdownWidget";
 import CrossPeriodTrendWidget from "./CrossPeriodTrendWidget";
+import AllocationVsActualWidget from "./AllocationVsActualWidget";
 
 export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
   {
@@ -49,6 +50,13 @@ export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
     descriptionKey: "dashboard.widgetCrossPeriodTrendDesc",
     span: "double",
     render: () => <CrossPeriodTrendWidget />,
+  },
+  {
+    id: "allocation-vs-actual",
+    titleKey: "dashboard.widgetAllocationVsActualTitle",
+    descriptionKey: "dashboard.widgetAllocationVsActualDesc",
+    span: "double",
+    render: () => <AllocationVsActualWidget />,
   },
 ];
 

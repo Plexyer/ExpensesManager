@@ -127,6 +127,7 @@ Schema managed by `src-tauri/src/migrations.rs` (CURRENT_SCHEMA_VERSION = 5).
 - `InactiveCategoriesWidget.tsx` — Watchlist widget for categories with zero received and zero spent activity
 - `CategoryBreakdownWidget.tsx` — Current period spending distribution widget (top categories + optional other grouping)
 - `CrossPeriodTrendWidget.tsx` — Recent-period trend widget for received, spent, and net totals with configurable period count
+- `AllocationVsActualWidget.tsx` — Current period allocation-versus-actual variance widget with ranked category view and period drill-through
 - `widgetRegistry.tsx` — Registry source of truth for dashboard widgets
 - `types.ts` — Widget contract types (id/title/span/render)
 

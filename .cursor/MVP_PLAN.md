@@ -578,6 +578,7 @@ This phase expands the dashboard from a shell into a configurable, insight-orien
 | TASK-13.5: Dashboard chart library selection spike | #123 | 2026-02-27 | Compared `recharts` vs `@nivo/*`; selected `recharts` for upcoming chart widgets with bundle/performance guardrails |
 | TASK-13.8: Category breakdown widget (current period) | #124 | 2026-02-27 | Added current-period spending distribution widget with top-category readability strategy and period drill-through |
 | TASK-13.10: Cross-period trend widget (recent N periods) | #127 | 2026-02-27 | Added configurable multi-period trend visualization for received/spent/net totals using existing period and grid rollups |
+| TASK-13.11: Allocation vs actual widget | #125 | 2026-02-27 | Added current-period allocation-versus-actual variance widget with clear over/under/on-target states and category drill-through |
 
 ### Chart Library Decision (TASK-13.5)
 - **Selected:** `recharts`

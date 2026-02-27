@@ -104,6 +104,7 @@ DashboardPage
      -> InactiveCategoriesWidget (zero-activity categories watchlist + period details CTA)
      -> CategoryBreakdownWidget (current-period spent distribution, top categories + other grouping)
      -> CrossPeriodTrendWidget (recent-period received/spent/net trend with configurable N)
+     -> AllocationVsActualWidget (current-period allocation/spent variance ranking + period details CTA)
      -> DashboardStateViews (loading/empty/error)
 
 HomePage

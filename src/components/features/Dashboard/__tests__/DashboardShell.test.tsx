@@ -38,6 +38,10 @@ vi.mock("../CrossPeriodTrendWidget", () => ({
   default: () => <div>Cross-Period Trend Widget</div>,
 }));
 
+vi.mock("../AllocationVsActualWidget", () => ({
+  default: () => <div>Allocation vs Actual Widget</div>,
+}));
+
 describe("DashboardShell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -70,6 +74,7 @@ describe("DashboardShell", () => {
     expect(screen.getByText("Inactive Categories Widget")).toBeInTheDocument();
     expect(screen.getByText("Category Breakdown Widget")).toBeInTheDocument();
     expect(screen.getByText("Cross-Period Trend Widget")).toBeInTheDocument();
+    expect(screen.getByText("Allocation vs Actual Widget")).toBeInTheDocument();
   });
 
   it("supports remove, add and reset widget controls", async () => {
@@ -121,6 +126,7 @@ describe("DashboardShell", () => {
         "inactive-categories",
         "category-breakdown",
         "cross-period-trend",
+        "allocation-vs-actual",
       ])
     );
   });
