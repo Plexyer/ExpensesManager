@@ -99,6 +99,8 @@
     "widgetInactiveCategoriesDesc": "Kategorien ohne Einnahmen- oder Ausgabenaktivität in der aktuellen Periode.",
     "widgetCategoryBreakdownTitle": "Kategorien-Aufschlüsselung",
     "widgetCategoryBreakdownDesc": "Ausgaben der aktuellen Periode nach Kategorien mit den grössten Anteilen.",
+    "widgetCrossPeriodTrendTitle": "Periodenübergreifender Trend",
+    "widgetCrossPeriodTrendDesc": "Trend der letzten Perioden für Einnahmen, Ausgaben und Netto.",
     "layoutControls": "Dashboard-Layout-Steuerung",
     "addWidgetLabel": "Widget hinzufügen",
     "addWidgetAction": "Widget hinzufügen",
@@ -145,7 +147,15 @@
     "categoryBreakdownOtherLabel": "Andere",
     "categoryBreakdownCategoriesShown": "Zeige die Top {{shown}} von {{total}} Kategorien",
     "categoryBreakdownNoSpending": "In der aktuellen Periode wurden noch keine Ausgaben erfasst.",
-    "categoryBreakdownOpenPeriod": "Periodendetails öffnen"
+    "categoryBreakdownOpenPeriod": "Periodendetails öffnen",
+    "trendRegion": "Periodenübergreifender Trend",
+    "trendChartLabel": "Trenddiagramm der letzten Perioden",
+    "trendPeriodCountLabel": "Anzuzeigende Perioden",
+    "trendPeriodsShown": "Zeige {{shown}} von {{total}} Perioden",
+    "trendInsufficientPeriods": "Für die Trendanzeige werden mindestens zwei Perioden benötigt.",
+    "trendReceivedLine": "Einnahmen",
+    "trendSpentLine": "Ausgaben",
+    "trendNetLine": "Netto"
   },
   "periods": {
     "budgetPeriods": "Budget-Perioden",

@@ -5,6 +5,7 @@ import OverspentCategoriesWidget from "./OverspentCategoriesWidget";
 import RecentPeriodsWidget from "./RecentPeriodsWidget";
 import InactiveCategoriesWidget from "./InactiveCategoriesWidget";
 import CategoryBreakdownWidget from "./CategoryBreakdownWidget";
+import CrossPeriodTrendWidget from "./CrossPeriodTrendWidget";
 
 export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
   {
@@ -41,6 +42,13 @@ export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
     descriptionKey: "dashboard.widgetCategoryBreakdownDesc",
     span: "double",
     render: () => <CategoryBreakdownWidget />,
+  },
+  {
+    id: "cross-period-trend",
+    titleKey: "dashboard.widgetCrossPeriodTrendTitle",
+    descriptionKey: "dashboard.widgetCrossPeriodTrendDesc",
+    span: "double",
+    render: () => <CrossPeriodTrendWidget />,
   },
 ];
 

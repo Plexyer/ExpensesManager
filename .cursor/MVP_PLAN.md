@@ -577,12 +577,13 @@ This phase expands the dashboard from a shell into a configurable, insight-orien
 | TASK-13.4: Drag-and-drop widget reordering | #122 | 2026-02-27 | Added DnD ordering with persisted order and keyboard reorder fallback |
 | TASK-13.5: Dashboard chart library selection spike | #123 | 2026-02-27 | Compared `recharts` vs `@nivo/*`; selected `recharts` for upcoming chart widgets with bundle/performance guardrails |
 | TASK-13.8: Category breakdown widget (current period) | #124 | 2026-02-27 | Added current-period spending distribution widget with top-category readability strategy and period drill-through |
+| TASK-13.10: Cross-period trend widget (recent N periods) | #127 | 2026-02-27 | Added configurable multi-period trend visualization for received/spent/net totals using existing period and grid rollups |
 
 ### Chart Library Decision (TASK-13.5)
 - **Selected:** `recharts`
 - **Reasoning:** Strong fit for current MVP dashboard needs (simple React + TypeScript ergonomics, clear composition model, built-in accessibility layer with keyboard navigation support).
 - **Trade-off:** Known bundle-size overhead; follow-up chart tasks must keep chart scope focused and include performance checks.
-- **Follow-up tasks using this decision:** #127, #135
+- **Follow-up tasks using this decision:** #135
 
 ---
 

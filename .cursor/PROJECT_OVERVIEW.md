@@ -126,6 +126,7 @@ Schema managed by `src-tauri/src/migrations.rs` (CURRENT_SCHEMA_VERSION = 5).
 - `OverspentCategoriesWidget.tsx` — Alert widget for categories with `remaining < 0` and quick navigation to period details
 - `InactiveCategoriesWidget.tsx` — Watchlist widget for categories with zero received and zero spent activity
 - `CategoryBreakdownWidget.tsx` — Current period spending distribution widget (top categories + optional other grouping)
+- `CrossPeriodTrendWidget.tsx` — Recent-period trend widget for received, spent, and net totals with configurable period count
 - `widgetRegistry.tsx` — Registry source of truth for dashboard widgets
 - `types.ts` — Widget contract types (id/title/span/render)
 

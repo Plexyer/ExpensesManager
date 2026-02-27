@@ -97,12 +97,13 @@ DashboardPage
   -> DashboardShell (when file open)
      -> DashboardWidgetCard (registry-driven, user-configurable visibility + order)
      -> @hello-pangea/dnd DragDropContext/Droppable/Draggable (widget reordering)
-     -> Chart widgets (planned; TASK-13.5 spike selected `recharts` for upcoming chart-based widgets)
+     -> Chart widgets via `recharts` (TASK-13.5 decision)
      -> CurrentPeriodKpiWidget (received/spent/remaining totals)
      -> RecentPeriodsWidget (recent period quick access with active marker + open action)
      -> OverspentCategoriesWidget (remaining<0 alert list + period details CTA)
      -> InactiveCategoriesWidget (zero-activity categories watchlist + period details CTA)
      -> CategoryBreakdownWidget (current-period spent distribution, top categories + other grouping)
+     -> CrossPeriodTrendWidget (recent-period received/spent/net trend with configurable N)
      -> DashboardStateViews (loading/empty/error)
 
 HomePage

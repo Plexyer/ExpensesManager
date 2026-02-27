@@ -99,6 +99,8 @@
     "widgetInactiveCategoriesDesc": "Categories with zero received and spent activity in the current period.",
     "widgetCategoryBreakdownTitle": "Category Breakdown",
     "widgetCategoryBreakdownDesc": "Current period spending split by category with top contributors.",
+    "widgetCrossPeriodTrendTitle": "Cross-Period Trend",
+    "widgetCrossPeriodTrendDesc": "Recent period trend for received, spent, and net totals.",
     "layoutControls": "Dashboard layout controls",
     "addWidgetLabel": "Add widget",
     "addWidgetAction": "Add widget",
@@ -146,7 +148,15 @@
     "categoryBreakdownOtherLabel": "Other",
     "categoryBreakdownCategoriesShown": "Showing top {{shown}} of {{total}} categories",
     "categoryBreakdownNoSpending": "No spending has been recorded in the current period.",
-    "categoryBreakdownOpenPeriod": "Open period details"
+    "categoryBreakdownOpenPeriod": "Open period details",
+    "trendRegion": "Cross-period trend",
+    "trendChartLabel": "Recent periods trend chart",
+    "trendPeriodCountLabel": "Periods to show",
+    "trendPeriodsShown": "Showing {{shown}} of {{total}} periods",
+    "trendInsufficientPeriods": "At least two periods are required to display a trend.",
+    "trendReceivedLine": "Received",
+    "trendSpentLine": "Spent",
+    "trendNetLine": "Net"
   },
   "periods": {
     "budgetPeriods": "Budget Periods",
