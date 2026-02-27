@@ -105,6 +105,7 @@ DashboardPage
      -> CategoryBreakdownWidget (current-period spent distribution, top categories + other grouping)
      -> CrossPeriodTrendWidget (recent-period received/spent/net trend with configurable N)
      -> AllocationVsActualWidget (current-period allocation/spent variance ranking + period details CTA)
+     -> LargestChangesVsPreviousPeriodWidget (current-vs-previous period category deltas with metric selection)
      -> DashboardStateViews (loading/empty/error)
 
 HomePage

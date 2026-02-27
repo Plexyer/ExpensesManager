@@ -7,6 +7,7 @@ import InactiveCategoriesWidget from "./InactiveCategoriesWidget";
 import CategoryBreakdownWidget from "./CategoryBreakdownWidget";
 import CrossPeriodTrendWidget from "./CrossPeriodTrendWidget";
 import AllocationVsActualWidget from "./AllocationVsActualWidget";
+import LargestChangesVsPreviousPeriodWidget from "./LargestChangesVsPreviousPeriodWidget";
 
 export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
   {
@@ -57,6 +58,13 @@ export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
     descriptionKey: "dashboard.widgetAllocationVsActualDesc",
     span: "double",
     render: () => <AllocationVsActualWidget />,
+  },
+  {
+    id: "largest-changes-previous-period",
+    titleKey: "dashboard.widgetLargestChangesTitle",
+    descriptionKey: "dashboard.widgetLargestChangesDesc",
+    span: "double",
+    render: () => <LargestChangesVsPreviousPeriodWidget />,
   },
 ];
 

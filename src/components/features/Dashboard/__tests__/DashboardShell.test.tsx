@@ -42,6 +42,10 @@ vi.mock("../AllocationVsActualWidget", () => ({
   default: () => <div>Allocation vs Actual Widget</div>,
 }));
 
+vi.mock("../LargestChangesVsPreviousPeriodWidget", () => ({
+  default: () => <div>Largest Changes Widget</div>,
+}));
+
 describe("DashboardShell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -75,6 +79,7 @@ describe("DashboardShell", () => {
     expect(screen.getByText("Category Breakdown Widget")).toBeInTheDocument();
     expect(screen.getByText("Cross-Period Trend Widget")).toBeInTheDocument();
     expect(screen.getByText("Allocation vs Actual Widget")).toBeInTheDocument();
+    expect(screen.getByText("Largest Changes Widget")).toBeInTheDocument();
   });
 
   it("supports remove, add and reset widget controls", async () => {
@@ -127,6 +132,7 @@ describe("DashboardShell", () => {
         "category-breakdown",
         "cross-period-trend",
         "allocation-vs-actual",
+        "largest-changes-previous-period",
       ])
     );
   });
