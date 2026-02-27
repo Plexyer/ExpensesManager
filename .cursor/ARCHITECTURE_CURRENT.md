@@ -97,7 +97,9 @@ DashboardPage
   -> DashboardShell (when file open)
      -> DashboardWidgetCard (registry-driven)
      -> CurrentPeriodKpiWidget (received/spent/remaining totals)
+     -> RecentPeriodsWidget (recent period quick access with active marker + open action)
      -> OverspentCategoriesWidget (remaining<0 alert list + period details CTA)
+     -> InactiveCategoriesWidget (zero-activity categories watchlist + period details CTA)
      -> DashboardStateViews (loading/empty/error)
 
 HomePage

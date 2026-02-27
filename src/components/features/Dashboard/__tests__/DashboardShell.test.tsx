@@ -12,6 +12,14 @@ vi.mock("../OverspentCategoriesWidget", () => ({
   default: () => <div>Overspent Widget</div>,
 }));
 
+vi.mock("../RecentPeriodsWidget", () => ({
+  default: () => <div>Recent Periods Widget</div>,
+}));
+
+vi.mock("../InactiveCategoriesWidget", () => ({
+  default: () => <div>Inactive Categories Widget</div>,
+}));
+
 describe("DashboardShell", () => {
   it("renders dashboard shell heading and description", () => {
     renderWithProviders(<DashboardShell />);
@@ -33,8 +41,9 @@ describe("DashboardShell", () => {
     renderWithProviders(<DashboardShell />);
 
     expect(screen.getByText("KPI Widget")).toBeInTheDocument();
+    expect(screen.getByText("Recent Periods Widget")).toBeInTheDocument();
     expect(screen.getByText("Overspent Widget")).toBeInTheDocument();
-    expect(screen.getByText(/No data to display yet/i)).toBeInTheDocument();
+    expect(screen.getByText("Inactive Categories Widget")).toBeInTheDocument();
   });
 });
 

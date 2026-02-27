@@ -2,6 +2,8 @@ import DashboardStateViews from "./DashboardStateViews";
 import type { DashboardWidgetDefinition } from "./types";
 import CurrentPeriodKpiWidget from "./CurrentPeriodKpiWidget";
 import OverspentCategoriesWidget from "./OverspentCategoriesWidget";
+import RecentPeriodsWidget from "./RecentPeriodsWidget";
+import InactiveCategoriesWidget from "./InactiveCategoriesWidget";
 
 export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
   {
@@ -12,11 +14,11 @@ export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
     render: () => <CurrentPeriodKpiWidget />,
   },
   {
-    id: "spending-trend",
-    titleKey: "dashboard.widgetTrendTitle",
-    descriptionKey: "dashboard.widgetTrendDesc",
+    id: "recent-periods",
+    titleKey: "dashboard.widgetRecentPeriodsTitle",
+    descriptionKey: "dashboard.widgetRecentPeriodsDesc",
     span: "single",
-    render: () => <DashboardStateViews state="empty" />,
+    render: () => <RecentPeriodsWidget />,
   },
   {
     id: "alerts",
@@ -24,6 +26,13 @@ export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
     descriptionKey: "dashboard.widgetOverspentDesc",
     span: "double",
     render: () => <OverspentCategoriesWidget />,
+  },
+  {
+    id: "inactive-categories",
+    titleKey: "dashboard.widgetInactiveCategoriesTitle",
+    descriptionKey: "dashboard.widgetInactiveCategoriesDesc",
+    span: "single",
+    render: () => <InactiveCategoriesWidget />,
   },
 ];
 

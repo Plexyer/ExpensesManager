@@ -114,7 +114,9 @@ Schema managed by `src-tauri/src/migrations.rs` (CURRENT_SCHEMA_VERSION = 5).
 - `DashboardWidgetCard.tsx` — Shared widget card wrapper with accessible heading/content structure
 - `DashboardStateViews.tsx` — Shared loading/empty/error state views for widgets
 - `CurrentPeriodKpiWidget.tsx` — Current period KPI widget (received/spent/remaining) with client-side aggregation
+- `RecentPeriodsWidget.tsx` — Quick-access widget for recent periods with active-period indication
 - `OverspentCategoriesWidget.tsx` — Alert widget for categories with `remaining < 0` and quick navigation to period details
+- `InactiveCategoriesWidget.tsx` — Watchlist widget for categories with zero received and zero spent activity
 - `widgetRegistry.tsx` — Registry source of truth for dashboard widgets
 - `types.ts` — Widget contract types (id/title/span/render)
 
