@@ -30,11 +30,18 @@
 - **React Router DOM** (`^7.13.0`) for routing (4 routes)
 - **react-i18next** (`^16.5.4`) + **i18next** (`^25.8.6`) for internationalization (EN, DE, HU)
 - **@hello-pangea/dnd** (`^18.0.1`) for drag-and-drop (template category reordering)
+- **recharts** (`^3.7.0`) for dashboard category/trend chart visualizations
 - **yet-another-react-lightbox** (`^3.29.1`) for attachment gallery viewing
 - **zxcvbn** (`^4.4.2`) for password strength estimation
 - **Vite** (`^6.0.3`) as build tool
 - **Vitest** (`^4.0.18`) + **React Testing Library** (`^16.3.2`) for automated tests
 - **Lucide React** for icons (imported inline, no package entry — uses SVG components)
+
+### Dashboard Charting Spike Decision (TASK-13.5)
+- **Selected library for upcoming dashboard chart widgets:** `recharts`
+- **Why selected now:** Better MVP fit for current dashboard scope (simple React API, straightforward TypeScript usage, built-in accessibility layer with keyboard navigation model).
+- **Trade-off noted:** Recharts has non-trivial bundle impact; chart widgets should remain focused and performance-tested in follow-up tasks.
+- **Alternative considered:** `@nivo/*` remains a viable option for more advanced/fine-grained visualizations, but introduces higher complexity for the current MVP dashboard scope.
 
 ### Backend
 - **Tauri 2** desktop framework
@@ -118,6 +125,7 @@ Schema managed by `src-tauri/src/migrations.rs` (CURRENT_SCHEMA_VERSION = 5).
 - `RecentPeriodsWidget.tsx` — Quick-access widget for recent periods with active-period indication
 - `OverspentCategoriesWidget.tsx` — Alert widget for categories with `remaining < 0` and quick navigation to period details
 - `InactiveCategoriesWidget.tsx` — Watchlist widget for categories with zero received and zero spent activity
+- `CategoryBreakdownWidget.tsx` — Current period spending distribution widget (top categories + optional other grouping)
 - `widgetRegistry.tsx` — Registry source of truth for dashboard widgets
 - `types.ts` — Widget contract types (id/title/span/render)
 

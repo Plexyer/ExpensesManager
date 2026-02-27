@@ -97,6 +97,8 @@
     "widgetOverspentDesc": "Categories where spending exceeded available budget in the current period.",
     "widgetInactiveCategoriesTitle": "Inactive Categories",
     "widgetInactiveCategoriesDesc": "Categories with zero received and spent activity in the current period.",
+    "widgetCategoryBreakdownTitle": "Category Breakdown",
+    "widgetCategoryBreakdownDesc": "Current period spending split by category with top contributors.",
     "layoutControls": "Dashboard layout controls",
     "addWidgetLabel": "Add widget",
     "addWidgetAction": "Add widget",
@@ -137,7 +139,14 @@
     "inactiveCategoriesCount": "{{count}} inactive category",
     "inactiveCategoriesCount_other": "{{count}} inactive categories",
     "inactiveCategoriesAllActive": "All categories have activity in the current period.",
-    "inactiveCategoriesOpenPeriod": "Open period details"
+    "inactiveCategoriesOpenPeriod": "Open period details",
+    "categoryBreakdownRegion": "Category spending breakdown",
+    "categoryBreakdownChartLabel": "Current period spending chart",
+    "categoryBreakdownListLabel": "Top spending categories",
+    "categoryBreakdownOtherLabel": "Other",
+    "categoryBreakdownCategoriesShown": "Showing top {{shown}} of {{total}} categories",
+    "categoryBreakdownNoSpending": "No spending has been recorded in the current period.",
+    "categoryBreakdownOpenPeriod": "Open period details"
   },
   "periods": {
     "budgetPeriods": "Budget Periods",

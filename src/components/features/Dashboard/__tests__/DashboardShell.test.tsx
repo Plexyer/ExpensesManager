@@ -30,6 +30,10 @@ vi.mock("../InactiveCategoriesWidget", () => ({
   default: () => <div>Inactive Categories Widget</div>,
 }));
 
+vi.mock("../CategoryBreakdownWidget", () => ({
+  default: () => <div>Category Breakdown Widget</div>,
+}));
+
 describe("DashboardShell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -60,6 +64,7 @@ describe("DashboardShell", () => {
     expect(screen.getByText("Recent Periods Widget")).toBeInTheDocument();
     expect(screen.getByText("Overspent Widget")).toBeInTheDocument();
     expect(screen.getByText("Inactive Categories Widget")).toBeInTheDocument();
+    expect(screen.getByText("Category Breakdown Widget")).toBeInTheDocument();
   });
 
   it("supports remove, add and reset widget controls", async () => {
@@ -109,6 +114,7 @@ describe("DashboardShell", () => {
         "current-period-overview",
         "alerts",
         "inactive-categories",
+        "category-breakdown",
       ])
     );
   });

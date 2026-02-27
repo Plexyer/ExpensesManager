@@ -97,10 +97,12 @@ DashboardPage
   -> DashboardShell (when file open)
      -> DashboardWidgetCard (registry-driven, user-configurable visibility + order)
      -> @hello-pangea/dnd DragDropContext/Droppable/Draggable (widget reordering)
+     -> Chart widgets (planned; TASK-13.5 spike selected `recharts` for upcoming chart-based widgets)
      -> CurrentPeriodKpiWidget (received/spent/remaining totals)
      -> RecentPeriodsWidget (recent period quick access with active marker + open action)
      -> OverspentCategoriesWidget (remaining<0 alert list + period details CTA)
      -> InactiveCategoriesWidget (zero-activity categories watchlist + period details CTA)
+     -> CategoryBreakdownWidget (current-period spent distribution, top categories + other grouping)
      -> DashboardStateViews (loading/empty/error)
 
 HomePage
@@ -492,6 +494,7 @@ npm run tauri dev -> Vite dev server (port 1420) + Rust backend
 | `@tauri-apps/plugin-opener` | ^2 | File/URL opener |
 | `i18next` / `react-i18next` | ^25.8.6 / ^16.5.4 | Internationalization |
 | `@hello-pangea/dnd` | ^18.0.1 | Drag-and-drop (template category reorder) |
+| `recharts` | ^3.7.0 | Dashboard chart visualizations |
 | `yet-another-react-lightbox` | ^3.29.1 | Attachment lightbox viewer |
 | `zxcvbn` | ^4.4.2 | Password strength estimation |
 

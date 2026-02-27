@@ -97,6 +97,8 @@
     "widgetOverspentDesc": "Kategorien, in denen die Ausgaben in der aktuellen Periode das verfügbare Budget überschreiten.",
     "widgetInactiveCategoriesTitle": "Inaktive Kategorien",
     "widgetInactiveCategoriesDesc": "Kategorien ohne Einnahmen- oder Ausgabenaktivität in der aktuellen Periode.",
+    "widgetCategoryBreakdownTitle": "Kategorien-Aufschlüsselung",
+    "widgetCategoryBreakdownDesc": "Ausgaben der aktuellen Periode nach Kategorien mit den grössten Anteilen.",
     "layoutControls": "Dashboard-Layout-Steuerung",
     "addWidgetLabel": "Widget hinzufügen",
     "addWidgetAction": "Widget hinzufügen",
@@ -136,7 +138,14 @@
     "inactiveCategoriesCount": "{{count}} inaktive Kategorie",
     "inactiveCategoriesCount_other": "{{count}} inaktive Kategorien",
     "inactiveCategoriesAllActive": "Alle Kategorien haben Aktivität in der aktuellen Periode.",
-    "inactiveCategoriesOpenPeriod": "Periodendetails öffnen"
+    "inactiveCategoriesOpenPeriod": "Periodendetails öffnen",
+    "categoryBreakdownRegion": "Aufschlüsselung der Kategorieausgaben",
+    "categoryBreakdownChartLabel": "Ausgabendiagramm der aktuellen Periode",
+    "categoryBreakdownListLabel": "Kategorien mit den höchsten Ausgaben",
+    "categoryBreakdownOtherLabel": "Andere",
+    "categoryBreakdownCategoriesShown": "Zeige die Top {{shown}} von {{total}} Kategorien",
+    "categoryBreakdownNoSpending": "In der aktuellen Periode wurden noch keine Ausgaben erfasst.",
+    "categoryBreakdownOpenPeriod": "Periodendetails öffnen"
   },
   "periods": {
     "budgetPeriods": "Budget-Perioden",

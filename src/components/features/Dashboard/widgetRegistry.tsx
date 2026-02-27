@@ -4,6 +4,7 @@ import CurrentPeriodKpiWidget from "./CurrentPeriodKpiWidget";
 import OverspentCategoriesWidget from "./OverspentCategoriesWidget";
 import RecentPeriodsWidget from "./RecentPeriodsWidget";
 import InactiveCategoriesWidget from "./InactiveCategoriesWidget";
+import CategoryBreakdownWidget from "./CategoryBreakdownWidget";
 
 export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
   {
@@ -33,6 +34,13 @@ export const dashboardWidgetRegistry: DashboardWidgetDefinition[] = [
     descriptionKey: "dashboard.widgetInactiveCategoriesDesc",
     span: "single",
     render: () => <InactiveCategoriesWidget />,
+  },
+  {
+    id: "category-breakdown",
+    titleKey: "dashboard.widgetCategoryBreakdownTitle",
+    descriptionKey: "dashboard.widgetCategoryBreakdownDesc",
+    span: "double",
+    render: () => <CategoryBreakdownWidget />,
   },
 ];
 

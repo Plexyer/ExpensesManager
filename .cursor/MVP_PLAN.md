@@ -563,6 +563,29 @@ This phase updates all `.cursor/` documentation files to accurately reflect the 
 
 ---
 
+## Phase 13: Dashboard Widgets & Customization 🚧 IN PROGRESS (2026-02-26 — present)
+
+### Overview
+This phase expands the dashboard from a shell into a configurable, insight-oriented surface with widget selection, ordering, and chart-based views.
+
+### Recently Completed
+
+| Task | GitHub Issue | Closed | Description |
+|------|-------------|--------|-------------|
+| TASK-13.2: Dashboard shell + widget architecture | #117 | 2026-02-26 | Introduced dashboard module structure, widget registry, card/state abstractions, and initial widget contract |
+| TASK-13.3: Default dashboard setup + add/remove/reset widgets | #119 | 2026-02-27 | Added persisted widget visibility selection and default/reset controls |
+| TASK-13.4: Drag-and-drop widget reordering | #122 | 2026-02-27 | Added DnD ordering with persisted order and keyboard reorder fallback |
+| TASK-13.5: Dashboard chart library selection spike | #123 | 2026-02-27 | Compared `recharts` vs `@nivo/*`; selected `recharts` for upcoming chart widgets with bundle/performance guardrails |
+| TASK-13.8: Category breakdown widget (current period) | #124 | 2026-02-27 | Added current-period spending distribution widget with top-category readability strategy and period drill-through |
+
+### Chart Library Decision (TASK-13.5)
+- **Selected:** `recharts`
+- **Reasoning:** Strong fit for current MVP dashboard needs (simple React + TypeScript ergonomics, clear composition model, built-in accessibility layer with keyboard navigation support).
+- **Trade-off:** Known bundle-size overhead; follow-up chart tasks must keep chart scope focused and include performance checks.
+- **Follow-up tasks using this decision:** #127, #135
+
+---
+
 ## Implementation Order
 
 1. **Phase 1** (Foundation) — ✅ COMPLETED (2026-02-06 to 2026-02-09)
@@ -578,6 +601,7 @@ This phase updates all `.cursor/` documentation files to accurately reflect the 
 11. **Phase 10** (Bug Fixes) — ✅ COMPLETED (2026-02-09 to 2026-02-12)
 12. **Phase 11** (Attachments) — ✅ COMPLETED (2026-02-13 to 2026-02-15)
 13. **Phase 12** (Documentation) — 📋 CURRENT (2026-02-15 — in progress)
+14. **Phase 13** (Dashboard Widgets & Customization) — 🚧 IN PROGRESS (2026-02-26 — present)
 
 ---
 

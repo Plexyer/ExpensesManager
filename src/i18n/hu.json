@@ -97,6 +97,8 @@
     "widgetOverspentDesc": "Kategóriák, ahol az aktuális időszakban a költés meghaladta a rendelkezésre álló keretet.",
     "widgetInactiveCategoriesTitle": "Inaktív kategóriák",
     "widgetInactiveCategoriesDesc": "Kategóriák, ahol az aktuális időszakban nincs bevételi vagy kiadási aktivitás.",
+    "widgetCategoryBreakdownTitle": "Kategória bontás",
+    "widgetCategoryBreakdownDesc": "Az aktuális időszak kiadásai kategóriánként, a legnagyobb tételekkel.",
     "layoutControls": "Irányítópult elrendezési vezérlők",
     "addWidgetLabel": "Widget hozzáadása",
     "addWidgetAction": "Widget hozzáadása",
@@ -136,7 +138,14 @@
     "inactiveCategoriesCount": "{{count}} inaktív kategória",
     "inactiveCategoriesCount_other": "{{count}} inaktív kategória",
     "inactiveCategoriesAllActive": "Az aktuális időszakban minden kategóriában volt aktivitás.",
-    "inactiveCategoriesOpenPeriod": "Időszak részleteinek megnyitása"
+    "inactiveCategoriesOpenPeriod": "Időszak részleteinek megnyitása",
+    "categoryBreakdownRegion": "Kategória szerinti kiadási bontás",
+    "categoryBreakdownChartLabel": "Aktuális időszak kiadási diagram",
+    "categoryBreakdownListLabel": "Legnagyobb költési kategóriák",
+    "categoryBreakdownOtherLabel": "Egyéb",
+    "categoryBreakdownCategoriesShown": "Top {{shown}} / {{total}} kategória megjelenítése",
+    "categoryBreakdownNoSpending": "Az aktuális időszakban még nincs rögzített költés.",
+    "categoryBreakdownOpenPeriod": "Időszak részleteinek megnyitása"
   },
   "periods": {
     "budgetPeriods": "Költségvetési időszakok",
