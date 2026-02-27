@@ -2407,8 +2407,109 @@ pub struct ListRecentTransactionsFeedArgs {
     pub offset: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ListDashboardTimeSeriesArgs {
+    pub granularity: String,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DashboardTimeSeriesBucket {
+    pub bucket_key: String,
+    pub bucket_label: String,
+    pub bucket_start_date: String,
+    pub bucket_end_date: Option<String>,
+    pub received_total: f64,
+    pub spent_total: f64,
+    pub net_total: f64,
+    pub currency: String,
+}
+
 const RECENT_TRANSACTIONS_DEFAULT_LIMIT: i64 = 25;
 const RECENT_TRANSACTIONS_MAX_LIMIT: i64 = 200;
+const DASHBOARD_TIME_SERIES_DEFAULT_LIMIT: i64 = 24;
+const DASHBOARD_TIME_SERIES_MAX_LIMIT: i64 = 366;
+
+#[derive(Debug, Clone, Copy)]
+enum DashboardTimeSeriesGranularity {
+    Daily,
+    Weekly,
+    Period,
+}
+
+fn parse_iso_date(value: &str) -> bool {
+    if value.len() != 10 {
+        return false;
+    }
+    let bytes = value.as_bytes();
+    for (index, byte) in bytes.iter().enumerate() {
+        if index == 4 || index == 7 {
+            if *byte != b'-' {
+                return false;
+            }
+            continue;
+        }
+        if !byte.is_ascii_digit() {
+            return false;
+        }
+    }
+    true
+}
+
+fn normalize_dashboard_time_series_args(
+    args: &ListDashboardTimeSeriesArgs,
+) -> Result<(DashboardTimeSeriesGranularity, Option<String>, Option<String>, i64), EncryptedDbError>
+{
+    let granularity = match args.granularity.trim().to_lowercase().as_str() {
+        "daily" => DashboardTimeSeriesGranularity::Daily,
+        "weekly" => DashboardTimeSeriesGranularity::Weekly,
+        "period" => DashboardTimeSeriesGranularity::Period,
+        _ => {
+            return Err(EncryptedDbError::DatabaseError(
+                "granularity must be one of: daily, weekly, period.".to_string(),
+            ));
+        }
+    };
+
+    let limit = args.limit.unwrap_or(DASHBOARD_TIME_SERIES_DEFAULT_LIMIT);
+    if limit <= 0 {
+        return Err(EncryptedDbError::DatabaseError(
+            "limit must be greater than 0.".to_string(),
+        ));
+    }
+    if limit > DASHBOARD_TIME_SERIES_MAX_LIMIT {
+        return Err(EncryptedDbError::DatabaseError(format!(
+            "limit must be <= {}.",
+            DASHBOARD_TIME_SERIES_MAX_LIMIT
+        )));
+    }
+
+    let start_date = args.start_date.as_ref().map(|value| value.trim().to_string());
+    let end_date = args.end_date.as_ref().map(|value| value.trim().to_string());
+
+    if start_date.is_some() ^ end_date.is_some() {
+        return Err(EncryptedDbError::DatabaseError(
+            "start_date and end_date must be provided together.".to_string(),
+        ));
+    }
+
+    if let (Some(start), Some(end)) = (&start_date, &end_date) {
+        if !parse_iso_date(start) || !parse_iso_date(end) {
+            return Err(EncryptedDbError::DatabaseError(
+                "start_date and end_date must use YYYY-MM-DD format.".to_string(),
+            ));
+        }
+        if start > end {
+            return Err(EncryptedDbError::DatabaseError(
+                "start_date must be <= end_date.".to_string(),
+            ));
+        }
+    }
+
+    Ok((granularity, start_date, end_date, limit))
+}
 
 fn normalize_recent_feed_args(
     args: &ListRecentTransactionsFeedArgs,
@@ -2531,6 +2632,135 @@ fn list_recent_transactions_feed_with_conn(
     }
 
     Ok(items)
+}
+
+/// Lists aggregate dashboard time-series buckets for trend/timeline widgets.
+/// Supports daily, weekly, and period granularity with optional date-range filters.
+#[tauri::command]
+pub fn list_dashboard_time_series(
+    args: ListDashboardTimeSeriesArgs,
+    db_state: State<DbState>,
+) -> Result<Vec<DashboardTimeSeriesBucket>, String> {
+    list_dashboard_time_series_internal(&args, &db_state).map_err(|e| e.to_string())
+}
+
+fn list_dashboard_time_series_internal(
+    args: &ListDashboardTimeSeriesArgs,
+    db_state: &State<DbState>,
+) -> Result<Vec<DashboardTimeSeriesBucket>, EncryptedDbError> {
+    let conn_guard = db_state
+        .conn
+        .lock()
+        .map_err(|_| EncryptedDbError::LockError)?;
+
+    let conn = conn_guard
+        .as_ref()
+        .ok_or(EncryptedDbError::NotOpen)?;
+
+    list_dashboard_time_series_with_conn(args, conn)
+}
+
+fn list_dashboard_time_series_with_conn(
+    args: &ListDashboardTimeSeriesArgs,
+    conn: &Connection,
+) -> Result<Vec<DashboardTimeSeriesBucket>, EncryptedDbError> {
+    let (granularity, start_date, end_date, limit) = normalize_dashboard_time_series_args(args)?;
+    let start_ref = start_date.as_deref();
+    let end_ref = end_date.as_deref();
+
+    let sql = match granularity {
+        DashboardTimeSeriesGranularity::Daily => {
+            r#"
+            SELECT
+                DATE(li.occurred_at) AS bucket_start_date,
+                DATE(li.occurred_at) AS bucket_end_date,
+                DATE(li.occurred_at) AS bucket_key,
+                DATE(li.occurred_at) AS bucket_label,
+                COALESCE(SUM(CASE WHEN li.kind = 'received' THEN li.amount ELSE 0 END), 0) AS received_total,
+                COALESCE(SUM(CASE WHEN li.kind = 'spent' THEN li.amount ELSE 0 END), 0) AS spent_total,
+                COALESCE(MIN(li.currency), 'CHF') AS currency
+            FROM category_line_items li
+            WHERE li.deleted_at IS NULL
+              AND (?1 IS NULL OR DATE(li.occurred_at) >= ?1)
+              AND (?2 IS NULL OR DATE(li.occurred_at) <= ?2)
+            GROUP BY DATE(li.occurred_at)
+            ORDER BY bucket_start_date DESC
+            LIMIT ?3
+            "#
+        }
+        DashboardTimeSeriesGranularity::Weekly => {
+            r#"
+            SELECT
+                DATE(li.occurred_at, '-' || ((CAST(strftime('%w', li.occurred_at) AS INTEGER) + 6) % 7) || ' days') AS bucket_start_date,
+                DATE(
+                    li.occurred_at,
+                    '-' || ((CAST(strftime('%w', li.occurred_at) AS INTEGER) + 6) % 7) || ' days',
+                    '+6 days'
+                ) AS bucket_end_date,
+                DATE(li.occurred_at, '-' || ((CAST(strftime('%w', li.occurred_at) AS INTEGER) + 6) % 7) || ' days') AS bucket_key,
+                DATE(li.occurred_at, '-' || ((CAST(strftime('%w', li.occurred_at) AS INTEGER) + 6) % 7) || ' days') AS bucket_label,
+                COALESCE(SUM(CASE WHEN li.kind = 'received' THEN li.amount ELSE 0 END), 0) AS received_total,
+                COALESCE(SUM(CASE WHEN li.kind = 'spent' THEN li.amount ELSE 0 END), 0) AS spent_total,
+                COALESCE(MIN(li.currency), 'CHF') AS currency
+            FROM category_line_items li
+            WHERE li.deleted_at IS NULL
+              AND (?1 IS NULL OR DATE(li.occurred_at) >= ?1)
+              AND (?2 IS NULL OR DATE(li.occurred_at) <= ?2)
+            GROUP BY DATE(li.occurred_at, '-' || ((CAST(strftime('%w', li.occurred_at) AS INTEGER) + 6) % 7) || ' days')
+            ORDER BY bucket_start_date DESC
+            LIMIT ?3
+            "#
+        }
+        DashboardTimeSeriesGranularity::Period => {
+            r#"
+            SELECT
+                pbi.start_date AS bucket_start_date,
+                pbi.end_date AS bucket_end_date,
+                'period:' || pbi.budget_instance_id AS bucket_key,
+                COALESCE(bt.name, pbi.start_date) AS bucket_label,
+                COALESCE(SUM(CASE WHEN li.kind = 'received' THEN li.amount ELSE 0 END), 0) AS received_total,
+                COALESCE(SUM(CASE WHEN li.kind = 'spent' THEN li.amount ELSE 0 END), 0) AS spent_total,
+                COALESCE(MIN(bic.default_currency), 'CHF') AS currency
+            FROM period_budget_instances pbi
+            LEFT JOIN budget_templates bt
+              ON bt.template_id = pbi.template_id
+            LEFT JOIN budget_instance_categories bic
+              ON bic.budget_instance_id = pbi.budget_instance_id
+            LEFT JOIN category_line_items li
+              ON li.budget_instance_category_id = bic.budget_instance_category_id
+              AND li.deleted_at IS NULL
+              AND (?1 IS NULL OR DATE(li.occurred_at) >= ?1)
+              AND (?2 IS NULL OR DATE(li.occurred_at) <= ?2)
+            GROUP BY pbi.budget_instance_id
+            ORDER BY pbi.start_date DESC, pbi.budget_instance_id DESC
+            LIMIT ?3
+            "#
+        }
+    };
+
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map(rusqlite::params![start_ref, end_ref, limit], |row| {
+        let received_total: f64 = row.get(4)?;
+        let spent_total: f64 = row.get(5)?;
+        Ok(DashboardTimeSeriesBucket {
+            bucket_start_date: row.get(0)?,
+            bucket_end_date: row.get(1)?,
+            bucket_key: row.get(2)?,
+            bucket_label: row.get(3)?,
+            received_total,
+            spent_total,
+            net_total: received_total - spent_total,
+            currency: row.get(6)?,
+        })
+    })?;
+
+    let mut buckets = Vec::new();
+    for row in rows {
+        buckets.push(row?);
+    }
+    buckets.reverse();
+
+    Ok(buckets)
 }
 
 /// Lists line items for a specific category within a budget instance, filtered by kind.
@@ -6640,6 +6870,136 @@ mod tests {
         assert_eq!(snapshot.account_balances[0].as_of_date.as_deref(), Some("2026-02-10"));
         assert!((snapshot.account_balances[0].balance_amount - 2000.0).abs() < 0.01);
         assert_eq!(snapshot.as_of_date, "2026-02-15");
+    }
+
+    #[test]
+    fn test_dashboard_time_series_period_returns_zero_bucket_without_line_items() {
+        let conn = setup_grid_test_db();
+        let (_budget_instance_id, _bic_id, _global_cat_id) = insert_grid_test_data(&conn);
+
+        let buckets = list_dashboard_time_series_with_conn(
+            &ListDashboardTimeSeriesArgs {
+                granularity: "period".to_string(),
+                start_date: None,
+                end_date: None,
+                limit: Some(10),
+            },
+            &conn,
+        )
+        .unwrap();
+
+        assert_eq!(buckets.len(), 1);
+        assert_eq!(buckets[0].received_total, 0.0);
+        assert_eq!(buckets[0].spent_total, 0.0);
+        assert!(buckets[0].bucket_key.starts_with("period:"));
+    }
+
+    #[test]
+    fn test_dashboard_time_series_period_aggregates_and_excludes_deleted() {
+        let conn = setup_grid_test_db();
+        let (_budget_instance_id, bic_id, _global_cat_id) = insert_grid_test_data(&conn);
+
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'received', '2026-02-02T10:00:00', 120.0, 'CHF')",
+            [bic_id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'spent', '2026-02-03T10:00:00', 45.0, 'CHF')",
+            [bic_id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency, deleted_at) VALUES (?, 'spent', '2026-02-04T10:00:00', 999.0, 'CHF', datetime('now'))",
+            [bic_id],
+        )
+        .unwrap();
+
+        let buckets = list_dashboard_time_series_with_conn(
+            &ListDashboardTimeSeriesArgs {
+                granularity: "period".to_string(),
+                start_date: None,
+                end_date: None,
+                limit: Some(10),
+            },
+            &conn,
+        )
+        .unwrap();
+
+        assert_eq!(buckets.len(), 1);
+        assert!((buckets[0].received_total - 120.0).abs() < 0.01);
+        assert!((buckets[0].spent_total - 45.0).abs() < 0.01);
+        assert!((buckets[0].net_total - 75.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_dashboard_time_series_daily_applies_date_range() {
+        let conn = setup_grid_test_db();
+        let (_budget_instance_id, bic_id, _global_cat_id) = insert_grid_test_data(&conn);
+
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'received', '2026-02-01T10:00:00', 50.0, 'CHF')",
+            [bic_id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO category_line_items (budget_instance_category_id, kind, occurred_at, amount, currency) VALUES (?, 'received', '2026-02-10T10:00:00', 75.0, 'CHF')",
+            [bic_id],
+        )
+        .unwrap();
+
+        let buckets = list_dashboard_time_series_with_conn(
+            &ListDashboardTimeSeriesArgs {
+                granularity: "daily".to_string(),
+                start_date: Some("2026-02-05".to_string()),
+                end_date: Some("2026-02-15".to_string()),
+                limit: Some(20),
+            },
+            &conn,
+        )
+        .unwrap();
+
+        assert_eq!(buckets.len(), 1);
+        assert_eq!(buckets[0].bucket_start_date, "2026-02-10");
+        assert!((buckets[0].received_total - 75.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_dashboard_time_series_rejects_invalid_args() {
+        let conn = setup_grid_test_db();
+
+        let bad_granularity = list_dashboard_time_series_with_conn(
+            &ListDashboardTimeSeriesArgs {
+                granularity: "monthly".to_string(),
+                start_date: None,
+                end_date: None,
+                limit: Some(10),
+            },
+            &conn,
+        );
+        assert!(bad_granularity.is_err());
+
+        let missing_end_date = list_dashboard_time_series_with_conn(
+            &ListDashboardTimeSeriesArgs {
+                granularity: "daily".to_string(),
+                start_date: Some("2026-02-01".to_string()),
+                end_date: None,
+                limit: Some(10),
+            },
+            &conn,
+        );
+        assert!(missing_end_date.is_err());
+
+        let over_max_limit = list_dashboard_time_series_with_conn(
+            &ListDashboardTimeSeriesArgs {
+                granularity: "period".to_string(),
+                start_date: None,
+                end_date: None,
+                limit: Some(DASHBOARD_TIME_SERIES_MAX_LIMIT + 1),
+            },
+            &conn,
+        );
+        assert!(over_max_limit.is_err());
     }
 
     #[test]

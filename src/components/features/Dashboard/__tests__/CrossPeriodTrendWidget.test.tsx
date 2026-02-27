@@ -4,11 +4,10 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import CrossPeriodTrendWidget from "../CrossPeriodTrendWidget";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
-import { resetDashboardRequestDeduperForTests } from "../dashboardRequestDeduper";
 
 const mockUseAppSelector = vi.hoisted(() => vi.fn());
 const mockListPeriods = vi.hoisted(() => vi.fn());
-const mockGetGridData = vi.hoisted(() => vi.fn());
+const mockListDashboardTimeSeries = vi.hoisted(() => vi.fn());
 
 vi.mock("../../../../store/hooks", () => ({
   useAppSelector: mockUseAppSelector,
@@ -18,8 +17,8 @@ vi.mock("../../../../services/periodService", () => ({
   listPeriods: mockListPeriods,
 }));
 
-vi.mock("../../../../services/fileService", () => ({
-  getGridData: mockGetGridData,
+vi.mock("../../../../services/lineItemService", () => ({
+  listDashboardTimeSeries: mockListDashboardTimeSeries,
 }));
 
 vi.mock("recharts", () => ({
@@ -40,7 +39,6 @@ vi.mock("recharts", () => ({
 describe("CrossPeriodTrendWidget", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    resetDashboardRequestDeduperForTests();
     mockUseAppSelector.mockImplementation((selector: (state: unknown) => unknown) =>
       selector({
         file: { isFileOpen: true },
@@ -50,6 +48,7 @@ describe("CrossPeriodTrendWidget", () => {
 
   it("renders loading state", () => {
     mockListPeriods.mockReturnValue(new Promise(() => {}));
+    mockListDashboardTimeSeries.mockResolvedValue([]);
 
     renderWithProviders(<CrossPeriodTrendWidget />);
     expect(screen.getByText(/loading widget data/i)).toBeInTheDocument();
@@ -57,6 +56,7 @@ describe("CrossPeriodTrendWidget", () => {
 
   it("renders error state when period loading fails", async () => {
     mockListPeriods.mockRejectedValue(new Error("boom"));
+    mockListDashboardTimeSeries.mockResolvedValue([]);
 
     renderWithProviders(<CrossPeriodTrendWidget />);
     expect(await screen.findByText(/could not be loaded/i)).toBeInTheDocument();
@@ -64,6 +64,7 @@ describe("CrossPeriodTrendWidget", () => {
 
   it("renders empty state when no periods exist", async () => {
     mockListPeriods.mockResolvedValue([]);
+    mockListDashboardTimeSeries.mockResolvedValue([]);
 
     renderWithProviders(<CrossPeriodTrendWidget />);
     expect(await screen.findByText(/no data to display yet/i)).toBeInTheDocument();
@@ -82,24 +83,18 @@ describe("CrossPeriodTrendWidget", () => {
         created_at: "2026-01-01",
       },
     ]);
-    mockGetGridData.mockResolvedValue({
-      budget_instance_id: 1,
-      rows: [
-        {
-          budget_instance_category_id: 1,
-          global_category_id: 1,
-          category_name: "Food",
-          default_amount: 0,
-          default_currency: "CHF",
-          sort_order: 1,
-          received_total: 100,
-          spent_total: 60,
-          remaining: 40,
-          first_received_date: null,
-          last_received_date: null,
-        },
-      ],
-    });
+    mockListDashboardTimeSeries.mockResolvedValue([
+      {
+        bucket_key: "period:1",
+        bucket_label: "January",
+        bucket_start_date: "2026-01-01",
+        bucket_end_date: "2026-01-31",
+        received_total: 100,
+        spent_total: 60,
+        net_total: 40,
+        currency: "CHF",
+      },
+    ]);
 
     renderWithProviders(<CrossPeriodTrendWidget />);
     expect(
@@ -130,24 +125,28 @@ describe("CrossPeriodTrendWidget", () => {
         created_at: "2026-02-01",
       },
     ]);
-    mockGetGridData.mockImplementation(async (budgetInstanceId: number) => ({
-      budget_instance_id: budgetInstanceId,
-      rows: [
-        {
-          budget_instance_category_id: budgetInstanceId,
-          global_category_id: budgetInstanceId,
-          category_name: "Bills",
-          default_amount: 0,
-          default_currency: "CHF",
-          sort_order: 1,
-          received_total: 1000 + budgetInstanceId,
-          spent_total: 450 + budgetInstanceId,
-          remaining: 550,
-          first_received_date: null,
-          last_received_date: null,
-        },
-      ],
-    }));
+    mockListDashboardTimeSeries.mockResolvedValue([
+      {
+        bucket_key: "period:2",
+        bucket_label: "February",
+        bucket_start_date: "2026-02-01",
+        bucket_end_date: "2026-02-28",
+        received_total: 1002,
+        spent_total: 452,
+        net_total: 550,
+        currency: "CHF",
+      },
+      {
+        bucket_key: "period:3",
+        bucket_label: "March",
+        bucket_start_date: "2026-03-01",
+        bucket_end_date: "2026-03-31",
+        received_total: 1003,
+        spent_total: 453,
+        net_total: 550,
+        currency: "CHF",
+      },
+    ]);
 
     renderWithProviders(<CrossPeriodTrendWidget />);
     expect(await screen.findByTestId("line-chart")).toBeInTheDocument();
@@ -197,29 +196,57 @@ describe("CrossPeriodTrendWidget", () => {
         created_at: "2026-01-01",
       },
     ]);
-    mockGetGridData.mockImplementation(async (budgetInstanceId: number) => ({
-      budget_instance_id: budgetInstanceId,
-      rows: [
-        {
-          budget_instance_category_id: budgetInstanceId,
-          global_category_id: budgetInstanceId,
-          category_name: "Category",
-          default_amount: 0,
-          default_currency: "CHF",
-          sort_order: 1,
-          received_total: 100 + budgetInstanceId,
-          spent_total: 50 + budgetInstanceId,
-          remaining: 50,
-          first_received_date: null,
-          last_received_date: null,
-        },
-      ],
-    }));
+    mockListDashboardTimeSeries.mockResolvedValue([
+      {
+        bucket_key: "period:1",
+        bucket_label: "January",
+        bucket_start_date: "2026-01-01",
+        bucket_end_date: "2026-01-31",
+        received_total: 101,
+        spent_total: 51,
+        net_total: 50,
+        currency: "CHF",
+      },
+      {
+        bucket_key: "period:2",
+        bucket_label: "February",
+        bucket_start_date: "2026-02-01",
+        bucket_end_date: "2026-02-28",
+        received_total: 102,
+        spent_total: 52,
+        net_total: 50,
+        currency: "CHF",
+      },
+      {
+        bucket_key: "period:3",
+        bucket_label: "March",
+        bucket_start_date: "2026-03-01",
+        bucket_end_date: "2026-03-31",
+        received_total: 103,
+        spent_total: 53,
+        net_total: 50,
+        currency: "CHF",
+      },
+      {
+        bucket_key: "period:4",
+        bucket_label: "April",
+        bucket_start_date: "2026-04-01",
+        bucket_end_date: "2026-04-30",
+        received_total: 104,
+        spent_total: 54,
+        net_total: 50,
+        currency: "CHF",
+      },
+    ]);
 
     renderWithProviders(<CrossPeriodTrendWidget />);
     expect(await screen.findByTestId("line-chart")).toBeInTheDocument();
 
-    expect(mockGetGridData).toHaveBeenCalledTimes(4);
+    expect(mockListDashboardTimeSeries).toHaveBeenCalledTimes(1);
+    expect(mockListDashboardTimeSeries).toHaveBeenCalledWith({
+      granularity: "period",
+      limit: undefined,
+    });
     expect(screen.getByText(/showing 4 of 4 periods/i)).toBeInTheDocument();
   });
 
@@ -257,24 +284,38 @@ describe("CrossPeriodTrendWidget", () => {
         created_at: "2026-01-01",
       },
     ]);
-    mockGetGridData.mockResolvedValue({
-      budget_instance_id: 1,
-      rows: [
-        {
-          budget_instance_category_id: 1,
-          global_category_id: 1,
-          category_name: "Groceries",
-          default_amount: 0,
-          default_currency: "CHF",
-          sort_order: 1,
-          received_total: 200,
-          spent_total: 80,
-          remaining: 120,
-          first_received_date: null,
-          last_received_date: null,
-        },
-      ],
-    });
+    mockListDashboardTimeSeries.mockResolvedValue([
+      {
+        bucket_key: "period:1",
+        bucket_label: "January",
+        bucket_start_date: "2026-01-01",
+        bucket_end_date: "2026-01-31",
+        received_total: 200,
+        spent_total: 80,
+        net_total: 120,
+        currency: "CHF",
+      },
+      {
+        bucket_key: "period:2",
+        bucket_label: "February",
+        bucket_start_date: "2026-02-01",
+        bucket_end_date: "2026-02-28",
+        received_total: 220,
+        spent_total: 90,
+        net_total: 130,
+        currency: "CHF",
+      },
+      {
+        bucket_key: "period:3",
+        bucket_label: "March",
+        bucket_start_date: "2026-03-01",
+        bucket_end_date: "2026-03-31",
+        received_total: 240,
+        spent_total: 95,
+        net_total: 145,
+        currency: "CHF",
+      },
+    ]);
 
     renderWithProviders(<CrossPeriodTrendWidget />);
     await screen.findByTestId("line-chart");
@@ -285,5 +326,10 @@ describe("CrossPeriodTrendWidget", () => {
     await user.selectOptions(periodCountSelect, "3");
 
     expect(mockListPeriods).toHaveBeenCalledTimes(2);
+    expect(mockListDashboardTimeSeries).toHaveBeenCalledTimes(2);
+    expect(mockListDashboardTimeSeries).toHaveBeenLastCalledWith({
+      granularity: "period",
+      limit: 3,
+    });
   });
 });

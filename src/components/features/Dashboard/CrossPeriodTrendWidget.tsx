@@ -11,13 +11,10 @@ import {
   YAxis,
 } from "recharts";
 import { useAppSelector } from "../../../store/hooks";
+import { listDashboardTimeSeries } from "../../../services/lineItemService";
+import { listPeriods } from "../../../services/periodService";
 import { formatCurrency } from "../../../utils/currency";
-import type { PeriodBudgetInstance } from "../../../types/period.types";
 import DashboardStateViews from "./DashboardStateViews";
-import {
-  getDedupedGridData,
-  getDedupedPeriods,
-} from "./dashboardRequestDeduper";
 
 const PERIOD_COUNT_OPTIONS = [3, 6, 12] as const;
 const ALL_PERIODS_OPTION = "all" as const;
@@ -33,12 +30,6 @@ interface TrendPoint {
 }
 
 type TrendStatus = "idle" | "loading" | "succeeded" | "failed";
-
-const sortPeriodsDescending = (periods: PeriodBudgetInstance[]) =>
-  [...periods].sort(
-    (left, right) =>
-      new Date(right.start_date).getTime() - new Date(left.start_date).getTime()
-  );
 
 const CrossPeriodTrendWidget = () => {
   const { t } = useTranslation();
@@ -63,42 +54,29 @@ const CrossPeriodTrendWidget = () => {
       setStatus("loading");
 
       try {
-        const periods = await getDedupedPeriods();
-        const sortedPeriods = sortPeriodsDescending(periods);
-        const selectedPeriods =
+        const periods = await listPeriods();
+        const limit =
           selectedPeriodCount === ALL_PERIODS_OPTION
-            ? [...sortedPeriods].reverse()
-            : sortedPeriods.slice(0, selectedPeriodCount).reverse();
-
-        const points = await Promise.all(
-          selectedPeriods.map(async (period) => {
-            const gridData = await getDedupedGridData(period.budget_instance_id);
-            const totals = gridData.rows.reduce(
-              (acc, row) => {
-                acc.received += row.received_total;
-                acc.spent += row.spent_total;
-                return acc;
-              },
-              { received: 0, spent: 0 }
-            );
-            const currencyCode = gridData.rows[0]?.default_currency ?? "CHF";
-
-            return {
-              label: period.template_name || period.start_date,
-              received: totals.received,
-              spent: totals.spent,
-              net: totals.received - totals.spent,
-              currencyCode,
-            };
-          })
-        );
+            ? undefined
+            : selectedPeriodCount;
+        const buckets = await listDashboardTimeSeries({
+          granularity: "period",
+          limit,
+        });
+        const points = buckets.map((bucket) => ({
+          label: bucket.bucket_label || bucket.bucket_start_date,
+          received: bucket.received_total,
+          spent: bucket.spent_total,
+          net: bucket.net_total,
+          currencyCode: bucket.currency || "CHF",
+        }));
 
         if (cancelled) {
           return;
         }
 
         setTrendPoints(points);
-        setTotalPeriodCount(sortedPeriods.length);
+        setTotalPeriodCount(periods.length);
         setStatus("succeeded");
       } catch {
         if (!cancelled) {

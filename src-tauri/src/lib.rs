@@ -49,6 +49,7 @@ pub fn run() {
             encrypted_db::upsert_account_balance_snapshot,
             encrypted_db::get_net_worth_snapshot,
             // Line item commands
+            encrypted_db::list_dashboard_time_series,
             encrypted_db::list_recent_transactions_feed,
             encrypted_db::list_line_items,
             encrypted_db::create_line_item,

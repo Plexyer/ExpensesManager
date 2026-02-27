@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { listRecentTransactionsFeed } from "../lineItemService";
-import type { RecentTransactionFeedItem } from "../../types/lineItem.types";
+import {
+  listDashboardTimeSeries,
+  listRecentTransactionsFeed,
+} from "../lineItemService";
+import type {
+  DashboardTimeSeriesBucket,
+  RecentTransactionFeedItem,
+} from "../../types/lineItem.types";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -54,6 +60,39 @@ describe("lineItemService", () => {
     expect(result).toEqual([]);
     expect(mockInvoke).toHaveBeenCalledWith("list_recent_transactions_feed", {
       args: {},
+    });
+  });
+
+  it("lists dashboard time-series buckets with provided args", async () => {
+    const buckets: DashboardTimeSeriesBucket[] = [
+      {
+        bucket_key: "period:12",
+        bucket_label: "March",
+        bucket_start_date: "2026-03-01",
+        bucket_end_date: "2026-03-31",
+        received_total: 1000,
+        spent_total: 750,
+        net_total: 250,
+        currency: "CHF",
+      },
+    ];
+    mockInvoke.mockResolvedValueOnce(buckets);
+
+    const result = await listDashboardTimeSeries({
+      granularity: "period",
+      limit: 6,
+      start_date: "2026-01-01",
+      end_date: "2026-03-31",
+    });
+
+    expect(result).toEqual(buckets);
+    expect(mockInvoke).toHaveBeenCalledWith("list_dashboard_time_series", {
+      args: {
+        granularity: "period",
+        limit: 6,
+        start_date: "2026-01-01",
+        end_date: "2026-03-31",
+      },
     });
   });
 });

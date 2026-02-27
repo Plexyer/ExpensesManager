@@ -212,7 +212,7 @@ Typed hooks: `useAppSelector`, `useAppDispatch` in `src/store/hooks.ts`.
 | `file_header.rs` | Custom file header format — magic bytes `EFM1`, salt, KDF params, password hint |
 | `migrations.rs` | Database schema migrations v1–v6, version tracking via `_meta` table |
 
-**43 Tauri commands** grouped by domain:
+**44 Tauri commands** grouped by domain:
 - **DB lifecycle** (6): `create_encrypted_db`, `open_encrypted_db`, `get_db_info`, `close_db`, `save_db`, `diagnose_db_file`
 - **Grid data** (1): `get_grid_data`
 - **Global categories** (3): `create_global_category`, `list_global_categories`, `delete_global_category`
@@ -220,7 +220,7 @@ Typed hooks: `useAppSelector`, `useAppDispatch` in `src/store/hooks.ts`.
 - **Template categories** (5): `get_template_categories`, `add_category_to_template`, `remove_category_from_template`, `update_template_category_amount`, `reorder_template_categories`
 - **Periods** (4): `create_period_from_template`, `list_periods`, `get_period`, `delete_period`
 - **Financial accounts** (4): `create_financial_account`, `list_financial_accounts`, `upsert_account_balance_snapshot`, `get_net_worth_snapshot`
-- **Line items** (5): `list_recent_transactions_feed`, `list_line_items`, `create_line_item`, `update_line_item`, `delete_line_item`
+- **Line items** (6): `list_dashboard_time_series`, `list_recent_transactions_feed`, `list_line_items`, `create_line_item`, `update_line_item`, `delete_line_item`
 - **Attachments** (7): `add_attachment`, `list_attachments`, `get_attachment_counts`, `get_attachment_summaries`, `delete_attachment`, `export_attachment`, `get_attachment_data`
 - **File metadata** (1): `get_file_sizes`
 - **UI settings** (2): `get_ui_setting`, `set_ui_setting`

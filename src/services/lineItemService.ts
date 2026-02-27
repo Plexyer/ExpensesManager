@@ -5,6 +5,8 @@ import type {
   UpdateLineItemArgs,
   ListRecentTransactionsFeedArgs,
   RecentTransactionFeedItem,
+  ListDashboardTimeSeriesArgs,
+  DashboardTimeSeriesBucket,
 } from "../types/lineItem.types";
 
 // ============================================================================
@@ -43,6 +45,21 @@ export const listRecentTransactionsFeed = async (
 ): Promise<RecentTransactionFeedItem[]> => {
   return await invoke<RecentTransactionFeedItem[]>("list_recent_transactions_feed", {
     args: args ?? {},
+  });
+};
+
+/**
+ * Lists aggregate dashboard time-series buckets for trend and timeline widgets.
+ *
+ * @param args - Granularity + optional range and limit controls
+ * @returns Aggregate buckets with received/spent/net totals
+ * @throws Error if no database is open or args are invalid
+ */
+export const listDashboardTimeSeries = async (
+  args: ListDashboardTimeSeriesArgs
+): Promise<DashboardTimeSeriesBucket[]> => {
+  return await invoke<DashboardTimeSeriesBucket[]>("list_dashboard_time_series", {
+    args,
   });
 };
 

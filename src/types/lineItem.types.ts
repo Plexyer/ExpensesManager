@@ -83,3 +83,23 @@ export interface RecentTransactionFeedItem {
   created_at: string;
   updated_at: string;
 }
+
+export type DashboardTimeSeriesGranularity = "daily" | "weekly" | "period";
+
+export interface ListDashboardTimeSeriesArgs {
+  granularity: DashboardTimeSeriesGranularity;
+  start_date?: string;
+  end_date?: string;
+  limit?: number;
+}
+
+export interface DashboardTimeSeriesBucket {
+  bucket_key: string;
+  bucket_label: string;
+  bucket_start_date: string;
+  bucket_end_date: string | null;
+  received_total: number;
+  spent_total: number;
+  net_total: number;
+  currency: string;
+}
